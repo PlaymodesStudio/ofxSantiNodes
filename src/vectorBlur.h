@@ -51,7 +51,7 @@ public:
 
             float weightSum = 0.0f;
             int minInfluenceIndex = max(static_cast<int>(i) - area.get(), 0); // Left boundary of the area
-            int maxInfluenceIndex = min(static_cast<int>(i) + area.get(), static_cast<int>(in.size() - 1)); // Right boundary of the area
+            int maxInfluenceIndex = std::min(static_cast<int>(i) + area.get(), static_cast<int>(in.size() - 1)); // Right boundary of the area
 
             for(size_t j = minInfluenceIndex; j <= maxInfluenceIndex; j++) {
                 float dist = abs((int)i - (int)j);
