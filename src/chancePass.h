@@ -20,29 +20,19 @@ public:
         setSeed();
         
         listeners.push(numberIn.newListener([this](vector<float> &vf){
-            vector<float> tempOut(output);
-            if(tempOut.size() != vf.size()){
-                // Resize everything
-                tempOut.resize(vf.size());
-                setSeed();
-            }
-            for(int i = 0; i < vf.size(); i++){
-                if(dist(mt[i]) < (probability->size() == vf.size() ? probability->at(i) : probability->at(0))){
-                    tempOut[i] = vf[i];
-                }
-            }
-            output = tempOut;
-        }));
+               ensureVectorSize(vf.size());
+               vector<float> tempOut(output->size());
+               for(int i = 0; i < vf.size(); i++){
+                   tempOut[i] = (dist(mt[i]) < getProbability(i)) ? vf[i] : output->at(i);
+               }
+               output = tempOut;
+           }));
 
         listeners.push(gateIn.newListener([this](vector<float> &vf){
-            vector<float> tempOut(output);
-            if(tempOut.size() != vf.size()){
-                // Resize everything
-                tempOut.resize(vf.size());
-                setSeed();
-            }
+            ensureVectorSize(vf.size());
+            vector<float> tempOut(output->size());
             for(int i = 0; i < vf.size(); i++){
-                if(vf[i] > 0 && dist(mt[i]) < (probability->size() == vf.size() ? probability->at(i) : probability->at(0))){
+                if(vf[i] > 0 && dist(mt[i]) < getProbability(i)){
                     tempOut[i] = vf[i];
                 }else{
                     tempOut[i] = 0;
@@ -50,6 +40,7 @@ public:
             }
             output = tempOut;
         }));
+
         
         listeners.push(seed.newListener([this](vector<int> &i){
             setSeed();
@@ -57,6 +48,20 @@ public:
     }
     
 private:
+    
+    void ensureVectorSize(size_t newSize) {
+        if (output->size() != newSize) {
+            vector<float> newOutput(newSize, 0.0f); // Create a new vector with the desired size and default value.
+            output.set(newOutput); // Set the new vector to the output parameter.
+            mt.resize(newSize); // Resize the mt vector.
+            setSeed(); // Reset the seed.
+        }
+    }
+
+    
+    float getProbability(size_t index) {
+        return probability->size() == output->size() ? probability->at(index) : probability->at(0);
+    }
     
     void setSeed(){
         for(int i = 0; i < mt.size(); i++){
