@@ -1,15 +1,15 @@
 #include "ofxOceanodeNodeModel.h"
 
-class ramp : public ofxOceanodeNodeModel {
+class rampTrigger : public ofxOceanodeNodeModel {
 public:
-    ramp() : ofxOceanodeNodeModel("Ramp") {}
+    rampTrigger() : ofxOceanodeNodeModel("RampTrigger") {}
 
     void setup() override {
         addParameter(trigger.set("trigger"));
         addParameter(ms.set("ms", 1000, 1, INT_MAX)); // milliseconds
         addParameter(output.set("output", 0.0f, 0.0f, 1.0f));
 
-        trigger.addListener(this, &ramp::onTrigger);
+        trigger.addListener(this, &rampTrigger::onTrigger);
         
         lastTriggerState = false;
         frameCount = 0;
