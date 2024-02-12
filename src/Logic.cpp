@@ -12,7 +12,6 @@ void Logic::setup() {
     addParameterDropdown(operation, "Op", 0,
       {">", ">=", "<", "<=", "==", "!=", "&&", "||", "!>", "!<", "!>=", "!<="});
     addOutputParameter(output.set("Output", {0}, {0}, {1}));
-    addOutputParameter(outputBool.set("OutBool", {false}, {false}, {true}));
 
     listeners.push(input1.newListener([this](vector<float>& vf) {
         computeLogic();
@@ -32,7 +31,6 @@ void Logic::computeLogic() {
     };
 
     vector<float> result;
-    vector<bool> resultBool;
     vector<string> operations = {">", ">=", "<", "<=", "==", "!=", "&&", "||", "!>", "!<", "!>=", "!<="};
 
     for (size_t i = 0; i < std::max(input1->size(), input2->size()); ++i) {
@@ -53,8 +51,6 @@ void Logic::computeLogic() {
         else if (op == "!>=") logicResult = !(val1 >= val2);
         else if (op == "!<=") logicResult = !(val1 <= val2);
         result.push_back(logicResult ? 1.0f : 0.0f);
-        resultBool.push_back(logicResult);
     }
     output = result;
-    outputBool = resultBool;
 }

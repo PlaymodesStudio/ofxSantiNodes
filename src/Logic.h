@@ -20,7 +20,6 @@ private:
     ofParameter<vector<float>> input2;
     ofParameter<int> operation;  // Keep it as int
     ofParameter<vector<float>> output;
-    ofParameter<vector<bool>> outputBool;
 
     ofEventListeners listeners;
 };
