@@ -56,6 +56,8 @@
 #include "vectorSplit.h"
 #include "vectorTimer.h"
 #include "voidToGate.h"
+#include "boolToVoid.h"
+
 
 namespace ofxOceanodeSanti{
 
@@ -111,6 +113,8 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<split>("Santi");
     o.registerModel<vectorTimer>("Santi");
     o.registerModel<voidToGate>("Santi");
+    o.registerModel<boolToVoid>("Santi");
+    o.registerModel<floatToBool>("Santi");
 }
 }
 #endif /* ofxSantiNodes_h */
