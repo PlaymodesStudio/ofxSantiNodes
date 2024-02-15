@@ -52,4 +52,27 @@ private:
     bool lastFloat;
 };
 
+class boolToFloat : public ofxOceanodeNodeModel {
+public:
+    boolToFloat() : ofxOceanodeNodeModel("BoolToFloat") {
+        addParameter(boolIn.set("Bool In",false));
+        addParameter(floatOut.set("Float Out",0.0,0.0,1.0));
+        boolInListener = boolIn.newListener([this](bool &f){
+            if(boolIn)
+            {
+                floatOut=1.0;
+            }
+            else
+            {
+                floatOut=0.0;
+            }
+        });
+    }
+
+private:
+    ofParameter<bool> boolIn;
+    ofParameter<float> floatOut;
+    ofEventListener boolInListener;
+};
+
 #endif /* boolToVoid_h */

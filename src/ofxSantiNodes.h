@@ -58,7 +58,6 @@
 #include "voidToGate.h"
 #include "boolToVoid.h"
 
-
 namespace ofxOceanodeSanti{
 
 static void registerModels(ofxOceanode &o)
@@ -115,6 +114,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<voidToGate>("Santi");
     o.registerModel<boolToVoid>("Santi");
     o.registerModel<floatToBool>("Santi");
+    o.registerModel<boolToFloat>("Santi");
 }
 }
 #endif /* ofxSantiNodes_h */
