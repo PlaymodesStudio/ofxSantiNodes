@@ -57,6 +57,7 @@
 #include "vectorTimer.h"
 #include "voidToGate.h"
 #include "boolToVoid.h"
+#include "voiceStealing.h"
 
 namespace ofxOceanodeSanti{
 
@@ -115,6 +116,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<boolToVoid>("Santi");
     o.registerModel<floatToBool>("Santi");
     o.registerModel<boolToFloat>("Santi");
+    o.registerModel<voiceStealing>("Santi");
 }
 }
 #endif /* ofxSantiNodes_h */
