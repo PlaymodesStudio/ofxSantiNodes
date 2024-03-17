@@ -218,10 +218,10 @@ private:
     ofParameter<int> wRow;
     ofParameter<int> rowSize;
     ofParameter<int> colSize;
-    ofParameter<int> rCol; // Parameter for specifying the column to read
+    ofParameter<int> rCol;
     ofParameter<vector<float>> input;
     ofParameter<vector<float>> outputRow;
-    ofParameter<vector<float>> outputCol; // Output parameter for the column data
+    ofParameter<vector<float>> outputCol;
     
 
     ofEventListener openListener;
