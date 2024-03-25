@@ -13,6 +13,7 @@ public:
         addParameter(resetCount.set("Reset"));
         addParameter(resetNext.set("Reset Next"));
         addOutputParameter(countOutput.set("Count", {0}, {0}, {INT_MAX}));
+        addOutputParameter(resetOut.set("Reset Out"));
 
         listeners.push(resetCount.newListener([this](){
             std::fill(fallingEdgeCount.begin(), fallingEdgeCount.end(), 0);
@@ -27,7 +28,7 @@ public:
             if(vf.size() != lastInput.size()) {
                 lastInput.resize(vf.size(), 0);
                 fallingEdgeCount.resize(vf.size(), 0);
-                shouldResetNextCycle.resize(vf.size(), false);  // Resize the reset flag vector
+                shouldResetNextCycle.resize(vf.size(), false);
             }
 
             for(int i = 0; i < vf.size(); i++) {
@@ -38,6 +39,7 @@ public:
                     } else {
                         fallingEdgeCount[i]++;
                     }
+                    resetOut.trigger(); // Trigger the 'Reset Out' event
                 }
             }
             lastInput = vf;
@@ -51,10 +53,11 @@ private:
     ofParameter<void> resetCount;
     ofParameter<void> resetNext;
     ofParameter<vector<int>> countOutput;
+    ofParameter<void> resetOut; // 'Reset Out' void output parameter
 
     vector<float> lastInput;
     vector<int> fallingEdgeCount;
-    vector<bool> shouldResetNextCycle;  // New vector to track reset flags for each index
+    vector<bool> shouldResetNextCycle;
 
     ofEventListeners listeners;
 };
