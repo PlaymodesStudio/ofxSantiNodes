@@ -4,6 +4,8 @@
 
 #include "ofxOceanodeNodeModel.h"
 
+
+
 class boolToVoid : public ofxOceanodeNodeModel {
 public:
     boolToVoid() : ofxOceanodeNodeModel("BoolToVoid") {
@@ -75,4 +77,26 @@ private:
     ofEventListener boolInListener;
 };
 
+class floatToVoid : public ofxOceanodeNodeModel {
+public:
+    floatToVoid() : ofxOceanodeNodeModel("FloatToVoid") {
+        addParameter(floatIn.set("Float In",0,0,1));
+        addParameter(voidOut.set("Void Out"));
+        lastFloat = 0.0;
+        floatInListener = floatIn.newListener([this](float &f){
+            if((floatIn==1.0)&&(lastFloat!=1.0))
+            {
+                voidOut.trigger();
+                lastFloat=1.0;
+            }
+            else if(floatIn!=1.0) lastFloat=f;
+        });
+    }
+
+private:
+    ofParameter<float> floatIn;
+    ofParameter<void> voidOut;
+    ofEventListener floatInListener;
+    float lastFloat;
+};
 #endif /* boolToVoid_h */

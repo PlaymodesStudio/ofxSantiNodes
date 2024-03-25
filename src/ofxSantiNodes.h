@@ -65,7 +65,7 @@
 #include "MPGeneTable.h"
 #include "verticalProfileTable.h"
 #include "binPermute.h"
-#include "vectorSymmetry.h"
+//#include "vectorSymmetry.h"
 
 namespace ofxOceanodeSanti{
 
@@ -124,11 +124,12 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<boolToVoid>("Santi");
     o.registerModel<floatToBool>("Santi");
     o.registerModel<boolToFloat>("Santi");
+    o.registerModel<floatToVoid>("Santi");
     o.registerModel<voiceStealing>("Santi");
     o.registerModel<Ocurrence>("Santi");
     o.registerModel<table>("Santi");
     o.registerModel<binPermute>("Santi");
-    o.registerModel<vectorSymmetry>("Santi");
+    //o.registerModel<vectorSymmetry>("Santi");
     
     
     o.registerModel<tableRowId>("Thalastasi");
