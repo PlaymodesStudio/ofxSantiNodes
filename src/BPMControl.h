@@ -13,7 +13,8 @@ public:
         addParameter(bpm.set("BPM", 120.0f, 1.0f, 999.9f)); // Assuming a range from 1 to 999 BPM
         addParameter(port.set("Port", 12345, 1, 65535)); // Range for valid port numbers
         addParameter(resetOnChg.set("RstPhOnChg",true));
-        
+        addParameter(phaseHasReset.set("Trig.Rst"));
+
         phaseResetListener = phaseReset.newListener([this](){
             sendPhaseReset();
         });
@@ -34,6 +35,11 @@ public:
         setupOscSender(port);
     }
 
+    void resetPhase() override
+    {
+        cout << "Reset Phaseeeee" << endl;
+        phaseHasReset.trigger();
+    }
 private:
     void setupOscSender(int newPort){
         sender.setup("localhost", newPort);
@@ -54,6 +60,7 @@ private:
     ofParameter<float> bpm;
     ofParameter<int> port;
     ofParameter<void> phaseReset;
+    ofParameter<void> phaseHasReset;
     ofParameter<bool> resetOnChg;
     ofxOscSender sender;
 
