@@ -66,6 +66,8 @@
 #include "verticalProfileTable.h"
 #include "binPermute.h"
 #include "mergeVoid.h"
+#include "probSeq.h"
+#include "soloSequencer.h"
 //#include "vectorSymmetry.h"
 
 namespace ofxOceanodeSanti{
@@ -131,6 +133,8 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<table>("Santi");
     o.registerModel<binPermute>("Santi");
     o.registerModel<mergeVoid>("Santi");
+    o.registerModel<probSeq>("Santi");
+    o.registerModel<soloSequencer>("Santi");
     //o.registerModel<vectorSymmetry>("Santi");
     
     
