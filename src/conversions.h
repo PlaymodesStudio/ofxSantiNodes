@@ -7,7 +7,7 @@ class conversions : public ofxOceanodeNodeModel {
 public:
     conversions() : ofxOceanodeNodeModel("Conversions") {
         addParameter(input.set("Input", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
-        addParameterDropdown(operation, "Op", 0, {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed"});
+        addParameterDropdown(operation, "Op", 0, {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp"});
         addOutputParameter(output.set("Output", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
         
         description = "Converts between various units or scales.";
@@ -33,9 +33,9 @@ private:
     
     void processInput(const vector<float>& vf) {
         vector<float> out;
-        vector<string> operations = {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed"};
-            int opIndex = operation.get(); // Retrieve the integer value
-            string op = operations[opIndex]; // Convert the integer index to its corresponding string
+        vector<string> operations = {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp"};
+            int opIndex = operation.get();
+            string op = operations[opIndex];
             
         for(const auto& value : vf){
             if(op == "ms-hz") {
@@ -82,6 +82,76 @@ private:
             }
             else if(op == "semitones-speed") {
                 out.push_back(pow(2.0, value / 12.0));
+            }
+            else if (op == "beat-hz") {
+                float bpm = getOceanodeBPM();
+                out.push_back(bpm / 60.0 * value);  // Convert beats to hertz (cycles per second)
+            }
+            else if (op == "hz-beat") {
+                float bpm = getOceanodeBPM();
+                out.push_back(value / (bpm / 60.0));  // Convert hertz to beats
+            }
+            else if (op == "frame-ms") {
+                out.push_back((value / ofGetFrameRate()) * 1000.0);  // Convert frame count to milliseconds
+            }
+            else if (op == "ms-fps") {
+                out.push_back(1000.0 / value);  // Convert milliseconds to frames per second
+            }
+            else if (op == "pitch-ms") {
+                    float hz = 440.0 * pow(2.0, (value - 69) / 12.0);
+                    float period_seconds = 1.0 / hz;
+                    float milliseconds = period_seconds * 1000.0;
+                    out.push_back(milliseconds);
+            }
+            else if (op == "ms-pitch") {
+                    float period_seconds = value / 1000.0;
+                    float hz = 1.0 / period_seconds;
+                    float pitch = 69 + 12 * log2(hz / 440.0);
+                    out.push_back(pitch);
+            }
+            else if (op == "frame-pitch") {
+                    float milliseconds = (value / ofGetFrameRate()) * 1000.0;
+                    float period_seconds = milliseconds / 1000.0;
+                    float hz = 1.0 / period_seconds;
+                    float pitch = 69 + 12 * log2(hz / 440.0);
+                    out.push_back(pitch);
+            }
+            else if (op == "pitch-fps") {
+                    float hz = 440.0 * pow(2.0, (value - 69) / 12.0);
+                    float period_seconds = 1.0 / hz;
+                    float milliseconds = period_seconds * 1000.0;
+                    float fps = 1000.0 / milliseconds;
+                    out.push_back(fps);
+            }
+            else if (op == "pitch-cm") {
+                        float hz = 440.0 * pow(2.0, (value - 69) / 12.0);
+                        float wavelength_cm = 34300.0 / hz;
+                        out.push_back(wavelength_cm);
+            }
+            else if (op == "hz-cm") {
+                        float wavelength_cm = 34300.0 / value;
+                        out.push_back(wavelength_cm);
+            }
+            else if (op == "cm-pitch") {
+                        float hz = 34300.0 / value;
+                        float pitch = 69 + 12 * log2(hz / 440.0);
+                        out.push_back(pitch);
+            }
+            else if (op == "cm-hz") {
+                        float hz = 34300.0 / value;
+                        out.push_back(hz);
+            }
+            else if (op == "amp-dB") {
+                        if (value <= 0) {
+                            out.push_back(-INFINITY);
+                        } else {
+                            float dB = 20 * log10(value);
+                            out.push_back(dB);
+                        }
+            }
+            else if (op == "dB-amp") {
+                        float amp = pow(10, value / 20);
+                        out.push_back(amp);
             }
         }
         output = out;
