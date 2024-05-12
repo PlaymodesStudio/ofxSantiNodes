@@ -9,6 +9,7 @@ public:
 
         // Parameters
         addParameter(step.set("Step", 0, 0, INT_MAX));
+        addParameter(shift.set("Shift", 0, 0, INT_MAX));
         addParameter(in1.set("In 1", {0.0f}, {0.0f}, {1.0f}));
         addParameter(in2.set("In 2", {0.0f}, {0.0f}, {1.0f}));
         addParameter(in3.set("In 3", {0.0f}, {0.0f}, {1.0f}));
@@ -26,6 +27,10 @@ public:
         listeners.push(step.newListener([this](int &s) {
             updateSolo();
         }));
+        
+        listeners.push(shift.newListener([this](int &s) {
+            updateSolo();
+        }));
     }
 
     void updateSolo() {
@@ -37,7 +42,7 @@ public:
         // Determine current values and whether they've changed
         for(int i = 0; i < 8; ++i) {
             if(!inputs[i].empty()) {
-                int index = step % inputs[i].size();
+                int index = (step + shift) % inputs[i].size();
                 currentValues[i] = inputs[i][index];
                 if(currentValues[i] != lastValues[i]) {
                     hasChanged = true;
@@ -77,6 +82,7 @@ public:
 
 private:
     ofParameter<int> step;
+    ofParameter<int> shift;
     ofParameter<std::vector<float>> in1, in2, in3, in4, in5, in6, in7, in8;
     ofParameter<int> solo;
     ofParameter<bool> holdMode;
