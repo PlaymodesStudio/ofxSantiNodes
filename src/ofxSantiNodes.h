@@ -68,7 +68,8 @@
 #include "mergeVoid.h"
 #include "probSeq.h"
 #include "soloSequencer.h"
-//#include "texUniForms.h"
+#include "texUniForms.h"
+#include "equalLoudness.h"
 //#include "vectorSymmetry.h"
 
 namespace ofxOceanodeSanti{
@@ -136,7 +137,8 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<mergeVoid>("Santi");
     o.registerModel<probSeq>("Santi");
     o.registerModel<soloSequencer>("Santi");
-   // o.registerModel<texUniForms>("Santi");
+   o.registerModel<texUniForms>("Santi");
+    o.registerModel<EqualLoudness>("Santi");
     //o.registerModel<vectorSymmetry>("Santi");
     
     
