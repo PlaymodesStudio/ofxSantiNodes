@@ -1,6 +1,6 @@
-// harmonicSeries.cpp
-
 #include "harmonicSeries.h"
+#include <algorithm> // For std::sort
+#include <tuple>
 
 void harmonicSeries::setup() {
     description = "Generates the harmonic series of given pitches. "
@@ -17,11 +17,12 @@ void harmonicSeries::setup() {
     addParameter(evenHarmonicAmp.set("Even", 1.0f, 0.0f, 1.0f));
     addParameter(harmonicStretch.set("Stretch", 1.0f, 0.05f, 8.0f));
 
-
     addOutputParameter(output.set("Output Hz", {0}, {-FLT_MAX}, {FLT_MAX}));
     addOutputParameter(outputPitch.set("Output Pitch", {0}, {-FLT_MAX}, {FLT_MAX}));
     addOutputParameter(amplitudes.set("Amplitudes", {0}, {0}, {1}));
-    
+    addOutputParameter(sortedFreq.set("Sorted Frequencies", {0}, {-FLT_MAX}, {FLT_MAX}));
+    addOutputParameter(sortedPitch.set("Sorted Pitches", {0}, {-FLT_MAX}, {FLT_MAX}));
+    addOutputParameter(sortedAmp.set("Sorted Amplitudes", {0}, {0}, {1}));
 
     listeners.push_back(std::make_unique<ofEventListener>(harmonicShape.newListener([this](int &shapeIndex) {
         calculate();
@@ -64,7 +65,6 @@ void harmonicSeries::setup() {
     
     calculateDetuneFactors();
     calculate();
-
 }
 
 // function to calculate the detune factors for each harmonic
@@ -106,7 +106,6 @@ void harmonicSeries::calculate() {
             float detuneFactor = (i == 1) ? 1.0 : detuneFactors[i - 1];
             float partialFreq = freq * stretchedHarmonic * detuneFactor;
 
-
             out.push_back(partialFreq);
             outPitch.push_back(69 + 12 * log2(partialFreq / 440.0f));
 
@@ -135,9 +134,34 @@ void harmonicSeries::calculate() {
         }
     }
 
+    // Combine into a single list of tuples for sorting
+    vector<std::tuple<float, float, float>> combined;
+    for (size_t i = 0; i < out.size(); ++i) {
+        combined.push_back(std::make_tuple(out[i], outPitch[i], outAmplitudes[i]));
+    }
+
+    // Sort based on frequencies
+    std::sort(combined.begin(), combined.end(), [](const auto &a, const auto &b) {
+        return std::get<0>(a) < std::get<0>(b);
+    });
+
+    // Extract sorted lists
+    vector<float> sortedFrequencies(out.size());
+    vector<float> sortedPitches(out.size());
+    vector<float> sortedAmplitudes(out.size());
+    for (size_t i = 0; i < combined.size(); ++i) {
+        sortedFrequencies[i] = std::get<0>(combined[i]);
+        sortedPitches[i] = std::get<1>(combined[i]);
+        sortedAmplitudes[i] = std::get<2>(combined[i]);
+    }
+
+    // Set the output parameters
     output = out;
     outputPitch = outPitch;
     amplitudes = outAmplitudes;
+    sortedFreq = sortedFrequencies;
+    sortedPitch = sortedPitches;
+    sortedAmp = sortedAmplitudes;
 }
 
 

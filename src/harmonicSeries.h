@@ -1,5 +1,3 @@
-// harmonicSeries.h
-
 #ifndef harmonicSeries_h
 #define harmonicSeries_h
 
@@ -29,6 +27,9 @@ private:
     ofParameter<float>oddHarmonicAmp;
     ofParameter<float>evenHarmonicAmp;
     ofParameter<float>harmonicStretch;
+    ofParameter<vector<float>> sortedFreq;
+    ofParameter<vector<float>> sortedPitch;
+    ofParameter<vector<float>> sortedAmp;
 
     vector<std::unique_ptr<ofEventListener>> listeners;
 };
