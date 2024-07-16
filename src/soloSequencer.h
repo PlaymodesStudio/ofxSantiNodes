@@ -1,8 +1,15 @@
+#ifndef soloSequencer_h
+#define soloSequencer_h
+
 #include "ofxOceanodeNodeModel.h"
+#include <random>
+#include <array>
+#include <vector>
+#include <numeric>
 
 class soloSequencer : public ofxOceanodeNodeModel {
 public:
-    soloSequencer() : ofxOceanodeNodeModel("Solo Sequencer") {
+    soloSequencer() : ofxOceanodeNodeModel("Solo Sequencer"), gen(rd()), dist(0.0f, 1.0f) {
         description = "A sequencer node that outputs a number based on weighted probabilities from eight input vectors. "
                       "The 'step' input determines the index for reading values from each input vector. "
                       "'Hold Mode' allows the output to update only when there are changes in the input vectors' values.";
@@ -19,18 +26,29 @@ public:
         addParameter(in7.set("In 7", {0.0f}, {0.0f}, {1.0f}));
         addParameter(in8.set("In 8", {0.0f}, {0.0f}, {1.0f}));
         addParameter(holdMode.set("Hold Mode", false));
+        addParameter(seed.set("Seed", 0, 0, INT_MAX));
         addOutputParameter(solo.set("Solo", 0, 0, 8));
         
         lastValues = std::vector<float>(8, 0.0f); // Initialize with zeros for 8 inputs
         
         // Listener for step parameter changes
         listeners.push(step.newListener([this](int &s) {
+            if (s == 0) {
+                resetGenerator();
+            }
             updateSolo();
         }));
         
         listeners.push(shift.newListener([this](int &s) {
             updateSolo();
         }));
+        
+        // Listener for seed parameter changes
+        seedListener = seed.newListener([this](int &) {
+            if (step == 0) {
+                resetGenerator();
+            }
+        });
     }
 
     void updateSolo() {
@@ -69,7 +87,7 @@ public:
     }
 
     void performSelection(const std::vector<float>& probabilities, const std::vector<bool>& changedVectors) {
-        float rand = ofRandom(1.0f);
+        float rand = dist(gen);
         float cumulative = 0.0f;
         for(int i = 0; i < probabilities.size(); ++i) {
             cumulative += probabilities[i];
@@ -86,6 +104,22 @@ private:
     ofParameter<std::vector<float>> in1, in2, in3, in4, in5, in6, in7, in8;
     ofParameter<int> solo;
     ofParameter<bool> holdMode;
+    ofParameter<int> seed;
     std::vector<float> lastValues; // Cache of last step values for change detection
     ofEventListeners listeners;
+    ofEventListener seedListener;
+
+    std::random_device rd; // Obtain a random number from hardware
+    std::mt19937 gen; // Standard mersenne_twister_engine seeded with rd()
+    std::uniform_real_distribution<float> dist; // Uniform distribution
+
+    void resetGenerator() {
+        if (seed != 0) {
+            gen.seed(seed); // Set the generator with the specified seed
+        } else {
+            gen.seed(rd()); // Use a random seed from hardware if seed is 0
+        }
+    }
 };
+
+#endif /* soloSequencer_h */
