@@ -70,6 +70,13 @@
 #include "soloSequencer.h"
 #include "texUniForms.h"
 #include "equalLoudness.h"
+#include "multiStateVector.h"
+#include "multiSliderMatrix.h"
+#include "polySeq.h"
+#include "choose.h"
+#include "csv2vector.h"
+#include "vectorStorage.h"
+#include "vectorSetter.h"
 //#include "vectorSymmetry.h"
 
 namespace ofxOceanodeSanti{
@@ -139,6 +146,13 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<soloSequencer>("Santi");
    o.registerModel<texUniForms>("Santi");
     o.registerModel<EqualLoudness>("Santi");
+    o.registerModel<multistateVector>("Santi");
+    o.registerModel<multiSliderMatrix>("Santi");
+    o.registerModel<polySeq>("Santi");
+    o.registerModel<choose>("Santi");
+    o.registerModel<csv2vector>("Santi");
+    o.registerModel<vectorStorage>("Santi");
+    o.registerModel<vectorSetter>("Santi");
     //o.registerModel<vectorSymmetry>("Santi");
     
     
