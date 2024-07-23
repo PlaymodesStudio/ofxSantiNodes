@@ -25,64 +25,63 @@ void voiceStealing::setup() {
 }
 
 void voiceStealing::update(ofEventArgs &args) {
-    vector<float> tempPitchOut(outputSize, 0); // Initialize based on current output size.
-    vector<float> tempGateOut(outputSize, 0);  // Initialize based on current output size.
+    vector<float> tempPitchOut = pitchOut.get(); // Start with current pitch values
+    vector<float> tempGateOut(outputSize, 0);
 
-    // Make sure the auxiliary vectors match the output size at the start of each update.
     if(voiceAge.size() != outputSize) {
         voiceAge.resize(outputSize, 0);
     }
 
-    // A vector to mark which output slots have been updated in this cycle.
     vector<bool> slotUpdated(outputSize, false);
-
-    // Process active notes in gateIn.
+    size_t nextAvailableSlot = 0; // Keep track of the next slot to fill
+    // First pass: Try to keep incoming voices in their original slots
+    for (size_t i = 0; i < std::min(gateIn.get().size(), static_cast<size_t>(outputSize)); ++i) {
+        float gateValue = gateIn.get()[i];
+        if (gateValue > 0.01) { // Active note
+            if (tempGateOut[i] <= 0.01) { // Original slot is free
+                tempPitchOut[i] = pitchIn.get()[i];
+                tempGateOut[i] = gateValue;
+                voiceAge[i] = 1;
+                slotUpdated[i] = true;
+                nextAvailableSlot = std::max(nextAvailableSlot, i + 1);
+            }
+        }
+    }
+    // Second pass: Process remaining active incoming voices
     for (size_t i = 0; i < gateIn.get().size(); ++i) {
         float gateValue = gateIn.get()[i];
-
-        if (gateValue > 0.01) { // For active notes
+        if (gateValue > 0.01 && !slotUpdated[i]) { // Active note that wasn't processed in first pass
             int slotIndex = -1;
-
-            // First, try to find a free slot (prioritize lower indices).
-            for (size_t j = 0; j < outputSize; ++j) {
-                if (tempGateOut[j] <= 0.01) { // This checks if the slot is free.
-                    slotIndex = j;
-                    break; // Stop at the first free slot.
-                }
-            }
-
-            // If no free slot is found, find the oldest active slot.
-            if (slotIndex == -1) {
+            // Try to allocate to the next available slot
+            if (nextAvailableSlot < outputSize) {
+                slotIndex = nextAvailableSlot++;
+            } else {
+                // If we've reached the end, find the oldest slot
                 slotIndex = findOldestSlot();
             }
-
-            // Allocate or update the voice if a valid slot is found.
+            // Allocate or update the voice if a valid slot is found
             if (slotIndex != -1) {
                 tempPitchOut[slotIndex] = pitchIn.get()[i];
                 tempGateOut[slotIndex] = gateValue;
-                voiceAge[slotIndex] = 1; // Reset age for this voice.
+                voiceAge[slotIndex] = 1;
                 slotUpdated[slotIndex] = true;
             }
         }
     }
-
-    // Turn off notes for slots that weren't updated (handle note offs).
+    // Update ages for active slots and turn off gates for unused slots
     for (size_t i = 0; i < outputSize; ++i) {
-        if (!slotUpdated[i]) {
-            tempGateOut[i] = 0; // Implicit note off for slots not updated in this cycle.
-            voiceAge[i] = 0; // Reset age as the slot is now free.
-        }
-        else {
-            // Increment age for slots that were kept active.
+        if (slotUpdated[i]) {
             voiceAge[i]++;
+        } else {
+            tempGateOut[i] = 0;
+            voiceAge[i] = 0;
+            // We don't modify tempPitchOut[i] here, keeping its last value
         }
     }
-
-    // Update the actual outputs.
+    // Update the actual outputs
     pitchOut = tempPitchOut;
     gateOut = tempGateOut;
-
-    // Remember the gate values for the next cycle.
+    // Remember the gate values for the next cycle
     lastGateValue = gateIn.get();
 }
 
