@@ -13,7 +13,8 @@ public:
         addParameter(minVal.set("Min[]", vector<float>(1, 0), vector<float>(1, -FLT_MAX), vector<float>(1, FLT_MAX)));
         addParameter(maxVal.set("Max[]", vector<float>(1, 1), vector<float>(1, -FLT_MAX), vector<float>(1, FLT_MAX)));
         addParameter(indexInput.set("Idx[]", vector<int>(1, 0), vector<int>(1, 0), vector<int>(1, INT_MAX)));
-        
+        addParameter(offsetInput.set("Offset[]", vector<int>(1, 0), vector<int>(1, -INT_MAX), vector<int>(1, INT_MAX)));
+
         const int NUM_SLIDERS = 8;
         vectorValues.resize(NUM_SLIDERS);
         for (auto &v : vectorValues) {
@@ -47,6 +48,9 @@ public:
         
         listeners.push(indexInput.newListener([this](vector<int> &i) {
             updateOutputs();
+        }));
+        listeners.push(offsetInput.newListener([this](vector<int> &o) {
+                   updateOutputs();
         }));
     }
 
@@ -85,18 +89,23 @@ private:
     vector<int> currentToEditValues;
     ofParameter<vector<int>> indexInput;
     vector<float> currentOutputs;
+    ofParameter<vector<int>> offsetInput;
+
     
     void updateOutputs() {
-        currentOutputs.resize(vectorValues.size());
-        for (int i = 0; i < vectorValues.size(); i++) {
-            int currentSize = vectorValues[i].size();
-            if (currentSize > 0) {
-                int step = indexInput->at(i % indexInput->size()) % currentSize;
-                currentOutputs[i] = vectorValues[i][step];
-                vectorValueParams[i] = vector<float>(1, currentOutputs[i]);
+            currentOutputs.resize(vectorValues.size());
+            for (int i = 0; i < vectorValues.size(); i++) {
+                int currentSize = vectorValues[i].size();
+                if (currentSize > 0) {
+                    int index = indexInput->at(i % indexInput->size());
+                    int offset = offsetInput->at(i % offsetInput->size());
+                    int step = (index + offset) % currentSize;
+                    if (step < 0) step += currentSize; // Handle negative values
+                    currentOutputs[i] = vectorValues[i][step];
+                    vectorValueParams[i] = vector<float>(1, currentOutputs[i]);
+                }
             }
         }
-    }
 
     int getValueForIndex(const vector<int>& vec, int index) {
         if (vec.size() == 1) return vec[0];
@@ -235,7 +244,10 @@ private:
                     ));
 
                     // Calculate current step for this multislider
-            int currentStep = indexInput->at(index % indexInput->size()) % values_count;
+                    int rawIndex = indexInput->at(index % indexInput->size());
+                    int offset = offsetInput->at(index % offsetInput->size());
+                    int currentStep = (rawIndex + offset) % values_count;
+                    if (currentStep < 0) currentStep += values_count;
 
 
                     for (int n = 0; n < res_w; n++) {
@@ -260,15 +272,15 @@ private:
 
                         // Determine the color for this bar
                         ImU32 barColor;
-                        if (v1_idx == currentStep) {
-                            barColor = col_highlight;  // Highlight current step
-                        } else if (idx_hovered == v1_idx) {
-                            barColor = col_hovered;
-                        } else {
-                            barColor = col_base;
-                        }
+                                if (v1_idx == currentStep) {
+                                    barColor = col_highlight;  // Highlight current step
+                                } else if (idx_hovered == v1_idx) {
+                                    barColor = col_hovered;
+                                } else {
+                                    barColor = col_base;
+                                }
 
-                        drawList->AddRectFilled(pos0, pos1, barColor);
+                                drawList->AddRectFilled(pos0, pos1, barColor);
 
                         t0 = t1;
                         tp0 = tp1;
