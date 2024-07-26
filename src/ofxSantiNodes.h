@@ -77,6 +77,7 @@
 #include "csv2vector.h"
 #include "vectorStorage.h"
 #include "vectorSetter.h"
+#include "noteMatrix.h"
 //#include "vectorSymmetry.h"
 
 namespace ofxOceanodeSanti{
@@ -153,6 +154,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<csv2vector>("Santi");
     o.registerModel<vectorStorage>("Santi");
     o.registerModel<vectorSetter>("Santi");
+    o.registerModel<noteMatrix>("Santi");
     //o.registerModel<vectorSymmetry>("Santi");
     
     
