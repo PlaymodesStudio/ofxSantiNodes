@@ -14,6 +14,11 @@ public:
         addParameter(maxVal.set("Max[]", vector<float>(1, 1), vector<float>(1, -FLT_MAX), vector<float>(1, FLT_MAX)));
         addParameter(indexInput.set("Idx[]", vector<int>(1, 0), vector<int>(1, 0), vector<int>(1, INT_MAX)));
         addParameter(offsetInput.set("Offset[]", vector<int>(1, 0), vector<int>(1, -INT_MAX), vector<int>(1, INT_MAX)));
+        addOutputParameter(vecOutput.set("Vec Output",
+                                                 vector<float>(8, 0.0f),
+                                                 vector<float>(8, -FLT_MAX),
+                                                 vector<float>(8, FLT_MAX)));
+
 
         const int NUM_SLIDERS = 8;
         vectorValues.resize(NUM_SLIDERS);
@@ -63,13 +68,14 @@ public:
         json["Values"] = vectorValues;
     }
 
-    void presetRecallAfterSettingParameters(ofJson &json) {
-        if (json.count("Values") == 1) {
-            vectorValues = json["Values"].get<vector<vector<float>>>();
-            updateSizes();
-            updateMinMaxValues();
+    void presetRecallAfterSettingParameters(ofJson &json) override {
+            if (json.count("Values") == 1) {
+                vectorValues = json["Values"].get<vector<vector<float>>>();
+                updateSizes();
+                updateMinMaxValues();
+                updateOutputs(); // Ensure vecOutput is updated after loading preset
+            }
         }
-    }
 
     void presetHasLoaded() override {
         for (int i = 0; i < vectorValues.size(); i++) {
@@ -90,11 +96,16 @@ private:
     ofParameter<vector<int>> indexInput;
     vector<float> currentOutputs;
     ofParameter<vector<int>> offsetInput;
+    ofParameter<vector<float>> vecOutput;
+
 
     
     void updateOutputs() {
-            currentOutputs.resize(vectorValues.size());
-            for (int i = 0; i < vectorValues.size(); i++) {
+            int numSliders = std::min(static_cast<int>(vectorValues.size()), 8);
+            currentOutputs.resize(numSliders);
+            vector<float> newVecOutput(numSliders, 0.0f);
+
+            for (int i = 0; i < numSliders; i++) {
                 int currentSize = vectorValues[i].size();
                 if (currentSize > 0) {
                     int index = indexInput->at(i % indexInput->size());
@@ -103,8 +114,14 @@ private:
                     if (step < 0) step += currentSize; // Handle negative values
                     currentOutputs[i] = vectorValues[i][step];
                     vectorValueParams[i] = vector<float>(1, currentOutputs[i]);
+                    
+                    // Update the new vector output
+                    newVecOutput[i] = currentOutputs[i];
                 }
             }
+
+            // Set the new vector output
+            vecOutput.set(newVecOutput);
         }
 
     int getValueForIndex(const vector<int>& vec, int index) {
@@ -128,17 +145,30 @@ private:
     }
 
     void updateMinMaxValues() {
-        for (int i = 0; i < vectorValues.size(); i++) {
-            float min = getValueForIndex(minVal, i);
-            float max = getValueForIndex(maxVal, i);
-            for (auto &val : vectorValues[i]) {
-                val = ofClamp(val, min, max);
+            int numSliders = std::min(static_cast<int>(vectorValues.size()), 8);
+            for (int i = 0; i < numSliders; i++) {
+                float min = getValueForIndex(minVal, i);
+                float max = getValueForIndex(maxVal, i);
+                for (auto &val : vectorValues[i]) {
+                    val = ofClamp(val, min, max);
+                }
+                if (i < vectorValueParams.size()) {
+                    vectorValueParams[i].setMin(vector<float>(1, min));
+                    vectorValueParams[i].setMax(vector<float>(1, max));
+                    vectorValueParams[i] = vectorValues[i];
+                }
             }
-            vectorValueParams[i].setMin(vector<float>(1, min));
-            vectorValueParams[i].setMax(vector<float>(1, max));
-            vectorValueParams[i] = vectorValues[i];
+
+            // Update min and max for vecOutput
+            vector<float> minVec(numSliders, -FLT_MAX);
+            vector<float> maxVec(numSliders, FLT_MAX);
+            for (int i = 0; i < numSliders; i++) {
+                if (!minVal.get().empty()) minVec[i] = getValueForIndex(minVal, i);
+                if (!maxVal.get().empty()) maxVec[i] = getValueForIndex(maxVal, i);
+            }
+            vecOutput.setMin(minVec);
+            vecOutput.setMax(maxVec);
         }
-    }
 
     void drawMultiSlider(int index) {
         if (index >= vectorValues.size() || index >= vectorValueParams.size()) return;

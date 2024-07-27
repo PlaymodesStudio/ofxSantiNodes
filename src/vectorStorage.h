@@ -9,6 +9,7 @@
 class vectorStorage : public ofxOceanodeNodeModel {
 public:
     vectorStorage() : ofxOceanodeNodeModel("Vector Storage") {
+        description="Stores and recalls multiple vector presets, allowing real-time switching between stored states";
         addParameter(input.set("Input",
                                vector<float>(1, 0.0f),
                                vector<float>(1, -std::numeric_limits<float>::max()),

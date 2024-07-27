@@ -4,20 +4,24 @@
 #include "ofxOceanodeNodeModel.h"
 #include "imgui.h"
 #include <algorithm>
+#include "imgui_internal.h"
 
 class noteMatrix : public ofxOceanodeNodeModel {
 public:
     noteMatrix() : ofxOceanodeNodeModel("Note Matrix") {}
 
     void setup() {
-        addParameter(gridX.set("Grid X", 16, 1, 64));
+        description="Creates a multi-row step sequencer with variable subdivisions, driven by a phasor input";
+        addParameter(gridX.set("Grid X[]", vector<int>(1, 16), vector<int>(1, 1), vector<int>(1, 64)));
         addParameter(gridY.set("Grid Y", 8, 1, 32));
         addParameter(phasorInput.set("Phasor", 0.0f, 0.0f, 1.0f));
-        addParameter(matrixOutput.set("Output", vector<int>()));
+        addParameter(output.set("Output", vector<int>()));
+        addParameter(matrixWidth.set("w", 300, 100, 1000));
+        addParameter(rowHeight.set("h", 20, 10, 100));
 
-        matrix.resize(gridY, vector<bool>(gridX, false));
+        matrix.resize(gridY, vector<bool>(16, false));
 
-        listeners.push(gridX.newListener([this](int &){
+        listeners.push(gridX.newListener([this](vector<int> &){
             resizeMatrix();
         }));
         listeners.push(gridY.newListener([this](int &){
@@ -26,11 +30,16 @@ public:
         listeners.push(phasorInput.newListener([this](float &){
             updateOutput();
         }));
+        listeners.push(matrixWidth.newListener([this](int &){
+            updateOutput();
+        }));
+        listeners.push(rowHeight.newListener([this](int &){
+            updateOutput();
+        }));
 
-        matrixOutput.setMin(vector<int>(1, 0));
-        matrixOutput.setMax(vector<int>(1, 1));
+        output.setMin(vector<int>(1, 0));
+        output.setMax(vector<int>(1, 1));
 
-        // Add custom region for drawing the matrix
         addCustomRegion(customMatrixRegion, [this]() {
             drawCustomGui();
         });
@@ -73,54 +82,59 @@ public:
         }
 
 private:
-    ofParameter<int> gridX, gridY;
+    ofParameter<vector<int>> gridX;
+    ofParameter<int> gridY;
     ofParameter<float> phasorInput;
-    ofParameter<vector<int>> matrixOutput;
+    ofParameter<vector<int>> output;
+    ofParameter<int> matrixWidth;
+    ofParameter<int> rowHeight;
     vector<vector<bool>> matrix;
     ofEventListeners listeners;
     customGuiRegion customMatrixRegion;
 
     void resizeMatrix() {
-            int x = std::max(1, gridX.get());
-            int y = std::max(1, gridY.get());
-            
-            vector<vector<bool>> newMatrix(y, vector<bool>(x, false));
-            for (int i = 0; i < std::min(y, static_cast<int>(matrix.size())); ++i) {
+        int y = std::max(1, gridY.get());
+        vector<vector<bool>> newMatrix(y);
+        
+        for (int i = 0; i < y; ++i) {
+            int x = getGridXForRow(i);
+            newMatrix[i].resize(x, false);
+            if (i < matrix.size()) {
                 for (int j = 0; j < std::min(x, static_cast<int>(matrix[i].size())); ++j) {
                     newMatrix[i][j] = matrix[i][j];
                 }
             }
-            matrix = newMatrix;
-            
-            updateOutput();
         }
+        matrix = newMatrix;
+        
+        updateOutput();
+    }
 
     void updateOutput() {
-            int x = std::max(1, gridX.get());
-            int y = std::max(1, gridY.get());
-            float phasor = ofClamp(phasorInput.get(), 0.0f, 1.0f);
+        int y = std::max(1, gridY.get());
+        float phasor = ofClamp(phasorInput.get(), 0.0f, 1.0f);
+        
+        vector<int> outp(y, 0);
+        for (int i = 0; i < y && i < matrix.size(); ++i) {
+            int x = getGridXForRow(i);
             int currentColumn = static_cast<int>(phasor * x) % x;
-            
-            vector<int> output(y, 0);
-            for (int i = 0; i < y && i < matrix.size(); ++i) {
-                if (currentColumn < matrix[i].size() && matrix[i][currentColumn]) {
-                    output[i] = 1;
-                }
+            if (currentColumn < matrix[i].size() && matrix[i][currentColumn]) {
+                outp[i] = 1;
             }
-            matrixOutput = output;
         }
+        output = outp;
+    }
 
     void drawCustomGui() {
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        float cellWidth = 20.0f;
-        float cellHeight = 20.0f;
 
-        int x = std::max(1, gridX.get());
         int y = std::max(1, gridY.get());
+        float totalWidth = matrixWidth.get();
+        float rowHeightValue = rowHeight.get();
 
         // Create a larger clickable area
-        ImGui::InvisibleButton("MatrixArea", ImVec2(x * cellWidth, y * cellHeight));
+        ImGui::InvisibleButton("MatrixArea", ImVec2(totalWidth, y * rowHeightValue));
         bool isMatrixHovered = ImGui::IsItemHovered();
 
         // Handle mouse interactions
@@ -131,10 +145,11 @@ private:
             if (ImGui::IsMouseClicked(0)) {
                 isDragging = true;
                 ImVec2 mousePos = ImGui::GetMousePos();
+                int cellY = static_cast<int>((mousePos.y - pos.y) / rowHeightValue);
+                float cellWidth = totalWidth / getGridXForRow(cellY);
                 int cellX = static_cast<int>((mousePos.x - pos.x) / cellWidth);
-                int cellY = static_cast<int>((mousePos.y - pos.y) / cellHeight);
 
-                if (cellX >= 0 && cellX < x && cellY >= 0 && cellY < y) {
+                if (cellY >= 0 && cellY < y && cellX >= 0 && cellX < getGridXForRow(cellY)) {
                     initialCellState = !matrix[cellY][cellX];
                     matrix[cellY][cellX] = initialCellState;
                     updateOutput();
@@ -142,10 +157,11 @@ private:
             }
             else if (ImGui::IsMouseDragging(0) && isDragging) {
                 ImVec2 mousePos = ImGui::GetMousePos();
+                int cellY = static_cast<int>((mousePos.y - pos.y) / rowHeightValue);
+                float cellWidth = totalWidth / getGridXForRow(cellY);
                 int cellX = static_cast<int>((mousePos.x - pos.x) / cellWidth);
-                int cellY = static_cast<int>((mousePos.y - pos.y) / cellHeight);
 
-                if (cellX >= 0 && cellX < x && cellY >= 0 && cellY < y) {
+                if (cellY >= 0 && cellY < y && cellX >= 0 && cellX < getGridXForRow(cellY)) {
                     matrix[cellY][cellX] = initialCellState;
                     updateOutput();
                 }
@@ -158,9 +174,11 @@ private:
 
         // Draw grid and cells
         for (int i = 0; i < y && i < matrix.size(); ++i) {
+            int x = getGridXForRow(i);
+            float cellWidth = totalWidth / x;
             for (int j = 0; j < x && j < matrix[i].size(); ++j) {
-                ImVec2 cellPos(pos.x + j * cellWidth, pos.y + i * cellHeight);
-                ImVec2 cellPosEnd(cellPos.x + cellWidth, cellPos.y + cellHeight);
+                ImVec2 cellPos(pos.x + j * cellWidth, pos.y + i * rowHeightValue);
+                ImVec2 cellPosEnd(cellPos.x + cellWidth, cellPos.y + rowHeightValue);
                 
                 if (matrix[i][j]) {
                     drawList->AddRectFilled(cellPos, cellPosEnd, IM_COL32(255, 255, 255, 255));
@@ -171,10 +189,20 @@ private:
 
         // Draw phasor position
         float phasor = ofClamp(phasorInput.get(), 0.0f, 1.0f);
-        int phasorX = static_cast<int>(phasor * x) % x;
-        ImVec2 phasorStart(pos.x + phasorX * cellWidth, pos.y);
-        ImVec2 phasorEnd(phasorStart.x, pos.y + y * cellHeight);
-        drawList->AddLine(phasorStart, phasorEnd, IM_COL32(255, 0, 0, 255), 2.0f);
+        for (int i = 0; i < y; ++i) {
+            float phasorX = phasor * totalWidth;
+            ImVec2 phasorStart(pos.x + phasorX, pos.y + i * rowHeightValue);
+            ImVec2 phasorEnd(phasorStart.x, pos.y + (i + 1) * rowHeightValue);
+            drawList->AddLine(phasorStart, phasorEnd, IM_COL32(255, 0, 0, 255), 2.0f);
+        }
+    }
+
+    int getGridXForRow(int row) {
+        if (gridX->size() == 1) {
+            return gridX->at(0);
+        }
+        return (row < gridX->size()) ? gridX->at(row) : gridX->back();
     }
 };
+
 #endif /* noteMatrix_h */
