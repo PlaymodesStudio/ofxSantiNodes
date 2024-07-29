@@ -3,27 +3,38 @@
 
 #include "ofxOceanodeNodeModel.h"
 #include "imgui_internal.h"
+#include <fstream>
+
 
 class polySeq : public ofxOceanodeNodeModel {
 public:
+    static inline const int NUM_SLIDERS = 8;
+    static inline const int NUM_SLOTS = 10;
+    
     polySeq() : ofxOceanodeNodeModel("Poly Step Sequencer") {}
 
     void setup() {
+        description = "An 8 track traditional or probabilistic sequencer, capable of storing slots of sequence data. It features adjustable sequence lengths, value ranges, and offset for each track. Responds to an index input for playback control and provides both individual track outputs and a combined vector output. The vectorial slot system enables switching between different sequence configurations per individual track";
         addParameter(size.set("Size[]", vector<int>(1, 10), vector<int>(1, 2), vector<int>(1, INT_MAX)));
         addParameter(minVal.set("Min[]", vector<float>(1, 0), vector<float>(1, -FLT_MAX), vector<float>(1, FLT_MAX)));
         addParameter(maxVal.set("Max[]", vector<float>(1, 1), vector<float>(1, -FLT_MAX), vector<float>(1, FLT_MAX)));
         addParameter(indexInput.set("Idx[]", vector<int>(1, 0), vector<int>(1, 0), vector<int>(1, INT_MAX)));
         addParameter(offsetInput.set("Offset[]", vector<int>(1, 0), vector<int>(1, -INT_MAX), vector<int>(1, INT_MAX)));
-        addOutputParameter(vecOutput.set("Vec Output",
-                                                 vector<float>(8, 0.0f),
-                                                 vector<float>(8, -FLT_MAX),
-                                                 vector<float>(8, FLT_MAX)));
+        
+        vector<int> initialSlots(NUM_SLIDERS, 0);
+        vector<int> minSlots(NUM_SLIDERS, 0);
+        vector<int> maxSlots(NUM_SLIDERS, NUM_SLOTS - 1);
+        addParameter(slot.set("Slot[]", vector<int>(1, 0), vector<int>(1, 0), vector<int>(1, NUM_SLOTS - 1)));
+       
+        addParameter(probabilistic.set("Probabilistic", false));
+        lastSteps.resize(NUM_SLIDERS, -1);  // Initialize with -1 to ensure first step is always calculated
 
-
+        addOutputParameter(vecOutput.set("Vec Output",vector<float>(8, 0.0f),vector<float>(8, -FLT_MAX),vector<float>(8, FLT_MAX)));
+        
         const int NUM_SLIDERS = 8;
         vectorValues.resize(NUM_SLIDERS);
         for (auto &v : vectorValues) {
-            v.resize(10, 0);  // Default size
+            v.resize(10, 0);
         }
 
         addCustomRegion(customWidget, [this]() {
@@ -38,10 +49,8 @@ public:
             addParameter(vectorValueParams[i],
                          ofxOceanodeParameterFlags_DisableInConnection | ofxOceanodeParameterFlags_DisplayMinimized);
         }
-
-        listeners.push(size.newListener([this](vector<int> &s) {
-            updateSizes();
-        }));
+        
+        initializeAllSlotData();
 
         listeners.push(minVal.newListener([this](vector<float> &f) {
             updateMinMaxValues();
@@ -54,9 +63,50 @@ public:
         listeners.push(indexInput.newListener([this](vector<int> &i) {
             updateOutputs();
         }));
+        
         listeners.push(offsetInput.newListener([this](vector<int> &o) {
                    updateOutputs();
         }));
+
+        currentSlots.resize(NUM_SLIDERS, 0);
+
+        listeners.push(slot.newListener([this](vector<int> &s) {
+            switchSlot(s);
+            updateSlotParameter();
+        }));
+        
+        listeners.push(size.newListener([this](vector<int> &s) {
+                initializeAllSlotData();
+                updateSizes();
+            }));
+        
+        listeners.push(probabilistic.newListener([this](bool &b) {
+                std::fill(lastSteps.begin(), lastSteps.end(), -1);  // Reset all last steps
+                updateMinMaxValues();
+                updateOutputs();
+            }));
+    }
+    
+    void initializeAllSlotData() {
+        vector<vector<vector<float>>> tempAllSlotData = allSlotData;
+        
+        allSlotData.clear();
+        allSlotData.resize(NUM_SLOTS);
+        for (int slot = 0; slot < NUM_SLOTS; ++slot) {
+            allSlotData[slot].resize(NUM_SLIDERS);
+            for (int track = 0; track < NUM_SLIDERS; ++track) {
+                int trackSize = getValueForIndex(size, track);
+                allSlotData[slot][track].resize(trackSize, 0.0f);
+                
+                // Copy existing data if available
+                if (slot < tempAllSlotData.size() && track < tempAllSlotData[slot].size()) {
+                    int oldSize = tempAllSlotData[slot][track].size();
+                    for (int i = 0; i < std::min(oldSize, trackSize); i++) {
+                        allSlotData[slot][track][i] = tempAllSlotData[slot][track][i];
+                    }
+                }
+            }
+        }
     }
 
     void update(ofEventArgs &a) {
@@ -65,27 +115,85 @@ public:
     }
 
     void presetSave(ofJson &json) {
-        json["Values"] = vectorValues;
+        //logBuffer += "Saving preset...\n";
+        //logBuffer += "Current slots: " + ofToString(currentSlots) + "\n";
+        
+        saveCurrentSlotData();
+        
+        for (int slot = 0; slot < NUM_SLOTS; ++slot) {
+            json["SlotData_" + ofToString(slot)] = allSlotData[slot];
+            //logBuffer += "Saving Slot " + ofToString(slot) + " data\n";
+        }
+        json["CurrentSlots"] = currentSlots;
+        json["SliderSizes"] = size.get();
+        
+        //logSlotData("After saving preset");
     }
+    
+    
 
     void presetRecallAfterSettingParameters(ofJson &json) override {
-            if (json.count("Values") == 1) {
-                vectorValues = json["Values"].get<vector<vector<float>>>();
-                updateSizes();
-                updateMinMaxValues();
-                updateOutputs(); // Ensure vecOutput is updated after loading preset
+        // Load all data first
+        if (json.count("CurrentSlots") == 1) {
+            currentSlots = json["CurrentSlots"].get<vector<int>>();
+        } else {
+            currentSlots = vector<int>(NUM_SLIDERS, 0);
+        }
+
+        for (int slot = 0; slot < NUM_SLOTS; ++slot) {
+            string slotKey = "SlotData_" + ofToString(slot);
+            if (json.count(slotKey) == 1) {
+                allSlotData[slot] = json[slotKey].get<vector<vector<float>>>();
             }
         }
 
-    void presetHasLoaded() override {
-        for (int i = 0; i < vectorValues.size(); i++) {
-            vectorValueParams[i] = vectorValues[i];
+        // Now set the size and update
+        if (json.count("SliderSizes") == 1) {
+            size.set(json["SliderSizes"].get<vector<int>>());
         }
+        updateSizes();
+
+        // Finally, switch to the correct slot
+        switchSlot(currentSlots);
+        updateSlotParameter();
+        updateMinMaxValues();
+        updateOutputs();
+    }
+    
+    void presetHasLoaded() override {
+        for (int i = 0; i < NUM_SLIDERS; i++) {
+            if (currentSlots[i] < allSlotData.size() && i < allSlotData[currentSlots[i]].size()) {
+                vectorValues[i] = allSlotData[currentSlots[i]][i];
+                vectorValueParams[i] = vectorValues[i];
+            }
+        }
+        updateOutputs();
+    }
+    
+    void logSlotData(const string& context) {
+        appendLog("Logging slot data for context: " + context);
+        for (int slot = 0; slot < NUM_SLOTS; ++slot) {
+            for (int track = 0; track < NUM_SLIDERS; ++track) {
+                appendLog("Slot " + ofToString(slot) + ", Track " + ofToString(track) + ": " + ofToString(allSlotData[slot][track]));
+            }
+        }
+    }
+    
+    void logCurrentState() {
+        appendLog("Current State:");
+        appendLog("Current Slots: " + ofToString(currentSlots));
+        for (int i = 0; i < NUM_SLIDERS; ++i) {
+            appendLog("Track " + ofToString(i) + ": " + ofToString(vectorValues[i]));
+        }
+    }
+    
+    void appendLog(const string& message) {
+        logBuffer += message + "\n";
+        ofLogNotice("polySeq") << message;  // This will also output to the console
     }
 
 private:
     ofEventListeners listeners;
-
     ofParameter<vector<int>> size;
     ofParameter<vector<float>> minVal;
     ofParameter<vector<float>> maxVal;
@@ -97,32 +205,93 @@ private:
     vector<float> currentOutputs;
     ofParameter<vector<int>> offsetInput;
     ofParameter<vector<float>> vecOutput;
+    ofParameter<vector<int>> slot;
+    vector<vector<vector<float>>> allSlotData;
+    int currentSlot = 0;
+    vector<int> currentSlots;
+    string logBuffer;
+    ofParameter<bool> probabilistic;
+    vector<int> lastSteps;
 
 
+
+    void saveCurrentSlotData() {
+        //appendLog("Saving current slot data:");
+        for (int i = 0; i < NUM_SLIDERS; ++i) {
+            if (currentSlots[i] < allSlotData.size()) {
+                allSlotData[currentSlots[i]][i] = vectorValues[i];
+                //appendLog("Slot " + ofToString(currentSlots[i]) + ", Track " + ofToString(i) + ": " + ofToString(vectorValues[i]));
+            }
+        }
+    }
+    
+    bool isSlotVectorial() {
+        return slot.get().size() > 1;
+    }
+
+    void updateSlotParameter() {
+        if (!isSlotVectorial()) {
+            int currentSlot = slot.get().size() > 0 ? slot.get()[0] : 0;
+            slot.set(vector<int>(1, currentSlot));
+        }
+    }
+    
+    void switchSlot(const vector<int>& newSlots) {
+        saveCurrentSlotData();
+
+        for (int i = 0; i < NUM_SLIDERS; ++i) {
+            int newSlot = isSlotVectorial() ?
+                (i < newSlots.size() ? newSlots[i] : newSlots.back()) :
+                newSlots[0];
+            currentSlots[i] = std::max(0, std::min(newSlot, NUM_SLOTS - 1));
+        }
+        
+        for (int i = 0; i < NUM_SLIDERS; ++i) {
+            if (currentSlots[i] < allSlotData.size() && i < allSlotData[currentSlots[i]].size()) {
+                vectorValues[i] = allSlotData[currentSlots[i]][i];
+                vectorValueParams[i] = vectorValues[i];
+            }
+        }
+        
+        updateMinMaxValues();
+        updateSlotParameter();
+        std::fill(lastSteps.begin(), lastSteps.end(), -1);  // Reset all last steps
+        updateOutputs();
+    }
     
     void updateOutputs() {
-            int numSliders = std::min(static_cast<int>(vectorValues.size()), 8);
-            currentOutputs.resize(numSliders);
-            vector<float> newVecOutput(numSliders, 0.0f);
+        int numSliders = NUM_SLIDERS;
+        currentOutputs.resize(numSliders);
+        vector<float> newVecOutput(numSliders, 0.0f);
 
-            for (int i = 0; i < numSliders; i++) {
-                int currentSize = vectorValues[i].size();
-                if (currentSize > 0) {
-                    int index = indexInput->at(i % indexInput->size());
-                    int offset = offsetInput->at(i % offsetInput->size());
-                    int step = (index + offset) % currentSize;
-                    if (step < 0) step += currentSize; // Handle negative values
+        for (int i = 0; i < numSliders; i++) {
+            int currentSize = vectorValues[i].size();
+            if (currentSize > 0) {
+                int index = (i < indexInput->size()) ? indexInput->at(i) : indexInput->back();
+                int offset = (i < offsetInput->size()) ? offsetInput->at(i) : offsetInput->back();
+                int step = (index + offset) % currentSize;
+                if (step < 0) step += currentSize; // Handle negative values
+                
+                if (probabilistic) {
+                    if (step != lastSteps[i]) {  // Only recalculate if the step has changed
+                        float probability = vectorValues[i][step];
+                        float randomValue = ofRandom(1.0f); // Generate a random float between 0 and 1
+                        currentOutputs[i] = (randomValue < probability) ? 1.0f : 0.0f;
+                        lastSteps[i] = step;  // Update the last step
+                    }
+                    // If the step hasn't changed, currentOutputs[i] retains its previous value
+                } else {
                     currentOutputs[i] = vectorValues[i][step];
-                    vectorValueParams[i] = vector<float>(1, currentOutputs[i]);
-                    
-                    // Update the new vector output
-                    newVecOutput[i] = currentOutputs[i];
+                    lastSteps[i] = step;  // Update the last step even in non-probabilistic mode
                 }
+                
+                vectorValueParams[i] = vector<float>(1, currentOutputs[i]);
+                newVecOutput[i] = currentOutputs[i];
             }
-
-            // Set the new vector output
-            vecOutput.set(newVecOutput);
         }
+
+        vecOutput.set(newVecOutput);
+    }
 
     int getValueForIndex(const vector<int>& vec, int index) {
         if (vec.size() == 1) return vec[0];
@@ -137,41 +306,70 @@ private:
     }
 
     void updateSizes() {
-        for (int i = 0; i < vectorValues.size(); i++) {
-            int newSize = getValueForIndex(size, i);
-            vectorValues[i].resize(newSize, 0);
+        int numSliders = NUM_SLIDERS;
+        vector<vector<vector<float>>> tempAllSlotData = allSlotData;
+
+        for (int slot = 0; slot < NUM_SLOTS; ++slot) {
+            if (slot >= allSlotData.size()) {
+                allSlotData.resize(slot + 1);
+            }
+            allSlotData[slot].resize(numSliders);
+
+            for (int i = 0; i < numSliders; i++) {
+                int newSize = getValueForIndex(size, i);
+                vector<float> newValues(newSize, 0.0f);
+
+                if (slot < tempAllSlotData.size() && i < tempAllSlotData[slot].size()) {
+                    int oldSize = tempAllSlotData[slot][i].size();
+                    for (int j = 0; j < std::min(oldSize, newSize); j++) {
+                        newValues[j] = tempAllSlotData[slot][i][j];
+                    }
+                }
+
+                allSlotData[slot][i] = newValues;
+            }
         }
+
+        for (int i = 0; i < numSliders; i++) {
+            vectorValues[i] = allSlotData[currentSlots[i]][i];
+            vectorValueParams[i] = vectorValues[i];
+        }
+
         updateMinMaxValues();
+        std::fill(lastSteps.begin(), lastSteps.end(), -1);  // Reset all last steps
+        updateOutputs();
     }
 
     void updateMinMaxValues() {
-            int numSliders = std::min(static_cast<int>(vectorValues.size()), 8);
-            for (int i = 0; i < numSliders; i++) {
-                float min = getValueForIndex(minVal, i);
-                float max = getValueForIndex(maxVal, i);
-                for (auto &val : vectorValues[i]) {
-                    val = ofClamp(val, min, max);
-                }
-                if (i < vectorValueParams.size()) {
-                    vectorValueParams[i].setMin(vector<float>(1, min));
-                    vectorValueParams[i].setMax(vector<float>(1, max));
-                    vectorValueParams[i] = vectorValues[i];
-                }
+        int numSliders = NUM_SLIDERS;
+        for (int i = 0; i < numSliders; i++) {
+            float min = probabilistic ? 0.0f : getValueForIndex(minVal, i);
+            float max = probabilistic ? 1.0f : getValueForIndex(maxVal, i);
+            for (auto &val : vectorValues[i]) {
+                val = ofClamp(val, min, max);
             }
+            if (i < vectorValueParams.size()) {
+                vectorValueParams[i].setMin(vector<float>(1, min));
+                vectorValueParams[i].setMax(vector<float>(1, max));
+                vectorValueParams[i] = vectorValues[i];
+            }
+        }
 
-            // Update min and max for vecOutput
-            vector<float> minVec(numSliders, -FLT_MAX);
-            vector<float> maxVec(numSliders, FLT_MAX);
-            for (int i = 0; i < numSliders; i++) {
+        // Update min and max for vecOutput
+        vector<float> minVec(numSliders, probabilistic ? 0.0f : -FLT_MAX);
+        vector<float> maxVec(numSliders, probabilistic ? 1.0f : FLT_MAX);
+        for (int i = 0; i < numSliders; i++) {
+            if (!probabilistic) {
                 if (!minVal.get().empty()) minVec[i] = getValueForIndex(minVal, i);
                 if (!maxVal.get().empty()) maxVec[i] = getValueForIndex(maxVal, i);
             }
-            vecOutput.setMin(minVec);
-            vecOutput.setMax(maxVec);
         }
+        vecOutput.setMin(minVec);
+        vecOutput.setMax(maxVec);
+    }
 
     void drawMultiSlider(int index) {
-        if (index >= vectorValues.size() || index >= vectorValueParams.size()) return;
+        if (index >= NUM_SLIDERS || index >= vectorValueParams.size()) return;
 
         auto values_getter = [](void* data, int idx) -> float {
             const float v = *(const float*)(const void*)((const unsigned char*)data + (size_t)idx * sizeof(float));
@@ -211,6 +409,7 @@ private:
         
             // Modify on mouse drag
             if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0, 0)) {
+                saveCurrentSlotData();
                 const float t0 = ImClamp((mousePos.x - inner_bb.Min.x) / (inner_bb.Max.x - inner_bb.Min.x), 0.0f, 0.9999f);
                 const float t1 = ImClamp((mousePosPrev.x - inner_bb.Min.x) / (inner_bb.Max.x - inner_bb.Min.x), 0.0f, 0.9999f);
                 float nVal0 = 1 - ImClamp((mousePos.y - inner_bb.Min.y) / (inner_bb.Max.y - inner_bb.Min.y), 0.0f, 1.0f);
@@ -226,15 +425,21 @@ private:
                 }
                 
                 for (int v_idx = v_idx0; v_idx <= v_idx1; v_idx++) {
-                    float pctPos = 0;
-                    if (v_idx0 != v_idx1) {
-                        pctPos = float(v_idx-v_idx0) / float(v_idx1-v_idx0);
-                    }
-                    vectorValues[index][v_idx] = ofMap(ofLerp(nVal0, nVal1, pctPos), 0, 1, scale_min, scale_max, true);
-                    if (ImGui::GetIO().KeyShift) vectorValues[index][v_idx] = round(vectorValues[index][v_idx]);
-                }
-                
-                idx_hovered = v_idx0;
+                            float pctPos = 0;
+                            if (v_idx0 != v_idx1) {
+                                pctPos = float(v_idx-v_idx0) / float(v_idx1-v_idx0);
+                            }
+                            float newValue = ofMap(ofLerp(nVal0, nVal1, pctPos), 0, 1, scale_min, scale_max, true);
+                            if (ImGui::GetIO().KeyShift) newValue = round(newValue);
+                            
+                    vectorValues[index][v_idx] = newValue;
+                    allSlotData[currentSlots[index]][index][v_idx] = newValue;
+
+
+                            }
+
+                        
+                        vectorValueParams[index] = vectorValues[index];
             }
             
             // Handle right-click popup
@@ -342,4 +547,4 @@ private:
     }
 };
 
-#endif /* multiSliderMatrix_h */
+#endif /* polySeq_h */
