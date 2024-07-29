@@ -79,6 +79,7 @@
 #include "vectorSetter.h"
 #include "noteMatrix.h"
 #include "indexMonitor.h"
+#include "phasorSwing.h"
 //#include "vectorSymmetry.h"
 
 namespace ofxOceanodeSanti{
@@ -157,6 +158,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<vectorSetter>("Santi");
     o.registerModel<noteMatrix>("Santi");
     o.registerModel<indexMonitor>("Santi");
+    o.registerModel<phasorSwing>("Santi");
     //o.registerModel<vectorSymmetry>("Santi");
     
     
