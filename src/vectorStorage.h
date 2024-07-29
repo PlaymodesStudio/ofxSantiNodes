@@ -14,7 +14,7 @@ public:
                                vector<float>(1, 0.0f),
                                vector<float>(1, -std::numeric_limits<float>::max()),
                                vector<float>(1, std::numeric_limits<float>::max())));
-        addParameter(slot.set("Slot", 0, 0, 99));  // Allowing 100 slots (0-99)
+        addParameter(slot.set("Slot", 0, 0, 32));
         addParameter(store.set("Store"));
         addOutputParameter(output.set("Output",
                                       vector<float>(1, 0.0f),
