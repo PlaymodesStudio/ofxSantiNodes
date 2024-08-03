@@ -18,6 +18,7 @@ public:
         addParameter(output.set("Output", vector<int>()));
         addParameter(matrixWidth.set("w", 300, 100, 1000));
         addParameter(rowHeight.set("h", 20, 10, 100));
+        addParameter(slot.set("Slot", 0, 0, NUM_SLOTS - 1));
 
         matrix.resize(gridY, vector<bool>(16, false));
 
@@ -43,6 +44,14 @@ public:
         addCustomRegion(customMatrixRegion, [this]() {
             drawCustomGui();
         });
+        
+        int y = std::max(1, gridY.get());
+           int x = getGridXForRow(0);
+           storage[0] = vector<vector<bool>>(y, vector<bool>(x, false));
+           
+           listeners.push(slot.newListener([this](int &){
+               switchSlot();
+           }));
     }
 
     void update(ofEventArgs &a) {
@@ -50,36 +59,51 @@ public:
     }
     
     void presetSave(ofJson &json) override {
+        json["currentSlot"] = slot.get();
+        for (const auto& pair : storage) {
             vector<vector<int>> serializedMatrix;
-            for (const auto &row : matrix) {
+            for (const auto &row : pair.second) {
                 vector<int> serializedRow;
                 for (bool cell : row) {
                     serializedRow.push_back(cell ? 1 : 0);
                 }
                 serializedMatrix.push_back(serializedRow);
             }
-            json["matrix"] = serializedMatrix;
+            json["slotData_" + ofToString(pair.first)] = serializedMatrix;
         }
+    }
 
-        void presetRecallAfterSettingParameters(ofJson &json) override {
-            if (json.count("matrix") > 0) {
-                auto &jsonMatrix = json["matrix"];
+    void presetRecallAfterSettingParameters(ofJson &json) override {
+        storage.clear();
+        
+        if (json.count("currentSlot") > 0) {
+            slot = json["currentSlot"].get<int>();
+        }
+        
+        for (auto it = json.begin(); it != json.end(); ++it) {
+            if (it.key().substr(0, 9) == "slotData_") {
+                int slotIndex = ofToInt(it.key().substr(9));
+                auto &jsonMatrix = it.value();
                 if (jsonMatrix.is_array()) {
-                    matrix.clear();
+                    vector<vector<bool>> slotMatrix;
                     for (const auto &jsonRow : jsonMatrix) {
                         if (jsonRow.is_array()) {
                             vector<bool> row;
                             for (const auto &cell : jsonRow) {
                                 row.push_back(cell.get<int>() != 0);
                             }
-                            matrix.push_back(row);
+                            slotMatrix.push_back(row);
                         }
                     }
-                    resizeMatrix();
-                    updateOutput();
+                    storage[slotIndex] = slotMatrix;
                 }
             }
         }
+        
+        loadSlotData(slot);
+        resizeMatrix();
+        updateOutput();
+    }
 
 private:
     ofParameter<vector<int>> gridX;
@@ -91,22 +115,54 @@ private:
     vector<vector<bool>> matrix;
     ofEventListeners listeners;
     customGuiRegion customMatrixRegion;
+    vector<vector<vector<bool>>> allSlotData;
+    ofParameter<int> slot;
+    static const int NUM_SLOTS = 10;
+    std::map<int, vector<vector<bool>>> storage;
 
+
+    void switchSlot() {
+        loadSlotData(slot);
+        updateOutput();
+    }
+
+    void saveCurrentSlotData() {
+        storage[slot] = matrix;
+    }
+
+    void loadSlotData(int slotIndex) {
+        if (storage.find(slotIndex) != storage.end()) {
+            matrix = storage[slotIndex];
+        } else {
+            // If the slot doesn't exist, create an empty matrix
+            int y = std::max(1, gridY.get());
+            matrix.resize(y);
+            for (int i = 0; i < y; ++i) {
+                int x = getGridXForRow(i);
+                matrix[i].resize(x, false);
+            }
+        }
+    }
+    
     void resizeMatrix() {
         int y = std::max(1, gridY.get());
-        vector<vector<bool>> newMatrix(y);
         
-        for (int i = 0; i < y; ++i) {
-            int x = getGridXForRow(i);
-            newMatrix[i].resize(x, false);
-            if (i < matrix.size()) {
-                for (int j = 0; j < std::min(x, static_cast<int>(matrix[i].size())); ++j) {
-                    newMatrix[i][j] = matrix[i][j];
+        for (auto& pair : storage) {
+            auto& slotMatrix = pair.second;
+            slotMatrix.resize(y);
+            for (int i = 0; i < y; ++i) {
+                int x = getGridXForRow(i);
+                if (slotMatrix[i].size() != x) {
+                    vector<bool> resizedRow(x, false);
+                    for (int j = 0; j < std::min(x, static_cast<int>(slotMatrix[i].size())); ++j) {
+                        resizedRow[j] = slotMatrix[i][j];
+                    }
+                    slotMatrix[i] = resizedRow;
                 }
             }
         }
-        matrix = newMatrix;
         
+        loadSlotData(slot);
         updateOutput();
     }
 
@@ -154,6 +210,7 @@ private:
                     matrix[cellY][cellX] = initialCellState;
                     updateOutput();
                 }
+                saveCurrentSlotData();
             }
             else if (ImGui::IsMouseDragging(0) && isDragging) {
                 ImVec2 mousePos = ImGui::GetMousePos();
@@ -165,6 +222,7 @@ private:
                     matrix[cellY][cellX] = initialCellState;
                     updateOutput();
                 }
+                saveCurrentSlotData();
             }
         }
 
