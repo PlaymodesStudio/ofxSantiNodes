@@ -9,7 +9,7 @@ class conversions : public ofxOceanodeNodeModel {
 public:
     conversions() : ofxOceanodeNodeModel("Conversions") {
         addParameter(input.set("Input", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
-        addParameterDropdown(operation, "Op", 0, {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm"});
+        addParameterDropdown(operation, "Op", 0, {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance"});
         addOutputParameter(output.set("Output", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
         
         description = "Converts between various units or scales.";
@@ -35,7 +35,8 @@ private:
     
     void processInput(const vector<float>& vf) {
         vector<float> out;
-        vector<string> operations = {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm"};
+        vector<string> operations = {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance"};
+
         int opIndex = operation.get();
         string op = operations[opIndex];
         
@@ -181,6 +182,25 @@ private:
                 while (bpm > 250.0) bpm /= 2.0;
                 out.push_back(bpm);
             }
+            else if (op == "luminance-volume") {
+                            float luminance = std::clamp(value, 0.0f, 1.0f);
+                            float gamma = 2.2f;
+                            float corrected_luminance = pow(luminance, 1.0f/gamma);
+                            float epsilon = 1e-10f;
+                            float volume_db = 20.0f * log10(corrected_luminance + epsilon);
+                            float amplitude_multiplier = pow(10.0f, volume_db / 20.0f);
+                            out.push_back(amplitude_multiplier);
+                        }
+            else if (op == "volume-luminance") {
+                            float volume = std::clamp(value, 0.0f, 1.0f);
+                            float epsilon = 1e-10f;
+                            float volume_db = 20.0f * log10(volume + epsilon);
+                            float linear_luminance = pow(10.0f, volume_db / 20.0f);
+                            float gamma = 2.2f;
+                            float luminance = pow(linear_luminance, gamma);
+                            luminance = std::clamp(luminance, 0.0f, 1.0f);
+                            out.push_back(luminance);
+                        }
         }
         output = out;
     }
