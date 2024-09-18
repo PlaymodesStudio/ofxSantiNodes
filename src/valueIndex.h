@@ -1,55 +1,60 @@
-#pragma once
+#ifndef valueIndex_h
+#define valueIndex_h
 
 #include "ofxOceanodeNodeModel.h"
+#include <vector>
 #include <algorithm>
 
 class valueIndex : public ofxOceanodeNodeModel {
 public:
     valueIndex() : ofxOceanodeNodeModel("Value Index") {
-        description = "Searches for values in the input vector and outputs all their indices.";
+        addParameter(inputVector.set("Input",
+                                     {0.0f},
+                                     {-std::numeric_limits<float>::max()},
+                                     {std::numeric_limits<float>::max()}));
+        addParameter(searchValues.set("Values",
+                                      {0.0f},
+                                      {-std::numeric_limits<float>::max()},
+                                      {std::numeric_limits<float>::max()}));
+        addOutputParameter(outputIndices.set("Output",
+                                             {-1},
+                                             {INT_MIN},
+                                             {INT_MAX}));
 
-        // Setting up the parameters
-        addParameter(input.set("Input", {0.0f}, {0.0f}, {FLT_MAX}));
-        addParameter(values.set("Values", {0.0f}, {0.0f}, {FLT_MAX}));
-        addOutputParameter(output.set("Output", {vector<int>()}));
-
-        listener = input.newListener([this](vector<float> &){
-            processInput();
-        });
-        listener2 = values.newListener([this](vector<float> &){
-            processInput();
-        });
+        listeners.push(inputVector.newListener([this](vector<float> &){
+            computeIndices();
+        }));
+        listeners.push(searchValues.newListener([this](vector<float> &){
+            computeIndices();
+        }));
     }
+
+    ~valueIndex(){};
 
 private:
-    void processInput() {
-        const vector<float>& inputVec = input.get();
-        const vector<float>& valuesVec = values.get();
-        vector<vector<int>> resultOutput(valuesVec.size());
+    void computeIndices() {
+        const auto& input = inputVector.get();
+        const auto& values = searchValues.get();
+        std::vector<int> indices;
 
-        for (size_t i = 0; i < valuesVec.size(); ++i) {
-            float value = valuesVec[i];
-            vector<int> indices;
-            
-            for (size_t j = 0; j < inputVec.size(); ++j) {
-                if (inputVec[j] == value) {
-                    indices.push_back(j);
-                }
-            }
-            
-            if (indices.empty()) {
+        indices.reserve(values.size());  // Optimize for performance
+
+        for (const auto& value : values) {
+            auto it = std::find(input.begin(), input.end(), value);
+            if (it != input.end()) {
+                indices.push_back(static_cast<int>(std::distance(input.begin(), it)));
+            } else {
                 indices.push_back(-1);
             }
-            
-            resultOutput[i] = indices;
         }
 
-        output = resultOutput;
+        outputIndices = indices;
     }
 
-    ofParameter<vector<float>> input;
-    ofParameter<vector<float>> values;
-    ofParameter<vector<vector<int>>> output;
-    ofEventListener listener;
-    ofEventListener listener2;
+    ofParameter<vector<float>> inputVector;
+    ofParameter<vector<float>> searchValues;
+    ofParameter<vector<int>> outputIndices;
+    ofEventListeners listeners;
 };
+
+#endif /* valueIndex_h */
