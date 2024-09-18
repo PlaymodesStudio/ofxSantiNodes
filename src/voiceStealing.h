@@ -3,31 +3,22 @@
 #include "ofxOceanodeNodeModel.h"
 #include <vector>
 
-using namespace std;
-
-class voiceStealing : public ofxOceanodeNodeModel{
+class voiceStealing : public ofxOceanodeNodeModel {
 public:
-    voiceStealing() : ofxOceanodeNodeModel("Voice Stealing"){}
-
+    voiceStealing();
     void setup() override;
-    void update(ofEventArgs &args); // Ensure this matches your implementation
+    void update(ofEventArgs &args) override;
 
 private:
-    // Parameters
-    ofParameter<vector<float>> pitchIn;
-    ofParameter<vector<float>> gateIn;
+    ofParameter<std::vector<float>> inputPitch;
+    ofParameter<std::vector<float>> inputGate;
     ofParameter<int> outputSize;
-    ofParameter<vector<float>> pitchOut;
-    ofParameter<vector<float>> gateOut;
-    
-    // Additional variables for internal logic
-    vector<int> voiceAge; // To keep track of the oldest note
-    vector<float> lastGateValue; // To remember the last gate values for detecting new notes
+    ofParameter<std::vector<float>> outputPitch;
+    ofParameter<std::vector<float>> outputGate;
 
-    // Method to find an available slot or the oldest slot for a new note
-    int findOldestSlot(); //
-    int findAvailableOrOldestSlot(const vector<float>& gateOutVector); // Adjusted signature
-
-    // Container to store event listeners to ensure they are properly removed when no longer needed
+    std::vector<int> voiceAge;
     ofEventListeners listeners;
+
+    void resizeOutputs(int size);
+    size_t findOldestVoice(const std::vector<float>& gates);  // Changed from findOldestFreeSlot
 };
