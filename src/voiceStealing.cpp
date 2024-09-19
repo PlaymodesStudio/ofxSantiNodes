@@ -4,6 +4,8 @@
 voiceStealing::voiceStealing() : ofxOceanodeNodeModel("Voice Stealing") {}
 
 void voiceStealing::setup() {
+    description = "Manages polyphonic voice allocation. Assigns incoming notes to available voices, prioritizing original slots. When all voices are occupied, it intelligently steals the oldest voice. Outputs pitch and gate signals for each voice.";
+
     addParameter(inputPitch.set("Input Pitch", {}, {0}, {127}));
     addParameter(inputGate.set("Input Gate", {}, {0}, {1}));
     addParameter(outputSize.set("Output Size", 8, 1, 128));

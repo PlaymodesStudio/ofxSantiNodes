@@ -8,6 +8,8 @@
 class valueIndex : public ofxOceanodeNodeModel {
 public:
     valueIndex() : ofxOceanodeNodeModel("Value Index") {
+        description = "Searches for specific values within an input vector and returns their indices. Accepts multiple search values and outputs corresponding indices. Returns -1 for values not found. Useful for locating elements or checking presence of values in a dataset.";
+
         addParameter(inputVector.set("Input",
                                      {0.0f},
                                      {-std::numeric_limits<float>::max()},
