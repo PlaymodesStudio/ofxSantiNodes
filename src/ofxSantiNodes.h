@@ -82,6 +82,7 @@
 #include "phasorSwing.h"
 #include "textureColumnCurve.h"
 #include "valueIndex.h"
+#include "valuesChanged.h"
 //#include "spectrumLines.h"
 //#include "pixelStretchVector.h"
 //#include "vectorSymmetry.h"
@@ -165,6 +166,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<phasorSwing>("Santi");
     o.registerModel<textureColumnCurve>("Santi");
     o.registerModel<valueIndex>("Santi");
+    o.registerModel<valuesChanged>("Santi");
     //o.registerModel<spectrumLines>("Santi");
     //o.registerModel<pixelStretchVector>("Santi");
     //o.registerModel<vectorSymmetry>("Santi");
