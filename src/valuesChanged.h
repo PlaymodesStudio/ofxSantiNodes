@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <unordered_set>
+#include <unordered_map>
 
 class valuesChanged : public ofxOceanodeNodeModel {
 public:
@@ -14,51 +15,71 @@ public:
                                {-std::numeric_limits<float>::max()},
                                {std::numeric_limits<float>::max()}));
         addOutputParameter(changed.set("Changed",
-                                       {0},
-                                       {0},
-                                       {1}));
+                                       {-1},
+                                       {-1},
+                                       {INT_MAX}));
+        addOutputParameter(gates.set("Gates",
+                                     {0},
+                                     {0},
+                                     {1}));
 
-       /* listeners.push(input.newListener([this](vector<float> &){
+        listeners.push(input.newListener([this](vector<float> &){
             detectChanges();
         }));
-        */
+        
+        description = "Detects changes in the input vector, including additions, removals, and value changes. Outputs indices of changed values or -1 if no changes occurred. Also outputs a 'gates' vector with 1s for changed values and 0s for unchanged values.";
     }
 
-    void update(ofEventArgs &a)
-    {
-        detectChanges();
-    }
     ~valuesChanged() {}
 
-    
 private:
     void detectChanges() {
         const auto& currentInput = input.get();
-        vector<int> changedValues(currentInput.size(), 0);
+        std::unordered_set<int> changedIndices;
+        vector<int> gatesOutput(currentInput.size(), 0);
 
-        if (previousInput.size() != currentInput.size()) {
-            // If sizes differ, mark all as changed
-            std::fill(changedValues.begin(), changedValues.end(), 1);
-        } else {
-            std::unordered_set<float> prevSet(previousInput.begin(), previousInput.end());
-            std::unordered_set<float> currSet(currentInput.begin(), currentInput.end());
+        std::unordered_map<float, int> prevValueToIndex;
+        for (int i = 0; i < previousInput.size(); ++i) {
+            prevValueToIndex[previousInput[i]] = i;
+        }
 
-            if (prevSet != currSet) {
-                // Sets are different, so there's at least one change
-                for (size_t i = 0; i < currentInput.size(); ++i) {
-                    if (prevSet.find(currentInput[i]) == prevSet.end()) {
-                        changedValues[i] = 1;
-                    }
+        std::unordered_set<float> currentValues(currentInput.begin(), currentInput.end());
+        std::unordered_set<float> previousValues(previousInput.begin(), previousInput.end());
+
+        // Check for new or changed values
+        for (int i = 0; i < currentInput.size(); ++i) {
+            if (previousValues.find(currentInput[i]) == previousValues.end()) {
+                changedIndices.insert(i);
+                gatesOutput[i] = 1;
+            }
+        }
+
+        // Check for removed values
+        for (const auto& prevValue : previousValues) {
+            if (currentValues.find(prevValue) == currentValues.end()) {
+                int removedIndex = prevValueToIndex[prevValue];
+                if (removedIndex < currentInput.size()) {
+                    changedIndices.insert(removedIndex);
+                    gatesOutput[removedIndex] = 1;
                 }
             }
         }
 
-        changed = changedValues;
+        if (changedIndices.empty()) {
+            changed = {-1};  // No changes detected
+        } else {
+            vector<int> changedIndicesVector(changedIndices.begin(), changedIndices.end());
+            std::sort(changedIndicesVector.begin(), changedIndicesVector.end());
+            changed = changedIndicesVector;
+        }
+
+        gates = gatesOutput;
         previousInput = currentInput;
     }
 
     ofParameter<vector<float>> input;
     ofParameter<vector<int>> changed;
+    ofParameter<vector<int>> gates;
     vector<float> previousInput;
     ofEventListeners listeners;
 };
