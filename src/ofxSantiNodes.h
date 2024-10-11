@@ -80,7 +80,7 @@
 #include "noteMatrix.h"
 #include "indexMonitor.h"
 #include "phasorSwing.h"
-#include "textureColumnCurve.h"
+//#include "textureColumnCurve.h"
 #include "valueIndex.h"
 #include "valuesChanged.h"
 #include "shell.h"
@@ -99,6 +99,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<chanceWeights>("Santi");
     o.registerModel<change>("Santi");
     o.registerModel<colorToVector>("Santi");
+    o.registerModel<vectorToColor>("Santi");
     o.registerModel<conversions>("Santi");
     o.registerModel<counterReset>("Santi");
     o.registerModel<countNumber>("Santi");
@@ -166,7 +167,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<noteMatrix>("Santi");
     o.registerModel<indexMonitor>("Santi");
     o.registerModel<phasorSwing>("Santi");
-    o.registerModel<textureColumnCurve>("Santi");
+    //o.registerModel<textureColumnCurve>("Santi");
     o.registerModel<valueIndex>("Santi");
     o.registerModel<valuesChanged>("Santi");
     o.registerModel<shell>("Santi");
