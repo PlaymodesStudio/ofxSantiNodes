@@ -13,7 +13,12 @@
 
 class multistateVector : public ofxOceanodeNodeModel {
 public:
-    multistateVector() : ofxOceanodeNodeModel("Multistate Vector") {}
+    multistateVector() : ofxOceanodeNodeModel("Multistate Vector") {
+        description = "A vector-based node that allows the user to manipulate multiple pages of vector values. "
+                      "Each page can store a vector of values with customizable size, minimum, and maximum range. "
+        "The current page can be selected, and the vector values can be edited in a custom graphical interface.";
+
+    }
     
     void setup() {
         addParameter(size.set("Size", 10, 2, INT_MAX));
