@@ -6,116 +6,280 @@
 
 class multiSliderMatrix : public ofxOceanodeNodeModel {
 public:
-    multiSliderMatrix() : ofxOceanodeNodeModel("Multi Slider Matrix") {}
+    multiSliderMatrix() : ofxOceanodeNodeModel("Multi Slider Matrix") {
+        description = "A matrix of multiple sliders that output vector values. "
+                     "Each slider can be independently controlled and outputs its own vector.";
+                     
+        // Add inspector parameter for number of sliders
+        addInspectorParameter(numSliders.set("Num Sliders", 8, 1, 16));
+    }
 
     void setup() {
         addParameter(size.set("Size[]", vector<int>(1, 10), vector<int>(1, 2), vector<int>(1, INT_MAX)));
         addParameter(minVal.set("Min[]", vector<float>(1, 0), vector<float>(1, -FLT_MAX), vector<float>(1, FLT_MAX)));
         addParameter(maxVal.set("Max[]", vector<float>(1, 1), vector<float>(1, -FLT_MAX), vector<float>(1, FLT_MAX)));
-
-        const int NUM_SLIDERS = 8;
-        vectorValues.resize(NUM_SLIDERS);
-        for (auto &v : vectorValues) {
-            v.resize(10, 0);  // Default size
-        }
-
-        addCustomRegion(customWidget, [this]() {
-            for (int i = 0; i < NUM_SLIDERS; i++) {
-                drawMultiSlider(i);
-            }
-        });
+        addParameter(currentSlot.set("Slot", 0, 0, 31));
         
-        vectorValueParams.resize(NUM_SLIDERS);
-        for (int i = 0; i < NUM_SLIDERS; ++i) {
-            vectorValueParams[i].set("Out " + ofToString(i + 1), vectorValues[i], vector<float>(1, 0), vector<float>(1, 1));
-            addParameter(vectorValueParams[i],
-                         ofxOceanodeParameterFlags_DisableInConnection | ofxOceanodeParameterFlags_DisplayMinimized);
-        }
+        
+        vectorValues.resize(32);
+               for(auto &slot : vectorValues) {
+                   slot.resize(numSliders);
+                   for(auto &sliderValues : slot) {
+                       sliderValues.resize(10, 0.0f);
+                   }
+               }
+        
+        vectorValueParams.resize(numSliders);
+        currentToEditValues.resize(numSliders);
+        
+        // Add output parameters before custom region
+                for (int i = 0; i < numSliders; i++) {
+                    vectorValueParams[i].set("Out " + ofToString(i + 1),
+                                           vectorValues[currentSlot][i],
+                                           vector<float>(1, getValueForIndex(minVal, i)),
+                                           vector<float>(1, getValueForIndex(maxVal, i)));
+                    addParameter(vectorValueParams[i],
+                               ofxOceanodeParameterFlags_DisableInConnection | ofxOceanodeParameterFlags_DisplayMinimized);
+                }
 
-        listeners.push(size.newListener([this](vector<int> &s) {
-            updateSizes();
-        }));
-
-        listeners.push(minVal.newListener([this](vector<float> &f) {
-            updateMinMaxValues();
-        }));
-
-        listeners.push(maxVal.newListener([this](vector<float> &f) {
-            updateMinMaxValues();
-        }));
+                // Add custom region last (will be at the bottom)
+                addCustomRegion(customWidget, [this]() {
+                    for (int i = 0; i < numSliders; i++) {
+                        drawMultiSlider(i);
+                    }
+                });
+        
+        setupListeners();
     }
+
+
+    void setupListeners() {
+           // Listen for changes in numSliders
+           listeners.push(numSliders.newListener([this](int &){
+               updateSliderCount();
+           }));
+
+           listeners.push(size.newListener([this](vector<int> &s) {
+               updateSizes();
+           }));
+
+           listeners.push(minVal.newListener([this](vector<float> &f) {
+               updateMinMaxValues();
+           }));
+
+           listeners.push(maxVal.newListener([this](vector<float> &f) {
+               updateMinMaxValues();
+           }));
+           
+           listeners.push(currentSlot.newListener([this](int &s) {
+               updateOutputs();
+           }));
+       }
 
     void update(ofEventArgs &a) {
-        for (int i = 0; i < vectorValues.size(); i++) {
-            vectorValueParams[i] = vectorValues[i];
+            updateOutputs();
         }
-    }
+
+    void updateOutputs() {
+            updateSizes(); // Make sure sizes are correct before updating outputs
+            for (int i = 0; i < numSliders; i++) {
+                if(i < vectorValues[currentSlot].size()) {
+                    vectorValueParams[i].set(vectorValues[currentSlot][i]);
+                }
+            }
+        }
 
     void presetSave(ofJson &json) {
-        json["Values"] = vectorValues;
-    }
+           // Save all slots
+           for (int slot = 0; slot < 32; slot++) {
+               for (int slider = 0; slider < vectorValues[slot].size(); slider++) {
+                   json["Values"][ofToString(slot)][ofToString(slider)] = vectorValues[slot][slider];
+               }
+           }
+       }
 
     void presetRecallAfterSettingParameters(ofJson &json) {
-        if (json.count("Values") == 1) {
-            vectorValues = json["Values"].get<vector<vector<float>>>();
+            // First ensure sizes are properly set
+            updateSizes();
+            
+            if (json.count("Values") == 1) {
+                try {
+                    // Store current values temporarily
+                    auto tempValues = vectorValues;
+                    
+                    // Load new values
+                    for (int slot = 0; slot < 32; slot++) {
+                        for (int slider = 0; slider < vectorValues[slot].size(); slider++) {
+                            // Check if this slot/slider combination exists in the json
+                            if(json["Values"].contains(ofToString(slot)) &&
+                               json["Values"][ofToString(slot)].contains(ofToString(slider))) {
+                                
+                                auto newValues = json["Values"][ofToString(slot)][ofToString(slider)].get<vector<float>>();
+                                
+                                // Resize if necessary
+                                int targetSize = getValueForIndex(size, slider);
+                                if(newValues.size() > targetSize) {
+                                    newValues.resize(targetSize);
+                                }
+                                while(newValues.size() < targetSize) {
+                                    newValues.push_back(0.0f);
+                                }
+                                
+                                vectorValues[slot][slider] = newValues;
+                            }
+                        }
+                    }
+                }
+                catch(const std::exception& e) {
+                    ofLogError("multiSliderMatrix") << "Error loading preset: " << e.what();
+                }
+            }
+            
+            // Force update sizes again to ensure everything is correct
             updateSizes();
             updateMinMaxValues();
+            updateOutputs();
         }
-    }
 
     void presetHasLoaded() override {
-        for (int i = 0; i < vectorValues.size(); i++) {
-            vectorValueParams[i] = vectorValues[i];
+            updateSizes();
+            updateMinMaxValues();
+            updateOutputs();
         }
-    }
 
 private:
     ofEventListeners listeners;
-
+    ofParameter<int> numSliders;
     ofParameter<vector<int>> size;
     ofParameter<vector<float>> minVal;
     ofParameter<vector<float>> maxVal;
-    vector<vector<float>> vectorValues;
-    vector<ofParameter<vector<float>>> vectorValueParams;
+    ofParameter<int> currentSlot;
+
+    vector<vector<vector<float>>> vectorValues; // [slot][slider][values]
+       vector<ofParameter<vector<float>>> vectorValueParams;
+       
     customGuiRegion customWidget;
-
     vector<int> currentToEditValues;
-
+    
     int getValueForIndex(const vector<int>& vec, int index) {
-        if (vec.size() == 1) return vec[0];
-        if (index < vec.size()) return vec[index];
-        return vec.back();
-    }
-
-    float getValueForIndex(const vector<float>& vec, int index) {
-        if (vec.size() == 1) return vec[0];
-        if (index < vec.size()) return vec[index];
-        return vec.back();
-    }
-
-    void updateSizes() {
-        for (int i = 0; i < vectorValues.size(); i++) {
-            int newSize = getValueForIndex(size, i);
-            vectorValues[i].resize(newSize, 0);
+            if (vec.empty()) return 0;
+            if (vec.size() == 1) return vec[0];
+            if (index < vec.size()) return vec[index];
+            return vec.back();
         }
-        updateMinMaxValues();
-    }
 
-    void updateMinMaxValues() {
-        for (int i = 0; i < vectorValues.size(); i++) {
-            float min = getValueForIndex(minVal, i);
-            float max = getValueForIndex(maxVal, i);
-            for (auto &val : vectorValues[i]) {
-                val = ofClamp(val, min, max);
+        float getValueForIndex(const vector<float>& vec, int index) {
+            if (vec.empty()) return 0;
+            if (vec.size() == 1) return vec[0];
+            if (index < vec.size()) return vec[index];
+            return vec.back();
+        }
+
+    void updateSliderCount() {
+            // Store old size to handle removal
+            int oldSize = vectorValues[currentSlot].size();
+            
+            // Resize vectors for all slots
+            for(auto &slot : vectorValues) {
+                slot.resize(numSliders);
+                for(auto &sliderValues : slot) {
+                    if(sliderValues.empty()) {
+                        sliderValues.resize(getValueForIndex(size, 0), 0.0f);
+                    }
+                }
             }
-            vectorValueParams[i].setMin(vector<float>(1, min));
-            vectorValueParams[i].setMax(vector<float>(1, max));
-            vectorValueParams[i] = vectorValues[i];
+            
+            vectorValueParams.resize(numSliders);
+            currentToEditValues.resize(numSliders);
+            
+            // If we're reducing the number of sliders
+            if (numSliders < oldSize) {
+                // Remove parameters for sliders that are no longer needed
+                for (int i = numSliders; i < oldSize; i++) {
+                    removeParameter("Out " + ofToString(i + 1));
+                }
+            }
+            
+            // If we're adding new sliders
+            if (numSliders > oldSize) {
+                // First remove all parameters
+                for (int i = 0; i < oldSize; i++) {
+                    removeParameter("Out " + ofToString(i + 1));
+                }
+                
+                // Re-add all parameters
+                for (int i = 0; i < numSliders; i++) {
+                    vectorValueParams[i].set("Out " + ofToString(i + 1),
+                                           vectorValues[currentSlot][i],
+                                           vector<float>(1, getValueForIndex(minVal, i)),
+                                           vector<float>(1, getValueForIndex(maxVal, i)));
+                    addParameter(vectorValueParams[i],
+                               ofxOceanodeParameterFlags_DisableInConnection | ofxOceanodeParameterFlags_DisplayMinimized);
+                }
+            }
+            
+            updateSizes();
+            updateMinMaxValues();
         }
-    }
+    
+    void updateSizes() {
+           for(auto &slot : vectorValues) {
+               slot.resize(numSliders);
+               for (int i = 0; i < slot.size(); i++) {
+                   int targetSize = getValueForIndex(size, i);
+                   if(targetSize <= 0) targetSize = 1; // Prevent zero-size vectors
+                   
+                   // Only resize if necessary
+                   if(slot[i].size() != targetSize) {
+                       vector<float> temp = slot[i];
+                       slot[i].resize(targetSize, 0.0f);
+                       
+                       // Preserve existing values
+                       for(int j = 0; j < std::min(targetSize, (int)temp.size()); j++) {
+                           slot[i][j] = temp[j];
+                       }
+                   }
+               }
+           }
+       }
+
+        void updateMinMaxValues() {
+            for(auto &slot : vectorValues) {
+                for (int i = 0; i < slot.size(); i++) {
+                    float min = getValueForIndex(minVal, i);
+                    float max = getValueForIndex(maxVal, i);
+                    for (auto &val : slot[i]) {
+                        val = ofClamp(val, min, max);
+                    }
+                    if(i < vectorValueParams.size()) {
+                        vectorValueParams[i].setMin(vector<float>(1, min));
+                        vectorValueParams[i].setMax(vector<float>(1, max));
+                    }
+                }
+            }
+            updateOutputs();
+        }
+
+    int getValueForIndex(const ofParameter<vector<int>>& param, int index) {
+            const auto& vec = param.get();
+            if (vec.empty()) return 0;
+            if (vec.size() == 1) return vec[0];
+            if (index < vec.size()) return vec[index];
+            return vec.back();
+        }
+
+        float getValueForIndex(const ofParameter<vector<float>>& param, int index) {
+            const auto& vec = param.get();
+            if (vec.empty()) return 0;
+            if (vec.size() == 1) return vec[0];
+            if (index < vec.size()) return vec[index];
+            return vec.back();
+        }
+
 
     void drawMultiSlider(int index) {
-        if (index >= vectorValues.size() || index >= vectorValueParams.size()) return;
+        if (index >= vectorValues[currentSlot].size()) return;
+
 
         auto values_getter = [](void* data, int idx) -> float {
             const float v = *(const float*)(const void*)((const unsigned char*)data + (size_t)idx * sizeof(float));
@@ -129,11 +293,11 @@ private:
         
         auto drawList = ImGui::GetWindowDrawList();
         
-        void* data = (void*)vectorValues[index].data();
-        float scale_min = getValueForIndex(minVal, index);
-        float scale_max = getValueForIndex(maxVal, index);
-        int values_count = vectorValues[index].size();
-        ImVec2 frame_size = ImVec2(250, ImGui::GetFrameHeight() * 2);
+        void* data = (void*)vectorValues[currentSlot][index].data();
+                float scale_min = getValueForIndex(minVal, index);
+                float scale_max = getValueForIndex(maxVal, index);
+                int values_count = getValueForIndex(size, index);
+                ImVec2 frame_size = ImVec2(250, ImGui::GetFrameHeight() * 2);
         
         const ImGuiStyle& style = ImGui::GetStyle();
         const ImRect frame_bb(cursorPos, cursorPos + frame_size);
@@ -163,31 +327,34 @@ private:
                 IM_ASSERT(v_idx0 >= 0 && v_idx0 < values_count);
                 IM_ASSERT(v_idx1 >= 0 && v_idx1 < values_count);
 
-                if (v_idx1 < v_idx0) {
-                    std::swap(v_idx0, v_idx1);
-                    std::swap(nVal0, nVal1);
-                }
-                
-                for (int v_idx = v_idx0; v_idx <= v_idx1; v_idx++) {
-                    float pctPos = 0;
-                    if (v_idx0 != v_idx1) {
-                        pctPos = float(v_idx-v_idx0) / float(v_idx1-v_idx0);
-                    }
-                    vectorValues[index][v_idx] = ofMap(ofLerp(nVal0, nVal1, pctPos), 0, 1, scale_min, scale_max, true);
-                    if (ImGui::GetIO().KeyShift) vectorValues[index][v_idx] = round(vectorValues[index][v_idx]);
-                }
-                
-                idx_hovered = v_idx0;
-            }
+                if(v_idx1 < v_idx0){
+                                    std::swap(v_idx0, v_idx1);
+                                    std::swap(nVal0, nVal1);
+                                }
+                                
+                                for(int v_idx = v_idx0; v_idx <= v_idx1; v_idx++){
+                                    float pctPos = 0;
+                                    if(v_idx0 != v_idx1){
+                                        pctPos = float(v_idx-v_idx0) / float(v_idx1-v_idx0);
+                                    }
+                                    float newValue = ofMap(ofLerp(nVal0, nVal1, pctPos), 0, 1, scale_min, scale_max, true);
+                                    if(ImGui::GetIO().KeyShift) {
+                                        newValue = std::round(newValue);
+                                    }
+                                    vectorValues[currentSlot][index][v_idx] = newValue;
+                                }
+                                
+                                idx_hovered = v_idx0;
+                            }
             
             // Handle right-click popup
-            if (ImGui::IsItemClicked(1) || (ImGui::IsPopupOpen(("Value Popup " + ofToString(index)).c_str()) && ImGui::IsMouseClicked(1))) {
-                ImGui::OpenPopup(("Value Popup " + ofToString(index)).c_str());
-                const float t = ImClamp((mousePos.x - inner_bb.Min.x) / (inner_bb.Max.x - inner_bb.Min.x), 0.0f, 0.9999f);
-                const int v_idx = (int)(t * item_count);
-                IM_ASSERT(v_idx >= 0 && v_idx < values_count);
-                currentToEditValues[index] = v_idx;
-            }
+            if(ImGui::IsItemClicked(1) || (ImGui::IsPopupOpen(("Value Popup " + ofToString(index)).c_str()) && ImGui::IsMouseClicked(1))){
+                            ImGui::OpenPopup(("Value Popup " + ofToString(index)).c_str());
+                            const float t = ImClamp((mousePos.x - inner_bb.Min.x) / (inner_bb.Max.x - inner_bb.Min.x), 0.0f, 0.9999f);
+                            const int v_idx = (int)(t * item_count);
+                            IM_ASSERT(v_idx >= 0 && v_idx < values_count);
+                            currentToEditValues[index] = v_idx;
+                        }
 
             // Draw histogram
             const float t_step = 1.0f / (float)res_w;
@@ -201,14 +368,14 @@ private:
             const ImU32 col_base = ImGui::GetColorU32(ImGuiCol_PlotHistogram);
             const ImU32 col_hovered = ImGui::GetColorU32(ImGuiCol_PlotHistogramHovered);
             // Create a custom color for the alternate background
-               ImVec4 base_color = ImGui::GetStyleColorVec4(ImGuiCol_FrameBg);
-               ImVec4 alt_color = ImVec4(
-                   base_color.x * 1.1f,
-                   base_color.y * 1.1f,
-                   base_color.z * 1.1f,
-                   base_color.w
-               );
-               const ImU32 col_bg_alt = ImGui::ColorConvertFloat4ToU32(alt_color);
+            ImVec4 base_color = ImGui::GetStyleColorVec4(ImGuiCol_FrameBg);
+            ImVec4 alt_color = ImVec4(
+                base_color.x * 1.1f,
+                base_color.y * 1.1f,
+                base_color.z * 1.1f,
+                base_color.w
+            );
+            const ImU32 col_bg_alt = ImGui::ColorConvertFloat4ToU32(alt_color);
 
             for (int n = 0; n < res_w; n++) {
                 const float t1 = t0 + t_step;
@@ -238,28 +405,20 @@ private:
             
             // Handle popup
             if (ImGui::BeginPopup(("Value Popup " + ofToString(index)).c_str())) {
-                ImGui::Text("%s", ("Edit item " + ofToString(currentToEditValues[index]) + " of vector " + ofToString(index)).c_str());
-                if (currentToEditValues[index] > 0) {
-                    ImGui::SameLine();
-                    if (ImGui::Button("<<")) {
-                        currentToEditValues[index]--;
-                    }
-                }
-                if (currentToEditValues[index] < getValueForIndex(size, index) - 1) {
-                    ImGui::SameLine();
-                    if (ImGui::Button(">>")) {
-                        currentToEditValues[index]++;
-                    }
-                }
-                ImGui::SliderFloat("##edit", &vectorValues[index][currentToEditValues[index]], scale_min, scale_max, "%.4f");
-                if (ImGui::Button("Close"))
-                    ImGui::CloseCurrentPopup();
-                ImGui::EndPopup();
-            }
+                            ImGui::Text("Edit item %d on slot %d", currentToEditValues[index], currentSlot.get());
+                            float currentValue = vectorValues[currentSlot][index][currentToEditValues[index]];
+                            if (ImGui::SliderFloat("##edit", &currentValue, scale_min, scale_max, "%.4f")) {
+                                vectorValues[currentSlot][index][currentToEditValues[index]] = currentValue;
+                            }
+                            if (ImGui::Button("Close")) {
+                                ImGui::CloseCurrentPopup();
+                            }
+                            ImGui::EndPopup();
+                        }
         }
         
         ImGui::PopID();  // Pop ID
-    }
-};
+            }
+        };
 
-#endif /* multiSliderMatrix_h */
+        #endif /* multiSliderMatrix_h */

@@ -5,42 +5,38 @@
 class countNumber : public ofxOceanodeNodeModel {
 public:
     countNumber() : ofxOceanodeNodeModel("Count Number"), resetOnNextMatch(false) {
-        description = "Counts the occurrences of each number in the 'NumToCount' vector as they appear in successive data events in the 'Input' vector.";
+        description = "Counts the occurrences of each number in the 'NumToCount' vector at each position of the input vector.";
         
         addParameter(input.set("Input", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
         addParameter(numToCount.set("NumToCount", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
         addParameter(output.set("Output", {0}, {0}, {INT_MAX}));
         addParameter(resetButton.set("Reset"));
-        addParameter(resetNext.set("Reset Next")); // Adding the 'resetNext' void parameter
+        addParameter(resetNext.set("Reset Next"));
 
-        // Initialize counts
-        counts.clear();
+        // Initialize counts vector of maps
+        positionCounts.clear();
 
         listeners.push(input.newListener([this](vector<float> &v) {
-            for(const auto& num : v) {
-                if(resetOnNextMatch && counts.find(num) != counts.end()) {
-                    counts.clear();
-                    for (const auto& ntc : numToCount.get()) {
-                        counts[ntc] = 0 ;
+            if(resetOnNextMatch) {
+                for(const auto& num : v) {
+                    for(const auto& counts : positionCounts) {
+                        if(counts.find(num) != counts.end()) {
+                            resetCounts();
+                            resetOnNextMatch = false;
+                            break;
+                        }
                     }
-                    resetOnNextMatch = false;
-                    break;
                 }
             }
             updateCounts(v);
         }));
 
         listeners.push(numToCount.newListener([this](vector<float> &n) {
-            initializeCounts(n);
+            initializeCounts();
         }));
 
         listeners.push(resetButton.newListener([this]() {
-            counts.clear();
-            for (const auto& num : numToCount.get()) {
-                counts[num] = 0;
-            }
-            vector<int> out(numToCount->size(), 0);
-            output = out;
+            resetCounts();
         }));
 
         listeners.push(resetNext.newListener([this]() {
@@ -49,26 +45,53 @@ public:
     }
 
     void updateCounts(const vector<float> &newInput) {
-        for(size_t i = 0; i < newInput.size(); i++) {
-            float num = newInput[i];
-            if (counts.find(num) != counts.end()) {
-                counts[num]++;
+        // Ensure we have enough position counters
+        while(positionCounts.size() < newInput.size()) {
+            positionCounts.push_back(std::unordered_map<float, int>());
+            initializeCountsAtPosition(positionCounts.size() - 1);
+        }
+
+        // Update counts for each position
+        for(size_t pos = 0; pos < newInput.size(); pos++) {
+            float num = newInput[pos];
+            if(positionCounts[pos].find(num) != positionCounts[pos].end()) {
+                positionCounts[pos][num]++;
             }
         }
 
+        // Create output vector for each number to count
         vector<int> out;
-        for (const auto& num : numToCount.get()) {
-            out.push_back(counts[num]);
+        for(const auto& num : numToCount.get()) {
+            // For each position, check if this number was found
+            for(size_t pos = 0; pos < positionCounts.size(); pos++) {
+                out.push_back(positionCounts[pos][num]);
+            }
         }
+        
         output = out;
     }
 
-    void initializeCounts(const vector<float> &newNumToCount) {
-        for (const auto& num : newNumToCount) {
-            if (counts.find(num) == counts.end()) {
+    void initializeCounts() {
+        positionCounts.clear();
+        // We'll initialize position counts when we see the first input
+    }
+
+    void initializeCountsAtPosition(size_t position) {
+        for(const auto& num : numToCount.get()) {
+            positionCounts[position][num] = 0;
+        }
+    }
+
+    void resetCounts() {
+        for(auto& counts : positionCounts) {
+            for(const auto& num : numToCount.get()) {
                 counts[num] = 0;
             }
         }
+        
+        // Create output vector with zeros
+        vector<int> out(numToCount->size() * positionCounts.size(), 0);
+        output = out;
     }
 
 private:
@@ -76,9 +99,9 @@ private:
     ofParameter<vector<float>> numToCount;
     ofParameter<vector<int>> output;
     ofParameter<void> resetButton;
-    ofParameter<void> resetNext; // Declaration for 'resetNext' parameter
+    ofParameter<void> resetNext;
 
-    std::unordered_map<float, int> counts;
-    bool resetOnNextMatch; // Flag to check if reset is needed on next match
+    vector<std::unordered_map<float, int>> positionCounts; // Counts for each position
+    bool resetOnNextMatch;
     ofEventListeners listeners;
 };
