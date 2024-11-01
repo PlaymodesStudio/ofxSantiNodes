@@ -90,6 +90,7 @@
 #include "pianoRoll.h"
 #include "voiceExpanding.h"
 #include "voidToTick.h"
+#include "TTS.h"
 
 //#include "spectrumLines.h"
 //#include "pixelStretchVector.h"
@@ -183,6 +184,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<pianoRoll>("Santi/Sequencers");
     o.registerModel<voiceExpanding>("Santi/Voicing");
     o.registerModel<voidToTick>("Santi/Events");
+    o.registerModel<TTS>("Santi/TTS");
     //o.registerModel<spectrumLines>("Santi");
     //o.registerModel<pixelStretchVector>("Santi");
     //o.registerModel<vectorSymmetry>("Santi");
