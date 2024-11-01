@@ -3,8 +3,8 @@
 
 class voidToTick : public ofxOceanodeNodeModel {
 public:
-    voidToTick() : ofxOceanodeNodeModel("void to tick") {
-        description = "Generates a scalar trigger (first 0, then 1) in response to a void input. The sequence occurs within the same update cycle.";
+    voidToTick() : ofxOceanodeNodeModel("Void to Tick") {
+        description = "Generates a scalar trigger (first 1, then 0) in response to a void input. The sequence occurs within the same update cycle.";
         
         // Add input/output parameters
         addParameter(input.set("Void Input"));
@@ -18,10 +18,9 @@ public:
 
     void update(ofEventArgs &args) override {
         if(triggered) {
-            // First output 0, then immediately output 1 within the same update cycle
-            output = 0.0f;
             output = 1.0f;
-            triggered = false;  // Reset the trigger after processing
+            output = 0.0f;
+            triggered = false;
         }
     }
 
