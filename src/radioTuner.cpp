@@ -261,17 +261,21 @@ void radioTuner::threadedFunction() {
             }
             
             if(shouldStopStream) {
+                // Handle cleanup in the thread context
                 streamBuffer.active = false;
                 if(curl) {
                     curl_easy_cleanup(curl);
                     curl = nullptr;
                 }
                 shouldStopStream = false;
+                ofLogNotice("radioTuner") << "Stream stopped and cleaned up";
             }
             
-            ofSleepMillis(100);
+            ofSleepMillis(10);
         } catch (const std::exception& e) {
             ofLogError("radioTuner") << "Exception in threadedFunction: " << e.what();
+            shouldStopStream = false;
+            shouldStartStream = false;
         }
     }
 }
@@ -775,10 +779,29 @@ void radioTuner::setupParameters() {
     listeners.push(stationSelector.newListener([this](int& value) {
         try {
             if(value >= 0 && value < stationUrls.size()) {
-                std::lock_guard<std::mutex> lock(urlMutex);
-                safeUrl = stationUrls[value];
-                if(isPlaying) {
+                bool wasPlaying = isPlaying;
+                
+                // Stop if playing
+                if(wasPlaying) {
+                    isPlaying = false;
                     stopStream();
+                    
+                    // Brief wait for stop to take effect
+                    ofSleepMillis(100);
+                }
+                
+                // Update URLs
+                {
+                    std::lock_guard<std::mutex> lock(urlMutex);
+                    safeUrl = stationUrls[value];
+                    currentUrl = stationUrls[value];
+                    urlChanged = true;
+                }
+                
+                // Restart if it was playing
+                if(wasPlaying) {
+                    ofSleepMillis(100);
+                    isPlaying = true;
                     startStream();
                 }
             }
@@ -944,58 +967,70 @@ bool radioTuner::setupAudioOutputDevice(AudioDeviceID deviceId) {
     return true;
 }
 
-    void radioTuner::startStream() {
-        try {
-            string streamUrl;
-            {
-                std::lock_guard<std::mutex> lock(urlMutex);
-                if(currentUrl.empty() && stationSelector >= 0 && stationSelector < stationUrls.size()) {
-                    safeUrl = stationUrls[stationSelector];
-                } else {
-                    safeUrl = currentUrl;
-                }
-                streamUrl = safeUrl;
+void radioTuner::startStream() {
+    try {
+        // Wait for any pending stop operations
+        while(shouldStopStream) {
+            ofSleepMillis(10);
+        }
+        
+        string streamUrl;
+        {
+            std::lock_guard<std::mutex> lock(urlMutex);
+            if(stationSelector >= 0 && stationSelector < stationUrls.size()) {
+                streamUrl = stationUrls[stationSelector];
+                currentUrl = streamUrl;
+                safeUrl = streamUrl;
+            }
+        }
+        
+        if(!streamUrl.empty()) {
+            if(!audioUnit && !setupAudioUnit()) {
+                ofLogError("radioTuner") << "Failed to setup audio unit";
+                isPlaying = false;
+                return;
             }
             
-            if(!streamUrl.empty()) {
-                if(!audioUnit && !setupAudioUnit()) {
-                    ofLogError("radioTuner") << "Failed to setup audio unit";
-                    isPlaying = false;
-                    return;
-                }
-                
-                OSStatus status = AudioOutputUnitStart(audioUnit);
-                if(status != noErr) {
-                    ofLogError("radioTuner") << "Failed to start audio unit";
-                    isPlaying = false;
-                    return;
-                }
-                
-                {
-                    std::lock_guard<std::mutex> lock(urlMutex);
-                    currentUrl = streamUrl;
-                }
-                shouldStartStream = true;
-                urlChanged = true;
-                ofLogNotice("radioTuner") << "Starting stream: " << streamUrl;
-            } else {
-                ofLogError("radioTuner") << "No URL selected";
+            OSStatus status = AudioOutputUnitStart(audioUnit);
+            if(status != noErr) {
+                ofLogError("radioTuner") << "Failed to start audio unit";
                 isPlaying = false;
+                return;
             }
-        } catch (const std::exception& e) {
-            ofLogError("radioTuner") << "Exception in startStream: " << e.what();
+            
+            // Ensure clean state before starting
+            streamBuffer.clear();
+            if(curl) {
+                curl_easy_cleanup(curl);
+                curl = nullptr;
+            }
+            
+            shouldStartStream = true;
+            urlChanged = true;
+            ofLogNotice("radioTuner") << "Starting stream: " << streamUrl;
+        } else {
+            ofLogError("radioTuner") << "No URL selected";
             isPlaying = false;
         }
+    } catch (const std::exception& e) {
+        ofLogError("radioTuner") << "Exception in startStream: " << e.what();
+        isPlaying = false;
     }
+}
 
 void radioTuner::stopStream() {
     shouldStopStream = true;
     streamBuffer.active = false;
+
+    {
+            std::lock_guard<std::mutex> lock(audioMutex);
+            if(audioUnit) {
+                AudioOutputUnitStop(audioUnit);
+            }
+        }
     
-    std::lock_guard<std::mutex> lock(audioMutex);
-    if(audioUnit) {
-        AudioOutputUnitStop(audioUnit);
-    }
-    
+    streamBuffer.clear();
+
+
     ofLogNotice("radioTuner") << "Stream stopped";
 }
