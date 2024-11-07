@@ -125,14 +125,18 @@ radioTuner::radioTuner() : ofxOceanodeNodeModel("Radio Tuner"), ofThread() {
 }
 
 radioTuner::~radioTuner() {
+    // Ensure proper cleanup order
+    stopStream();
+    
     if(isThreadRunning()) {
         shouldStopStream = true;
-        stopThread();
         waitForThread(true);
     }
     
+    // Stop audio before disposing
     if(audioUnit) {
         AudioOutputUnitStop(audioUnit);
+        AudioUnitUninitialize(audioUnit);
         AudioComponentInstanceDispose(audioUnit);
         audioUnit = nullptr;
     }
@@ -163,50 +167,67 @@ OSStatus radioTuner::audioCallback(void *inRefCon,
                              AudioBufferList *ioData) {
     radioTuner* tuner = static_cast<radioTuner*>(inRefCon);
     
-    // Get buffer pointers for left and right channels
-    float* leftBuffer = static_cast<float*>(ioData->mBuffers[0].mData);
-    float* rightBuffer = ioData->mNumberBuffers > 1 ?
-                        static_cast<float*>(ioData->mBuffers[1].mData) :
-                        leftBuffer + 1;
-    
-    size_t stride = ioData->mNumberBuffers > 1 ? 1 : 2;
-    
+    // Skip processing if device is changing
+    if(tuner->isChangingDevice) {
+        for(UInt32 i = 0; i < ioData->mNumberBuffers; i++) {
+            float* buffer = static_cast<float*>(ioData->mBuffers[i].mData);
+            memset(buffer, 0, sizeof(float) * inNumberFrames);
+        }
+        return noErr;
+    }
+
+    // Clear all channels first
+    for(UInt32 i = 0; i < ioData->mNumberBuffers; i++) {
+        float* buffer = static_cast<float*>(ioData->mBuffers[i].mData);
+        memset(buffer, 0, sizeof(float) * inNumberFrames);
+    }
+
+    // Calculate target channels (0-based)
+    int leftChannelIdx = tuner->channelSelector - 1;
+    int rightChannelIdx = leftChannelIdx + 1;
+
+    // Validate target channels
+    if(leftChannelIdx < 0 ||
+       rightChannelIdx >= (int)ioData->mNumberBuffers ||
+       leftChannelIdx >= (int)ioData->mNumberBuffers) {
+        ofLogError("radioTuner") << "Invalid channel routing: L=" << leftChannelIdx
+                                << " R=" << rightChannelIdx
+                                << " Max=" << ioData->mNumberBuffers;
+        return noErr;
+    }
+
+    // Get pointers to target channel buffers
+    float* leftBuffer = (float*)ioData->mBuffers[leftChannelIdx].mData;
+    float* rightBuffer = (float*)ioData->mBuffers[rightChannelIdx].mData;
+
+    if(!leftBuffer || !rightBuffer) {
+        ofLogError("radioTuner") << "Null buffer pointers";
+        return noErr;
+    }
+
     // Temporary buffer for decoded audio
     float decodedBuffer[2048 * 2];  // Stereo buffer
-    
-    // Read and decode from the stream buffer
     size_t framesDecoded = tuner->streamBuffer.readAndDecode(decodedBuffer, inNumberFrames);
-    
-    // Get buffer level for adaptive handling
-    float bufferLevel = tuner->streamBuffer.getBufferLevel();
-    
-    // Copy decoded frames to output
+
+    static int logCounter = 0;
+    if(++logCounter >= 100) {
+        ofLogNotice("radioTuner") << "Routing decoded audio:"
+                                 << " Frames=" << framesDecoded
+                                 << " To channels " << (leftChannelIdx + 1)
+                                 << "," << (rightChannelIdx + 1)
+                                 << " Buffer level=" << tuner->streamBuffer.getBufferLevel();
+        logCounter = 0;
+    }
+
+    // Route decoded stereo audio to target channels
+    float volume = tuner->volume;
     for(UInt32 i = 0; i < inNumberFrames; i++) {
         if(i < framesDecoded) {
-            // Apply subtle fade in/out based on buffer level to prevent clicks
-            float fade = std::min(1.0f, std::min(bufferLevel * 2.0f, (1.0f - bufferLevel) * 2.0f));
-            
-            leftBuffer[i * stride] = decodedBuffer[i * 2] * tuner->volume * fade;
-            rightBuffer[i * stride] = decodedBuffer[i * 2 + 1] * tuner->volume * fade;
-        } else {
-            // Buffer underrun - crossfade to silence
-            float fade = std::max(0.0f, 1.0f - (float)(i - framesDecoded) / 32.0f);
-            leftBuffer[i * stride] = 0.0f * fade;
-            rightBuffer[i * stride] = 0.0f * fade;
+            leftBuffer[i] = decodedBuffer[i * 2] * volume;
+            rightBuffer[i] = decodedBuffer[i * 2 + 1] * volume;
         }
     }
-    
-    // Log if we're consistently running low on buffer
-    static int underrunCount = 0;
-    if(bufferLevel < 0.2) {
-        if(++underrunCount > 100) {
-            ofLogWarning("radioTuner") << "Low buffer level: " << bufferLevel;
-            underrunCount = 0;
-        }
-    } else {
-        underrunCount = 0;
-    }
-    
+
     return noErr;
 }
 
@@ -385,6 +406,220 @@ bool radioTuner::setupAudioUnit() {
     return true;
 }
 
+void radioTuner::cleanupAudioUnit() {
+    std::lock_guard<std::mutex> lock(audioMutex);
+    if(audioUnit) {
+        AudioOutputUnitStop(audioUnit);
+        AudioUnitUninitialize(audioUnit);
+        AudioComponentInstanceDispose(audioUnit);
+        audioUnit = nullptr;
+    }
+}
+
+bool radioTuner::recreateAudioUnit() {
+    try {
+        ofLogNotice("radioTuner") << "Starting audio unit recreation";
+        cleanupAudioUnit();
+        
+        AudioComponentDescription desc;
+        desc.componentType = kAudioUnitType_Output;
+        desc.componentSubType = kAudioUnitSubType_HALOutput;
+        desc.componentManufacturer = kAudioUnitManufacturer_Apple;
+        desc.componentFlags = 0;
+        desc.componentFlagsMask = 0;
+        
+        AudioComponent component = AudioComponentFindNext(NULL, &desc);
+        if(!component) {
+            ofLogError("radioTuner") << "Failed to find audio component";
+            return false;
+        }
+        
+        OSStatus status = AudioComponentInstanceNew(component, &audioUnit);
+        if(status != noErr) {
+            ofLogError("radioTuner") << "Failed to create audio unit";
+            return false;
+        }
+        
+        // Set the device
+        if(deviceSelector >= 0 && deviceSelector < devices.size()) {
+            AudioDeviceID deviceId = devices[deviceSelector].deviceId;
+            ofLogNotice("radioTuner") << "Setting up device: " << devices[deviceSelector].name
+                                     << " (ID: " << deviceId << ")";
+            
+            // First get the device's native format
+            AudioObjectPropertyAddress propertyAddress = {
+                kAudioDevicePropertyStreamFormat,
+                kAudioDevicePropertyScopeOutput,
+                0
+            };
+            
+            AudioStreamBasicDescription deviceFormat;
+            UInt32 size = sizeof(deviceFormat);
+            status = AudioObjectGetPropertyData(deviceId, &propertyAddress, 0, NULL, &size, &deviceFormat);
+            
+            ofLogNotice("radioTuner") << "\nDevice Native Format:";
+            ofLogNotice("radioTuner") << "Sample Rate: " << deviceFormat.mSampleRate;
+            ofLogNotice("radioTuner") << "Format ID: " << deviceFormat.mFormatID;
+            ofLogNotice("radioTuner") << "Format Flags: " << deviceFormat.mFormatFlags;
+            ofLogNotice("radioTuner") << "Bytes Per Packet: " << deviceFormat.mBytesPerPacket;
+            ofLogNotice("radioTuner") << "Frames Per Packet: " << deviceFormat.mFramesPerPacket;
+            ofLogNotice("radioTuner") << "Bytes Per Frame: " << deviceFormat.mBytesPerFrame;
+            ofLogNotice("radioTuner") << "Channels Per Frame: " << deviceFormat.mChannelsPerFrame;
+            ofLogNotice("radioTuner") << "Bits Per Channel: " << deviceFormat.mBitsPerChannel;
+            
+            // Now get the available physical channels
+            propertyAddress.mSelector = kAudioDevicePropertyPreferredChannelLayout;
+            AudioChannelLayout *layout = NULL;
+            size = 0;
+            
+            status = AudioObjectGetPropertyDataSize(deviceId, &propertyAddress, 0, NULL, &size);
+            if(status == noErr && size > 0) {
+                layout = (AudioChannelLayout*)malloc(size);
+                status = AudioObjectGetPropertyData(deviceId, &propertyAddress, 0, NULL, &size, layout);
+                
+                if(status == noErr) {
+                    ofLogNotice("radioTuner") << "\nChannel Layout:";
+                    ofLogNotice("radioTuner") << "Channel Layout Tag: " << layout->mChannelLayoutTag;
+                    ofLogNotice("radioTuner") << "Channel Bitmap: " << layout->mChannelBitmap;
+                    ofLogNotice("radioTuner") << "Number of Channels: " << layout->mNumberChannelDescriptions;
+                    
+                    for(UInt32 i = 0; i < layout->mNumberChannelDescriptions; i++) {
+                        ofLogNotice("radioTuner") << "Channel " << i << " Label: "
+                                                 << layout->mChannelDescriptions[i].mChannelLabel;
+                    }
+                }
+                free(layout);
+            }
+            
+            // Set device
+            status = AudioUnitSetProperty(audioUnit,
+                                        kAudioOutputUnitProperty_CurrentDevice,
+                                        kAudioUnitScope_Global,
+                                        0,
+                                        &deviceId,
+                                        sizeof(deviceId));
+            
+            if(status != noErr) {
+                ofLogError("radioTuner") << "Failed to set audio device";
+                cleanupAudioUnit();
+                return false;
+            }
+            
+            // Get the device's stream configuration
+            propertyAddress.mSelector = kAudioDevicePropertyStreamConfiguration;
+            size = 0;
+            status = AudioObjectGetPropertyDataSize(deviceId, &propertyAddress, 0, NULL, &size);
+            if(status != noErr) {
+                ofLogError("radioTuner") << "Failed to get stream configuration size";
+                return false;
+            }
+            
+            AudioBufferList* bufferList = (AudioBufferList*)malloc(size);
+            status = AudioObjectGetPropertyData(deviceId, &propertyAddress, 0, NULL, &size, bufferList);
+            
+            UInt32 totalChannels = 0;
+            if(status == noErr) {
+                ofLogNotice("radioTuner") << "\nStream Configuration:";
+                ofLogNotice("radioTuner") << "Number of buffer structs: " << bufferList->mNumberBuffers;
+                
+                for(UInt32 i = 0; i < bufferList->mNumberBuffers; i++) {
+                    totalChannels += bufferList->mBuffers[i].mNumberChannels;
+                    ofLogNotice("radioTuner") << "Buffer " << i << ": "
+                                             << bufferList->mBuffers[i].mNumberChannels << " channels";
+                }
+            }
+            free(bufferList);
+            
+            // Set an explicit format
+            AudioStreamBasicDescription audioFormat;
+            audioFormat.mSampleRate = deviceFormat.mSampleRate;
+            audioFormat.mFormatID = kAudioFormatLinearPCM;
+            audioFormat.mFormatFlags = kAudioFormatFlagIsFloat |
+                                     kAudioFormatFlagIsPacked |
+                                     kAudioFormatFlagsNativeEndian |
+                                     kAudioFormatFlagIsNonInterleaved;
+            audioFormat.mFramesPerPacket = 1;
+            audioFormat.mChannelsPerFrame = totalChannels;  // Use total channels found
+            audioFormat.mBitsPerChannel = 32;
+            audioFormat.mBytesPerPacket = 4;
+            audioFormat.mBytesPerFrame = 4;
+            
+            ofLogNotice("radioTuner") << "\nSetting Audio Format:";
+            ofLogNotice("radioTuner") << "Sample Rate: " << audioFormat.mSampleRate;
+            ofLogNotice("radioTuner") << "Channels: " << audioFormat.mChannelsPerFrame;
+            ofLogNotice("radioTuner") << "Format Flags: 0x" << std::hex << audioFormat.mFormatFlags;
+            
+            // Try to set format
+            status = AudioUnitSetProperty(audioUnit,
+                                        kAudioUnitProperty_StreamFormat,
+                                        kAudioUnitScope_Input,
+                                        0,
+                                        &audioFormat,
+                                        sizeof(audioFormat));
+            
+            if(status != noErr) {
+                ofLogError("radioTuner") << "Failed to set audio format. Status: " << status;
+                // Try to get the actual format being used
+                AudioStreamBasicDescription actualFormat;
+                size = sizeof(actualFormat);
+                status = AudioUnitGetProperty(audioUnit,
+                                            kAudioUnitProperty_StreamFormat,
+                                            kAudioUnitScope_Input,
+                                            0,
+                                            &actualFormat,
+                                            &size);
+                if(status == noErr) {
+                    ofLogNotice("radioTuner") << "\nActual Format Being Used:";
+                    ofLogNotice("radioTuner") << "Sample Rate: " << actualFormat.mSampleRate;
+                    ofLogNotice("radioTuner") << "Channels: " << actualFormat.mChannelsPerFrame;
+                    ofLogNotice("radioTuner") << "Format Flags: 0x" << std::hex << actualFormat.mFormatFlags;
+                }
+            }
+        }
+        
+        // Set callback
+        AURenderCallbackStruct callbackStruct;
+        callbackStruct.inputProc = audioCallback;
+        callbackStruct.inputProcRefCon = this;
+        
+        status = AudioUnitSetProperty(audioUnit,
+                                    kAudioUnitProperty_SetRenderCallback,
+                                    kAudioUnitScope_Input,
+                                    0,
+                                    &callbackStruct,
+                                    sizeof(callbackStruct));
+        
+        if(status != noErr) {
+            ofLogError("radioTuner") << "Failed to set audio callback";
+            cleanupAudioUnit();
+            return false;
+        }
+        
+        // Initialize
+        status = AudioUnitInitialize(audioUnit);
+        if(status != noErr) {
+            ofLogError("radioTuner") << "Failed to initialize audio unit";
+            cleanupAudioUnit();
+            return false;
+        }
+        
+        // Start the audio unit
+        status = AudioOutputUnitStart(audioUnit);
+        if(status != noErr) {
+            ofLogError("radioTuner") << "Failed to start audio unit";
+            cleanupAudioUnit();
+            return false;
+        }
+        
+        ofLogNotice("radioTuner") << "Audio unit successfully created and started";
+        return true;
+        
+    } catch (const std::exception& e) {
+        ofLogError("radioTuner") << "Exception in recreateAudioUnit: " << e.what();
+        return false;
+    }
+}
+
 void radioTuner::loadStations() {
     string path = ofToDataPath("radio/stations.json");
     if(!ofFile::doesFileExist(path)) {
@@ -521,75 +756,193 @@ void radioTuner::loadAudioDevices() {
         ofLogNotice("radioTuner") << "Loaded " << deviceNames.size() << " audio devices";
     }
 
-    void radioTuner::setupParameters() {
-        // Setup dropdowns
-        addParameterDropdown(stationSelector, "Station", 0, stationNames);
-        addParameterDropdown(deviceSelector, "Audio Device", 0, deviceNames);
-        
-        // Add other parameters
-        addParameter(isPlaying);
-        addParameter(volume);
-        
-        // Add listeners
-        listeners.push(isPlaying.newListener([this](bool& value) {
-            if(value) {
-                startStream();
-            } else {
-                stopStream();
+void radioTuner::setupParameters() {
+    addParameterDropdown(stationSelector, "Station", 0, stationNames);
+    addParameterDropdown(deviceSelector, "Audio Device", 0, deviceNames);
+    addParameter(channelSelector);
+    addParameter(isPlaying);
+    addParameter(volume);
+    
+    // Add listeners
+    listeners.push(isPlaying.newListener([this](bool& value) {
+        if(value) {
+            startStream();
+        } else {
+            stopStream();
+        }
+    }));
+    
+    listeners.push(stationSelector.newListener([this](int& value) {
+        try {
+            if(value >= 0 && value < stationUrls.size()) {
+                std::lock_guard<std::mutex> lock(urlMutex);
+                safeUrl = stationUrls[value];
+                if(isPlaying) {
+                    stopStream();
+                    startStream();
+                }
             }
-        }));
-        
-        listeners.push(stationSelector.newListener([this](int& value) {
-            try {
-                if(value >= 0 && value < stationUrls.size()) {
-                    std::lock_guard<std::mutex> lock(urlMutex);
-                    safeUrl = stationUrls[value];
-                    if(isPlaying) {
-                        stopStream();
+        } catch (const std::exception& e) {
+            ofLogError("radioTuner") << "Exception in station selector: " << e.what();
+        }
+    }));
+    
+    listeners.push(deviceSelector.newListener([this](int& value) {
+            if(value >= 0 && value < devices.size()) {
+                // Set flag to prevent audio callback from processing
+                isChangingDevice = true;
+                
+                // Stop playback if needed
+                bool wasPlaying = isPlaying;
+                if(wasPlaying) {
+                    isPlaying = false;
+                    stopStream();
+                }
+                
+                // Change device
+                if(recreateAudioUnit()) {
+                    updateChannelCount();
+                    
+                    // Restore playback if needed
+                    if(wasPlaying) {
+                        isPlaying = true;
                         startStream();
                     }
+                } else {
+                    ofLogError("radioTuner") << "Failed to switch audio device";
                 }
-            } catch (const std::exception& e) {
-                ofLogError("radioTuner") << "Exception in station selector: " << e.what();
+                
+                isChangingDevice = false;
             }
         }));
-        
-        listeners.push(deviceSelector.newListener([this](int& value) {
-            if(value >= 0 && value < devices.size()) {
-                setupAudioOutputDevice(devices[value].deviceId);
+    
+    listeners.push(channelSelector.newListener([this](int& value) {
+            ofLogNotice("radioTuner") << "Channel changed to: " << value;
+            
+            // Validate channel selection
+            if(deviceSelector >= 0 && deviceSelector < devices.size()) {
+                const auto& device = devices[deviceSelector];
+                int maxChannels = device.outputChannels.size();
+                
+                if(value > maxChannels - 1) {
+                    ofLogWarning("radioTuner") << "Selected channel " << value
+                                             << " exceeds device channel count " << maxChannels;
+                    value = 1; // Reset to first channel
+                }
             }
         }));
-    }
+    
+}
 
-    bool radioTuner::setupAudioOutputDevice(AudioDeviceID deviceId) {
-        if(!audioUnit) {
-            ofLogError("radioTuner") << "Cannot set device - audio unit not initialized";
-            return false;
+void radioTuner::updateChannelCount() {
+    if(deviceSelector < 0 || deviceSelector >= devices.size()) return;
+    
+    const auto& device = devices[deviceSelector];
+    AudioDeviceID deviceId = device.deviceId;
+    
+    // Get the actual channel count from the device
+    AudioObjectPropertyAddress propertyAddress = {
+        kAudioDevicePropertyStreamConfiguration,
+        kAudioDevicePropertyScopeOutput,
+        0
+    };
+    
+    UInt32 dataSize = 0;
+    OSStatus status = AudioObjectGetPropertyDataSize(deviceId, &propertyAddress, 0, NULL, &dataSize);
+    if(status != noErr) {
+        ofLogError("radioTuner") << "Failed to get stream configuration size";
+        return;
+    }
+    
+    AudioBufferList* bufferList = (AudioBufferList*)malloc(dataSize);
+    status = AudioObjectGetPropertyData(deviceId, &propertyAddress, 0, NULL, &dataSize, bufferList);
+    
+    if(status == noErr) {
+        // Count total channels across all buffers
+        UInt32 totalChannels = 0;
+        for(UInt32 i = 0; i < bufferList->mNumberBuffers; i++) {
+            totalChannels += bufferList->mBuffers[i].mNumberChannels;
         }
         
-        ofLogNotice("radioTuner") << "Setting audio device: " << deviceId;
+        int maxChannels = totalChannels;
+        if(maxChannels < 2) maxChannels = 2;
         
-        // Don't change device if it's system default
-        if(deviceId == kAudioObjectSystemObject) {
-            ofLogNotice("radioTuner") << "Using system default device";
-            return true;
+        // Calculate maximum starting channel (ensuring space for stereo pair)
+        int maxStartChannel = maxChannels - 1;
+        
+        // Store current channel
+        int currentChannel = channelSelector.get();
+        
+        // Update channel selector range
+        channelSelector.setMax(maxStartChannel);
+        
+        ofLogNotice("radioTuner") << "Device: " << device.name
+                                 << " Total channels: " << maxChannels
+                                 << " Max start channel: " << maxStartChannel
+                                 << " Current channel: " << currentChannel;
+        
+        // If current channel is out of range, adjust it
+        if(currentChannel > maxStartChannel) {
+            channelSelector = 1;
+            ofLogNotice("radioTuner") << "Adjusted channel to 1 (was " << currentChannel << ")";
         }
-        
-        OSStatus status = AudioUnitSetProperty(audioUnit,
-                                             kAudioOutputUnitProperty_CurrentDevice,
-                                             kAudioUnitScope_Global,
-                                             0,
-                                             &deviceId,
-                                             sizeof(deviceId));
-                                             
-        if(status != noErr) {
-            ofLogError("radioTuner") << "Failed to set audio device: " << status;
-            return false;
-        }
-        
-        ofLogNotice("radioTuner") << "Successfully set audio device";
+    }
+    
+    free(bufferList);
+}
+
+bool radioTuner::setupAudioOutputDevice(AudioDeviceID deviceId) {
+    std::lock_guard<std::mutex> lock(audioMutex);
+    if(!audioUnit) {
+        ofLogError("radioTuner") << "Cannot set device - audio unit not initialized";
+        return false;
+    }
+    
+    ofLogNotice("radioTuner") << "Setting audio device: " << deviceId;
+    
+    // Don't change device if it's system default
+    if(deviceId == kAudioObjectSystemObject) {
+        ofLogNotice("radioTuner") << "Using system default device";
         return true;
     }
+    
+    OSStatus status = AudioOutputUnitStop(audioUnit);
+    if(status != noErr) {
+        ofLogError("radioTuner") << "Failed to stop audio unit";
+    }
+    
+    status = AudioUnitUninitialize(audioUnit);
+    if(status != noErr) {
+        ofLogError("radioTuner") << "Failed to uninitialize audio unit";
+    }
+    
+    status = AudioUnitSetProperty(audioUnit,
+                                kAudioOutputUnitProperty_CurrentDevice,
+                                kAudioUnitScope_Global,
+                                0,
+                                &deviceId,
+                                sizeof(deviceId));
+                                
+    if(status != noErr) {
+        ofLogError("radioTuner") << "Failed to set audio device: " << status;
+        return false;
+    }
+    
+    status = AudioUnitInitialize(audioUnit);
+    if(status != noErr) {
+        ofLogError("radioTuner") << "Failed to initialize audio unit after device change";
+        return false;
+    }
+    
+    status = AudioOutputUnitStart(audioUnit);
+    if(status != noErr) {
+        ofLogError("radioTuner") << "Failed to start audio unit after device change";
+        return false;
+    }
+    
+    ofLogNotice("radioTuner") << "Successfully set audio device";
+    return true;
+}
 
     void radioTuner::startStream() {
         try {
@@ -635,10 +988,14 @@ void radioTuner::loadAudioDevices() {
         }
     }
 
-    void radioTuner::stopStream() {
-        if(audioUnit) {
-            AudioOutputUnitStop(audioUnit);
-        }
-        shouldStopStream = true;
-        ofLogNotice("radioTuner") << "Stream stopped";
+void radioTuner::stopStream() {
+    shouldStopStream = true;
+    streamBuffer.active = false;
+    
+    std::lock_guard<std::mutex> lock(audioMutex);
+    if(audioUnit) {
+        AudioOutputUnitStop(audioUnit);
     }
+    
+    ofLogNotice("radioTuner") << "Stream stopped";
+}

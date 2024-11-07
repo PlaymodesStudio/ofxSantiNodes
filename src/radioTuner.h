@@ -64,6 +64,7 @@ public:
 
 private:
     std::mutex urlMutex;
+    std::mutex audioMutex;
     std::atomic<bool> urlChanged{false};
     string safeUrl;
     
@@ -72,6 +73,8 @@ private:
     ofParameter<bool> isPlaying{"Play", false};
     ofParameter<float> volume{"Volume", 1.0, 0.0, 1.0};
     ofParameter<int> stationSelector;
+    ofParameter<int> channelSelector{"Output Channel", 1, 1, 64};
+
     
     // Listeners
     ofEventListeners listeners;
@@ -88,6 +91,7 @@ private:
     string currentUrl;
     std::atomic<bool> shouldStartStream{false};
     std::atomic<bool> shouldStopStream{false};
+    
     
     static size_t writeCallback(char *ptr, size_t size, size_t nmemb, void *userdata);
     static OSStatus audioCallback(void *inRefCon,
@@ -107,6 +111,10 @@ private:
     void setupParameters();
     void startStream();
     void stopStream();
+    void updateChannelCount();
+    bool recreateAudioUnit();
+    void cleanupAudioUnit();
+    std::atomic<bool> isChangingDevice{false};
     
     friend class StreamBuffer; // Allow StreamBuffer to access private members
 };
