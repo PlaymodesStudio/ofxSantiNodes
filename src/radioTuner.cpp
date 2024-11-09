@@ -393,23 +393,16 @@ bool radioTuner::parseStreamUrl(const string& url) {
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &streamBuffer);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_AUTOREFERER, 1L);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0");  // Set a proper user agent
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "RadioTuner/1.0");
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
-        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);  // Required for multi-threaded applications
-        curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-        curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");  // Handle compressed responses
-        
-        // For audio streams, we want to disable buffering
         curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 16384L);
         curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
         curl_easy_setopt(curl, CURLOPT_TCP_KEEPIDLE, 120L);
         curl_easy_setopt(curl, CURLOPT_TCP_KEEPINTVL, 60L);
         
-        // Enable verbose debug output
-        #ifdef _DEBUG
-            curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-        #endif
+        // Set up ICY header
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, curl_slist_append(NULL, "Icy-MetaData: 0"));
         
         ofLogNotice("radioTuner") << "Stream URL configured: " << url;
         return true;
@@ -426,7 +419,7 @@ bool radioTuner::resolveStreamUrl(const string& url) {
         currentStreamInfo.clear();
         currentStreamIndex = -1;
         
-        // Check if it's a direct MP3 stream first
+        // First check if it's a direct MP3 stream
         if(toLower(url).find(".mp3") != string::npos) {
             PlaylistParser::StreamInfo directStream;
             directStream.url = url;
@@ -435,7 +428,6 @@ bool radioTuner::resolveStreamUrl(const string& url) {
             
             ofLogNotice("radioTuner") << "Direct MP3 stream: " << url;
             
-            // Set URL directly for MP3 streams
             {
                 std::lock_guard<std::mutex> lock(urlMutex);
                 safeUrl = url;
@@ -446,7 +438,24 @@ bool radioTuner::resolveStreamUrl(const string& url) {
             return handleStreamFormat(url);
         }
         
-        // If not MP3, try playlist parsing
+        // Check if it might be an Icecast stream (contains common Icecast indicators)
+        if(url.find("ice") != string::npos ||
+           url.find(":8000") != string::npos ||
+           url.find("stream") != string::npos) {
+            
+            ofLogNotice("radioTuner") << "Potential Icecast stream detected: " << url;
+            
+            {
+                std::lock_guard<std::mutex> lock(urlMutex);
+                safeUrl = url;
+                currentUrl = url;
+                urlChanged = true;
+            }
+            
+            return handleStreamFormat(url);
+        }
+        
+        // If not MP3 or Icecast, try playlist parsing
         ofLogNotice("radioTuner") << "Attempting to parse as playlist: " << url;
         currentStreamInfo = playlistParser->parse(url);
         
@@ -463,7 +472,6 @@ bool radioTuner::resolveStreamUrl(const string& url) {
                                  << (stream.isHLS ? " (HLS)" : "")
                                  << (!stream.title.empty() ? " Title: " + stream.title : "");
         
-        // Update the actual streaming URL
         {
             std::lock_guard<std::mutex> lock(urlMutex);
             safeUrl = stream.url;
@@ -1242,6 +1250,12 @@ void radioTuner::stopStream() {
         if(audioUnit) {
             AudioOutputUnitStop(audioUnit);
         }
+    }
+    
+    // Just clean up CURL completely
+    if(curl) {
+        curl_easy_cleanup(curl);
+        curl = nullptr;
     }
     
     updatePlayingState(false);
