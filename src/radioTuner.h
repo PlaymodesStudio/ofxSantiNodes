@@ -11,6 +11,8 @@
 #include <vector>
 #include "minimp3.h"
 #include "minimp3_ex.h"
+#include "PlaylistParser.h"
+
 
 class StreamBuffer {
 public:
@@ -61,12 +63,19 @@ public:
     ~radioTuner();
     
     void setup() override;
+    void update(ofEventArgs &e) override;
+
 
 private:
     std::mutex urlMutex;
     std::mutex audioMutex;
     std::atomic<bool> urlChanged{false};
     string safeUrl;
+    std::unique_ptr<PlaylistParser> playlistParser;
+    std::vector<PlaylistParser::StreamInfo> currentStreamInfo;
+    int currentStreamIndex;
+    std::atomic<bool> isStreamActive{false};
+    
     
     // Parameters
     ofParameter<int> deviceSelector;
@@ -91,6 +100,8 @@ private:
     string currentUrl;
     std::atomic<bool> shouldStartStream{false};
     std::atomic<bool> shouldStopStream{false};
+    uint64_t toggleUpdateTime{0};  // Add this for timing
+
     
     
     static size_t writeCallback(char *ptr, size_t size, size_t nmemb, void *userdata);
@@ -114,9 +125,36 @@ private:
     void updateChannelCount();
     bool recreateAudioUnit();
     void cleanupAudioUnit();
-    std::atomic<bool> isChangingDevice{false};
+    bool resolveStreamUrl(const std::string& url);
+    bool handleStreamFormat(const std::string& url);
+    void switchToNextStream();
+    void updatePlayingState(bool state);
+    void cleanupStream();
+    bool pendingStateUpdate{false};
+    void checkPendingUpdates();
+
     
+    std::atomic<bool> isChangingDevice{false};
     friend class StreamBuffer; // Allow StreamBuffer to access private members
+    
+    enum class StreamFormat {
+            UNKNOWN,
+            MP3,
+            AAC,
+            HLS
+        };
+        StreamFormat currentFormat;
+    
+    // String utility functions
+        std::string toLower(const std::string& str) const {
+            std::string result = str;
+            std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+            return result;
+        }
+        
+        bool containsString(const std::string& str, const std::string& substr) const {
+            return str.find(substr) != std::string::npos;
+        }
 };
 
 #endif /* radioTuner_h */
