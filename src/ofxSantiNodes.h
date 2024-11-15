@@ -92,7 +92,9 @@
 #include "voidToTick.h"
 #include "TTS.h"
 //#include "radioStation.h"
-#include "radioTuner.h"
+//#include "radioTuner.h"
+//#include "testVLC.h"
+#include "radioStationVLC.h"
 
 //#include "spectrumLines.h"
 //#include "pixelStretchVector.h"
@@ -187,8 +189,10 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<voiceExpanding>("Santi/Voicing");
     o.registerModel<voidToTick>("Santi/Events");
     o.registerModel<TTS>("Santi/TTS");
-    o.registerModel<radioTuner>("Santi/Radio");
+    //o.registerModel<radioTuner>("Santi/Radio");
     //o.registerModel<RadioStation>("Santi/Radio");
+    //o.registerModel<TestVLC>("Santi/Radio");
+    o.registerModel<RadioStationVLC>("Santi/Radio");
     //o.registerModel<spectrumLines>("Santi");
     //o.registerModel<pixelStretchVector>("Santi");
     //o.registerModel<vectorSymmetry>("Santi");
