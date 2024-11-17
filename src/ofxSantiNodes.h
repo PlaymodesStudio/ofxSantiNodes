@@ -95,6 +95,7 @@
 //#include "radioTuner.h"
 //#include "testVLC.h"
 #include "radioStationVLC.h"
+#include "voiceExpanding2.h"
 
 //#include "spectrumLines.h"
 //#include "pixelStretchVector.h"
@@ -196,6 +197,10 @@ static void registerModels(ofxOceanode &o)
     //o.registerModel<spectrumLines>("Santi");
     //o.registerModel<pixelStretchVector>("Santi");
     //o.registerModel<vectorSymmetry>("Santi");
+    o.registerModel<voiceExpanding2>("Santi/Radio");
+    
+    
+    
     o.registerModel<tableRowId>("Santi/Thalastasi");
     o.registerModel<vectorRegion>("Santi/Thalastasi");
     o.registerModel<geneTable>("Santi/Thalastasi");
