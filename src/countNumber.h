@@ -9,7 +9,7 @@ public:
         
         addParameter(input.set("Input", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
         addParameter(numToCount.set("NumToCount", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
-        addParameter(output.set("Output", {0}, {0}, {INT_MAX}));
+        addOutputParameter(output.set("Output", {0}, {0}, {INT_MAX}));
         addParameter(resetButton.set("Reset"));
         addParameter(resetNext.set("Reset Next"));
 

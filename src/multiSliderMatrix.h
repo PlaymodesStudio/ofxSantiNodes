@@ -38,7 +38,7 @@ public:
                                            vectorValues[currentSlot][i],
                                            vector<float>(1, getValueForIndex(minVal, i)),
                                            vector<float>(1, getValueForIndex(maxVal, i)));
-                    addParameter(vectorValueParams[i],
+                    addOutputParameter(vectorValueParams[i],
                                ofxOceanodeParameterFlags_DisableInConnection | ofxOceanodeParameterFlags_DisplayMinimized);
                 }
 

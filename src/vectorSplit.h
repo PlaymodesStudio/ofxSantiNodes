@@ -10,7 +10,7 @@ public:
         addParameter(input.set("Input", {0}, {-FLT_MAX}, {FLT_MAX}));
         addParameter(min.set("Min", 0, -FLT_MAX, FLT_MAX));
         addParameter(max.set("Max", 1, -FLT_MAX, FLT_MAX));
-        addParameter(output.set("Output", {0}, {-FLT_MAX}, {FLT_MAX}));
+        addOutputParameter(output.set("Output", {0}, {-FLT_MAX}, {FLT_MAX}));
         description="This module splits and resizes the input vector for it to return just the values which are between min and max";
         listeners.push(input.newListener([this](vector<float> &v){
             vector<float> out;

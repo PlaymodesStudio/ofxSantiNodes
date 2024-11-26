@@ -27,7 +27,7 @@ public:
         // Initialize first output
         outputs.emplace_back();
         outputs[0].set("Output 1", vector<float>(1, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 1.0f));
-        addParameter(outputs[0]);
+        addOutputParameter(outputs[0]);
 
         setupListeners();
         calculate();

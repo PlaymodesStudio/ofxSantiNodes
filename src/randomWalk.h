@@ -9,7 +9,7 @@ public:
         addParameter(gate.set("Gate", {0}, {0}, {1}));
         addParameter(maxStep.set("Max Step", {1}, {1}, {10}));
         addParameter(range.set("Range", {12}, {1}, {100}));
-        addParameter(output.set("Output", {0}, {0}, {100}));
+        addOutputParameter(output.set("Output", {0}, {0}, {100}));
 
         lastGateValues.resize(gate->size(), 0);  // Initialize with default values
 

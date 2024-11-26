@@ -26,7 +26,7 @@ public:
         addParameter(indexInput.set("idx[]", vector<int>(1, 0), vector<int>(1, 0), vector<int>(1, INT_MAX)));
         addParameter(phasorInput.set("ph[]", vector<float>(1, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 1.0f)));
         addParameter(probabilistic.set("Probabilistic", false));
-        addParameter(vectorOutput.set("vec Out", vector<float>(2, 0.0f), vector<float>(2, -FLT_MAX), vector<float>(2, FLT_MAX)));
+        addOutputParameter(vectorOutput.set("vec Out", vector<float>(2, 0.0f), vector<float>(2, -FLT_MAX), vector<float>(2, FLT_MAX)));
 
         // Initialize vectors with default size
         inputVectors.resize(2);
@@ -49,7 +49,7 @@ public:
 
         // Add output parameters last
         for(int i = 0; i < scalarOutputs.size(); i++) {
-            addParameter(scalarOutputs[i].set("out" + ofToString(i + 1),
+            addOutputParameter(scalarOutputs[i].set("out" + ofToString(i + 1),
                 0.0f, -FLT_MAX, FLT_MAX));
         }
 

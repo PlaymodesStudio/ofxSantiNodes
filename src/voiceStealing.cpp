@@ -9,8 +9,8 @@ void voiceStealing::setup() {
     addParameter(inputPitch.set("Input Pitch", {}, {0}, {127}));
     addParameter(inputGate.set("Input Gate", {}, {0}, {1}));
     addParameter(outputSize.set("Output Size", 8, 1, 128));
-    addParameter(outputPitch.set("Output Pitch", {}, {0}, {127}));
-    addParameter(outputGate.set("Output Gate", {}, {0}, {1}));
+    addOutputParameter(outputPitch.set("Output Pitch", {}, {0}, {127}));
+    addOutputParameter(outputGate.set("Output Gate", {}, {0}, {1}));
 
     listeners.push(outputSize.newListener([this](int &size){
         resizeOutputs(size);

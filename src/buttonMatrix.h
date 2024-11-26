@@ -18,8 +18,8 @@ public:
         addParameter(defaultValue.set("Default", 0.0f, -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
         addParameter(buttonValues.set("Button Values", vector<float>(6, 0.0f)));
         addParameter(indexOn.set("Index On", -1, -1, 255));  // Assuming a maximum of 256 buttons (16x16)
-        addParameter(output.set("Output", 0.0f, -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
-        addParameter(vecout.set("VecOut", vector<int>(6, 0)));
+        addOutputParameter(output.set("Output", 0.0f, -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
+        addOutputParameter(vecout.set("VecOut", vector<int>(6, 0)));
 
         // Set explicit min and max for vector parameters
         buttonValues.setMin(vector<float>(1, -std::numeric_limits<float>::max()));

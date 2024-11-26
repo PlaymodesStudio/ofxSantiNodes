@@ -24,11 +24,11 @@ public:
         addParameter(outputSize.set("Output Size", 8, 1, 128));
         
         // Output parameters
-        addParameter(outputPitch.set("Output Pitch", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 127.0f)));
-        addParameter(outputGate.set("Output Gate", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 1.0f)));
-        addParameter(outputAux1.set("Output Aux1", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 1.0f)));
-        addParameter(outputAux2.set("Output Aux2", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 1.0f)));
-        addParameter(outputAux3.set("Output Aux3", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 1.0f)));
+        addOutputParameter(outputPitch.set("Output Pitch", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 127.0f)));
+        addOutputParameter(outputGate.set("Output Gate", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 1.0f)));
+        addOutputParameter(outputAux1.set("Output Aux1", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 1.0f)));
+        addOutputParameter(outputAux2.set("Output Aux2", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 1.0f)));
+        addOutputParameter(outputAux3.set("Output Aux3", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 1.0f)));
 
         listeners.push(outputSize.newListener([this](int &size){
             handleSizeChange(size);

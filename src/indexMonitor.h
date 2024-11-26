@@ -11,7 +11,7 @@ public:
     void setup() {
         description = "Outputs the indices of input vector elements that are different from zero";
         addParameter(input.set("Input", vector<float>(1, 0.0f), vector<float>(1, -FLT_MAX), vector<float>(1, FLT_MAX)));
-        addParameter(output.set("Output", vector<int>(), vector<int>(1, 0), vector<int>(1, INT_MAX)));
+        addOutputParameter(output.set("Output", vector<int>(), vector<int>(1, 0), vector<int>(1, INT_MAX)));
         addParameter(threshold.set("Threshold", 0.0f, 0.0f, 1.0f));
 
         listeners.push(input.newListener([this](vector<float> &f) {

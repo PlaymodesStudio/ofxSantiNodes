@@ -15,7 +15,7 @@ public:
         addParameter(gridX.set("Grid X[]", vector<int>(1, 16), vector<int>(1, 1), vector<int>(1, 64)));
         addParameter(gridY.set("Grid Y", 8, 1, 32));
         addParameter(phasorInput.set("Phasor", 0.0f, 0.0f, 1.0f));
-        addParameter(output.set("Output", vector<int>()));
+        addOutputParameter(output.set("Output", vector<int>()));
         addParameter(matrixWidth.set("w", 300, 100, 1000));
         addParameter(rowHeight.set("h", 20, 10, 100));
         addParameter(slot.set("Slot", 0, 0, NUM_SLOTS - 1));
