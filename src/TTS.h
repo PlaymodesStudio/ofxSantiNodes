@@ -2,6 +2,8 @@
 #define TTS_h
 
 #include "ofxOceanodeNodeModel.h"
+#include <future>
+#include <thread>
 
 class TTS : public ofxOceanodeNodeModel {
 public:
@@ -11,6 +13,8 @@ public:
         soxPath = "/opt/homebrew/bin/sox";
         triggerCounter = 0;
         triggerStartFrame = 0;
+        writeInProgress = false;
+
     }
     
     void setup() {
@@ -68,13 +72,24 @@ public:
         
     }
     
-    void update(ofEventArgs &a) override {  // Canvia la signatura de l'update
+    void update(ofEventArgs &a) override {
+            if (writeInProgress && writeFuture.valid()) {
+                auto status = writeFuture.wait_for(std::chrono::seconds(0));
+                if (status == std::future_status::ready) {
+                    bool success = writeFuture.get();
+                    if (success) {
+                        triggerCounter = 15;
+                        trigger.set(1);
+                        ofLogNotice("TTS") << "Write completed successfully";
+                    }
+                    writeInProgress = false;
+                }
+            }
+
             if(triggerCounter > 0) {
-                ofLogNotice("TTS") << "IN UPDATE - Counter: " << triggerCounter;  // Debug
                 triggerCounter--;
                 if(triggerCounter == 0) {
                     trigger.set(0);
-                    ofLogNotice("TTS") << "IN UPDATE - Setting trigger to 0";  // Debug
                 }
             }
         }
@@ -279,50 +294,58 @@ private:
     }
 
     void executeTTSWrite() {
-        if(inputText.get().empty()) {
-            ofLogWarning("TTS") << "No text specified";
+            if(inputText.get().empty()) {
+                ofLogWarning("TTS") << "No text specified";
+                return;
+            }
+            
+            if (writeInProgress) {
+                ofLogWarning("TTS") << "Write operation already in progress";
+                return;
+            }
+            
+            writeInProgress = true;
+            writeFuture = std::async(std::launch::async, [this]() {
+                ofLogNotice("TTS") << "Executing TTS Write...";
+                
+                string timestamp = ofGetTimestampString();
+                string tempFile = ofToDataPath("tts/temp_tts.wav", true);
+                string outputFile = ofToDataPath("tts/tts_" + timestamp + ".wav", true);
+                string tempJson = ofToDataPath("tts/temp.json", true);
+                
+                string jsonContent = "{\"text\":\"" + inputText.get() + "\","
+                                    "\"voice\":\"" + getVoiceForAccent(accent.get(), voice.get()) + "\","
+                                    "\"accent\":\"" + vector<string>{"balear", "central", "nord-occidental", "valencia"}[accent.get()] + "\","
+                                    "\"type\":\"text\","
+                                    "\"length_scale\":" + ofToString(speed.get()) + ","
+                                    "\"temperature\":" + ofToString(temperature.get()) + ","
+                                    "\"cleaner\":\"" + getCleanerForAccent(accent.get()) + "\"}";
+                
+                ofFile jsonFile(tempJson, ofFile::WriteOnly);
+                jsonFile.write(jsonContent.c_str(), jsonContent.length());
+                jsonFile.close();
+                
+                string cmd = "curl -X POST http://127.0.0.1:8000/api/tts "
+                           "-H \"Content-Type: application/json\" "
+                           "-d @\"" + tempJson + "\" "
+                           "> \"" + tempFile + "\" && "
+                           + soxPath + " \"" + tempFile + "\" -r 44100 \"" + outputFile + "\" && "
+                           "rm \"" + tempFile + "\" \"" + tempJson + "\"";
+                
+                int result = system(cmd.c_str());
+                
+                if(result == 0) {
+                    lastGeneratedFile.set(outputFile);
+                    ofLogNotice("TTS") << "File saved: " + outputFile;
+                    return true;
+                } else {
+                    ofLogError("TTS") << "Failed to save file";
+                    return false;
+                }
+            });
+            
             return;
         }
-        
-        ofLogNotice("TTS") << "Executing TTS Write...";
-        
-        string timestamp = ofGetTimestampString();
-        string tempFile = ofToDataPath("tts/temp_tts.wav", true);
-        string outputFile = ofToDataPath("tts/tts_" + timestamp + ".wav", true);
-        string tempJson = ofToDataPath("tts/temp.json", true);
-        
-        // Create JSON file
-        string jsonContent = "{\"text\":\"" + inputText.get() + "\","
-                            "\"voice\":\"" + getVoiceForAccent(accent.get(), voice.get()) + "\","
-                            "\"accent\":\"" + vector<string>{"balear", "central", "nord-occidental", "valencia"}[accent.get()] + "\","
-                            "\"type\":\"text\","
-                            "\"length_scale\":" + ofToString(speed.get()) + ","
-                            "\"temperature\":" + ofToString(temperature.get()) + ","
-                            "\"cleaner\":\"" + getCleanerForAccent(accent.get()) + "\"}";
-        
-        ofFile jsonFile(tempJson, ofFile::WriteOnly);
-        jsonFile.write(jsonContent.c_str(), jsonContent.length());
-        jsonFile.close();
-        
-        string cmd = "curl -X POST http://127.0.0.1:8000/api/tts "
-                   "-H \"Content-Type: application/json\" "
-                   "-d @\"" + tempJson + "\" "
-                   "> \"" + tempFile + "\" && "
-                   + soxPath + " \"" + tempFile + "\" -r 44100 \"" + outputFile + "\" && "
-                   "rm \"" + tempFile + "\" \"" + tempJson + "\"";
-        
-        int result = system(cmd.c_str());
-               
-           if(result == 0) {
-               lastGeneratedFile.set(outputFile);
-               ofLogNotice("TTS") << "File saved: " + outputFile;
-               triggerCounter = 15;
-               trigger.set(1);
-               ofLogNotice("TTS") << "Trigger set to 1, counter: " << triggerCounter; // Debug
-           } else {
-               ofLogError("TTS") << "Failed to save file";
-           }
-       }
 
     ofParameter<string> inputText;
         ofParameter<float> speed;
@@ -340,6 +363,9 @@ private:
     
         
         bool containerStatus;
+    bool writeInProgress;
+    std::future<bool> writeFuture;
+
         string dockerPath;
         string soxPath;
         int triggerCounter;
