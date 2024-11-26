@@ -94,6 +94,9 @@
 #include "voiceExpanding2.h"
 #include "pianoKeyboard.h"
 #include "vectorInterpolation.h"
+#include "starDataExtractor.h"
+#include "carlSagan.h"
+
 
 //#include "spectrumLines.h"
 //#include "pixelStretchVector.h"
@@ -194,6 +197,9 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<voiceExpanding2>("Santi/Radio");
     o.registerModel<pianoKeyboard>("Santi/Visualizers");
     o.registerModel<vectorInterpolation>("Santi/Math");
+    o.registerModel<starDataExtractor>("Santi/Stars");
+    o.registerModel<carlSagan>("Santi/Stars");
+
     
     
     
