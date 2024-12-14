@@ -6,6 +6,8 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <regex>
+
 
 class starDataExtractor : public ofxOceanodeNodeModel {
 public:
@@ -15,6 +17,7 @@ public:
     }
     
     void setupParams(){
+        hipInput.set("HIP", 0, 0, 200000);
         hdInput.set("HD", 0, 0, 1000000);
         parallax.set("Parallax", 0.0f, -100.0f, 100.0f);
         magnitude.set("Magnitude", 0.0f, -27.0f, 20.0f);
@@ -26,7 +29,7 @@ public:
         constellation.set("Constel", "");
         continuousMode.set("Continuous", true);
                 
-        
+        addParameter(hipInput);
         addParameter(hdInput);
         addParameter(parallax);
         addParameter(magnitude);
@@ -40,6 +43,10 @@ public:
         
         lastUpdateTime = 0;
         
+        listeners.push(hipInput.newListener([this](int &){
+                    updateDataFromHIP();
+                }));
+        
         listeners.push(hdInput.newListener([this](int &){
             updateData();
         }));
@@ -48,8 +55,12 @@ public:
     void update(ofEventArgs &e) override {
             if(continuousMode) {
                 uint64_t currentTime = ofGetElapsedTimeMillis();
-                if(currentTime - lastUpdateTime > 16) { // ~60fps
-                    updateData();
+                if(currentTime - lastUpdateTime > 16) {
+                    if(hipInput > 0) {
+                        updateDataFromHIP();
+                    } else {
+                        updateData();
+                    }
                     lastUpdateTime = currentTime;
                 }
             }
@@ -60,7 +71,77 @@ private:
            loadConstellationNames();  // Load this first
            loadBSC5P();
            loadIAUNames();
+        loadHIPtoHDMapping();
+
        }
+    
+    void loadHIPtoHDMapping() {
+        std::string appDataPath = ofToDataPath("catalog/catalogIV27A.dat");
+        std::ifstream file(appDataPath);
+        if(!file.is_open()) {
+            ofLogError("starDataExtractor") << "Cannot open catalog IV27A at: " << appDataPath;
+            return;
+        }
+        
+        std::string line;
+        while(std::getline(file, line)) {
+            try {
+                // Skip empty lines
+                if(line.length() < 10) continue;
+                
+                // Split line into fields based on whitespace
+                std::vector<std::string> fields;
+                std::istringstream iss(line);
+                std::string field;
+                while(iss >> field) {
+                    fields.push_back(field);
+                }
+                
+                // Need at least 6 fields
+                if(fields.size() < 6) continue;
+                
+                // First field is HD number
+                int hdNum = std::stoi(fields[0]);
+                
+                // Sixth field is HIP number
+                int hipNum = std::stoi(fields[5]);
+                
+                hipToHdMap[hipNum] = hdNum;
+                //ofLogVerbose("starDataExtractor") << "Mapped HIP" << hipNum << " to HD" << hdNum;
+                
+            } catch(const std::exception& e) {
+                //ofLogWarning("starDataExtractor") << "Failed to process IV27A catalog line: " << e.what();
+                continue;
+            }
+        }
+        
+        ofLogNotice("starDataExtractor") << "Loaded " << hipToHdMap.size() << " HIP to HD mappings";
+    }
+    
+    void updateDataFromHIP() {
+            int hipNum = hipInput;
+            //ofLogNotice("starDataExtractor") << "\nLooking up HIP" << hipNum;
+            
+            // Find corresponding HD number
+            auto hdIt = hipToHdMap.find(hipNum);
+            if(hdIt != hipToHdMap.end()) {
+                int hdNum = hdIt->second;
+                //ofLogNotice("starDataExtractor") << "Found corresponding HD" << hdNum;
+                hdInput.set(hdNum);  // This will trigger updateData() through the listener
+            } else {
+                //ofLogNotice("starDataExtractor") << "No HD number found for HIP" << hipNum;
+                // Clear all fields if no mapping found
+                hdInput.set(0);
+                parallax.set(0);
+                magnitude.set(0);
+                bvColor.set(0);
+                spectralType.set("");
+                multipleCount.set(1);
+                starName.set("Unknown");
+                constellation.set("");
+                sunX.set(1.0f);
+            }
+        }
     
     void loadIAUNames() {
         std::string appDataPath = ofToDataPath("catalog/IAU-CSN.json");
@@ -392,6 +473,7 @@ private:
         std::string constellation;
     };
     
+    ofParameter<int> hipInput;
     ofParameter<int> hdInput;
     ofParameter<float> parallax;
     ofParameter<float> magnitude;
@@ -405,6 +487,7 @@ private:
     
     uint64_t lastUpdateTime;
     
+    std::map<int, int> hipToHdMap;
     std::map<int, StarData> bsc5pData;
     std::map<int, StarNameData> iauNameData;
     std::map<int, int> hdToHrMap;
