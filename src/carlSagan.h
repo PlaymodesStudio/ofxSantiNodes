@@ -268,50 +268,105 @@
                 return components;
             }
 
-            // Agafem la primera lletra com a classe espectral
-            components.classKey = spectralType.substr(0, 1);
+            // Handle special case of binary/composite systems - use only primary
+            size_t plusPos = spectralType.find("+");
+            string primaryType = (plusPos != string::npos) ?
+                                spectralType.substr(0, plusPos) : spectralType;
 
-            // Per defecte
+            // Clean the type first
+            string cleanType = primaryType;
+            
+            // Extract spectral class (first letter)
+            components.classKey = cleanType.substr(0, 1);
+
+            // Convert to uppercase for matching
+            string upperType = ofToUpper(cleanType);
+
+            // Remove uncertain marks
+            size_t colonPos = upperType.find(":");
+            if (colonPos != string::npos) {
+                upperType = upperType.substr(0, colonPos);
+            }
+
+            // Remove various spectral peculiarities
+            vector<string> peculiarities = {
+                "P", "E", "EU", "SR", "SI", "CR", "CN", "FE", "BA", "ZR", "S",
+                "N", "HC", "MN", "CA", "TI", "V", "M", "W"
+            };
+            
+            for (const auto& p : peculiarities) {
+                size_t pos = upperType.find(p);
+                if (pos != string::npos) {
+                    // Only remove if it's after any luminosity class indicators
+                    if (!isdigit(upperType[pos-1]) &&
+                        upperType.substr(0, pos).find("III") == string::npos &&
+                        upperType.substr(0, pos).find("II") == string::npos &&
+                        upperType.substr(0, pos).find("IV") == string::npos &&
+                        upperType.substr(0, pos).find("V") == string::npos) {
+                        upperType = upperType.substr(0, pos);
+                    }
+                }
+            }
+
+            // Remove 'e' for emission lines if it's not part of a luminosity indicator
+            size_t ePos = upperType.find("E");
+            if (ePos != string::npos && ePos > 0) {
+                if (upperType[ePos-1] != 'P' && upperType[ePos-1] != 'F') {
+                    upperType.erase(ePos, 1);
+                }
+            }
+
+            // Default subKey
             components.subKey = "default";
 
-            // Busquem classes de lluminositat en ordre de més específic a menys
-            if (spectralType.find("Ia-Iab") != string::npos ||
-                spectralType.find("IA-IAB") != string::npos) {
+            // Check for luminosity classes in order of specificity
+            if (upperType.find("IA-O") != string::npos ||
+                upperType.find("IA") != string::npos ||
+                upperType.find("IB") != string::npos ||
+                ((upperType.find("I") != string::npos || upperType.find("1") != string::npos) &&
+                 upperType.find("II") == string::npos &&
+                 upperType.find("III") == string::npos &&
+                 upperType.find("IV") == string::npos &&
+                 upperType.find("V") == string::npos)) {
                 components.subKey = "supergiants";
             }
-            else if (spectralType.find("Ia") != string::npos ||
-                     spectralType.find("IA") != string::npos) {
-                components.subKey = "supergiants";
-            }
-            else if (spectralType.find("Ib") != string::npos ||
-                     spectralType.find("IB") != string::npos) {
-                components.subKey = "supergiants";
-            }
-            else if (spectralType.find("II") != string::npos) {
+            else if (upperType.find("III") != string::npos) {
                 components.subKey = "giants";
             }
-            else if (spectralType.find("III") != string::npos) {
+            else if (upperType.find("II") != string::npos) {
+                // II stars are generally closer to giants in properties
                 components.subKey = "giants";
             }
-            else if (spectralType.find("IV-V") != string::npos) {
+            else if (upperType.find("IV-V") != string::npos ||
+                     upperType.find("IV/V") != string::npos) {
                 components.subKey = "dwarfs";
             }
-            else if (spectralType.find("IV") != string::npos) {
-                components.subKey = "subgiants";
+            else if (upperType.find("IV") != string::npos) {
+                // Subgiants grouped with giants
+                components.subKey = "giants";
             }
-            else if (spectralType.find("V") != string::npos) {
+            else if (upperType.find("V") != string::npos ||
+                     upperType.find("VI") != string::npos ||
+                     upperType.find("VII") != string::npos) {
                 components.subKey = "dwarfs";
-            }
-            else if (spectralType.find("VI") != string::npos) {
-                components.subKey = "subdwarfs";
-            }
-            else if (spectralType.find("VII") != string::npos) {
-                components.subKey = "white dwarfs";
             }
 
-            //ofLogNotice("parseSpectralType") << "Input: " << spectralType
-              //                              << " -> Class: " << components.classKey
-                //                            << ", SubKey: " << components.subKey;
+            // Handle shell stars and peculiar cases
+            if (upperType.find("SHELL") != string::npos) {
+                if (components.subKey == "default") {
+                    components.subKey = "dwarfs";  // Shell stars are often main sequence
+                }
+            }
+
+            // If still no luminosity class found, use some reasonable defaults
+            if (components.subKey == "default") {
+                if (components.classKey == "G" ||
+                    components.classKey == "K" ||
+                    components.classKey == "M") {
+                    components.subKey = "dwarfs";  // These are typically dwarfs if unspecified
+                }
+                // For early type stars (O, B, A), keep as "default" to use general description
+            }
 
             return components;
         }
@@ -336,14 +391,14 @@
 
             // Preparem tots els replacements
             map<string, string> replacements;
-            replacements["STAR_NAME"] = starNameIn.get();
+            replacements["STAR_NAME"] = processStarName(starNameIn.get(), lang);
             replacements["CONSTELLATION"] = constellationIn.get();
             replacements["COLOR"] = NarrativeManager::getInstance().getColorDescription(bvColorIn.get(), lang);
-            replacements["DISTANCE"] = formatNumber(parallaxToLightYears(parallaxIn.get()), 1);
+            replacements["DISTANCE"] = formatNumber(parallaxToLightYears(parallaxIn.get()), 1,lang);
             replacements["MULTIPLE_COUNT"] = ofToString(multipleCountIn.get());
-            replacements["MAGNITUDE"] = formatNumber(magnitudeIn.get(), 2);
+            replacements["MAGNITUDE"] = formatNumber(magnitudeIn.get(), 2, lang);
             replacements["STAR_TYPE"] = starType;  // Usem el tipus que hem processat abans
-            replacements["MASS"] = formatNumber(sunXIn.get(), 2);
+            replacements["MASS"] = formatNumber(sunXIn.get(), 2,lang);
 
             // Debug dels valors
             for(const auto& [key, value] : replacements) {
@@ -374,6 +429,19 @@
                 }
             }
             return string::npos; // No matching brace found
+        }
+        
+        string processStarName(const string& starName, const string& language) {
+            // Check if it starts with "HD "
+            if (starName.substr(0, 3) == "HD ") {
+                string number = starName.substr(3); // Get the number part
+                if (language == "ca") {
+                    return "hac dé " + number;
+                } else { // en
+                    return "hache de " + number;
+                }
+            }
+            return starName;
         }
 
         string processTemplate(string text, const map<string, string>& replacements) {
@@ -465,32 +533,41 @@
 
 
 
-        string formatNumber(float number, int precision) {
-            // Converteix el número a string amb la precisió especificada
-            string numStr = ofToString(number, precision);
+        string formatNumber(float number, int precision, const string& lang) {
+            // Check if it's a magnitude that needs the minus/menys prefix
+            bool isNegative = number < 0;
+            string numStr = ofToString(abs(number), precision); // Use absolute value
 
-            // Troba la posició del punt decimal
+            // Find the position of the decimal point
             size_t decimalPos = numStr.find('.');
             if (decimalPos != string::npos) {
-                // Si el primer decimal després del punt és un zero, elimina el decimal
+                // If the first decimal after the point is a zero, eliminate the decimal
                 if (numStr[decimalPos + 1] == '0') {
-                    numStr = numStr.substr(0, decimalPos); // Retorna només la part sencera
+                    numStr = numStr.substr(0, decimalPos); // Return only the integer part
                 } else if (precision > 1) {
-                    // Manté només el primer decimal i elimina els restants
-                    numStr = numStr.substr(0, decimalPos + 2); // Fins a la primera xifra decimal
+                    // Keep only the first decimal and eliminate the restants
+                    numStr = numStr.substr(0, decimalPos + 2);
                 }
             }
 
-            // Substitueix el separador decimal segons l'idioma
-            if (languageParam.get() == 0) { // Català
+            // Add language-specific prefix for negative numbers
+            if (isNegative) {
+                if (lang == "ca") {
+                    numStr = "menys " + numStr;
+                } else { // en
+                    numStr = "minus " + numStr;
+                }
+            }
+
+            // Replace decimal separator according to language
+            if (lang == "ca") {
                 ofStringReplace(numStr, ".", " coma ");
-            } else if (languageParam.get() == 1) { // Anglès
+            } else { // en
                 ofStringReplace(numStr, ".", " point ");
             }
 
             return numStr;
         }
-
 
         ofParameter<float> parallaxIn;
             ofParameter<float> magnitudeIn;
