@@ -105,6 +105,8 @@
 #include "jazzStandards.h"
 #include "chordProgressions.h"
 #include "vectorFile.h"
+#include "snapshotServer.h"
+#include "snapshotClient.h"
 
 
 //#include "spectrumLines.h"
@@ -217,6 +219,8 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<jazzStandards>("Santi/Pitch");
     o.registerModel<chordProgressions>("Santi/Pitch");
     o.registerModel<vectorFile>("Santi/Vectors");
+    o.registerModel<snapshotServer>("Santi/Snapshots");
+    o.registerModel<snapshotClient>("Santi/Snapshots");
     
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
