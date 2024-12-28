@@ -44,14 +44,14 @@ public:
     // Save client UUID with preset
     void presetSave(ofJson &json) override {
         json["client_uuid"] = clientUUID;
-        ofLogNotice("SnapshotClient") << "Saving client UUID: " << clientUUID;
+        //ofLogNotice("SnapshotClient") << "Saving client UUID: " << clientUUID;
     }
     
     // Load client UUID before other parameters
     void presetRecallBeforeSettingParameters(ofJson &json) override {
         if(json.contains("client_uuid")) {
             clientUUID = json["client_uuid"];
-            ofLogNotice("SnapshotClient") << "Restored client UUID: " << clientUUID;
+            //ofLogNotice("SnapshotClient") << "Restored client UUID: " << clientUUID;
         }
     }
     
@@ -80,13 +80,30 @@ private:
             if(sourceParam.valueType() == typeid(vector<float>).name()) {
                 auto vecValue = sourceParam.cast<vector<float>>().getParameter().get();
                 response.value = ofJson(vecValue);
-                ofLogNotice("SnapshotClient") << "Saving vector value: " << response.value.dump();
+                //ofLogNotice("SnapshotClient") << "Saving vector float value: " << response.value.dump();
                 ofNotifyEvent(saveResponseEvent, response);
             }
             else if(sourceParam.valueType() == typeid(float).name()) {
                 auto floatValue = sourceParam.cast<float>().getParameter().get();
                 response.value = ofJson(vector<float>{floatValue}); // Convert to vector<float> for consistency
-                ofLogNotice("SnapshotClient") << "Saving float value: " << response.value.dump();
+                //ofLogNotice("SnapshotClient") << "Saving float value: " << response.value.dump();
+                ofNotifyEvent(saveResponseEvent, response);
+            }
+            else if(sourceParam.valueType() == typeid(vector<int>).name()) {
+                auto vecValue = sourceParam.cast<vector<int>>().getParameter().get();
+                vector<float> floatVec;
+                floatVec.reserve(vecValue.size());
+                for(auto val : vecValue) {
+                    floatVec.push_back(static_cast<float>(val));
+                }
+                response.value = ofJson(floatVec);
+                //ofLogNotice("SnapshotClient") << "Saving vector int value: " << response.value.dump();
+                ofNotifyEvent(saveResponseEvent, response);
+            }
+            else if(sourceParam.valueType() == typeid(int).name()) {
+                auto intValue = sourceParam.cast<int>().getParameter().get();
+                response.value = ofJson(vector<float>{static_cast<float>(intValue)});
+                //ofLogNotice("SnapshotClient") << "Saving int value: " << response.value.dump();
                 ofNotifyEvent(saveResponseEvent, response);
             }
             else {
@@ -106,10 +123,43 @@ private:
     
     void handleRetrieveEvent(RetrieveEvent &e) {
         if(e.clientUUID == clientUUID && serverUUIDs[serverSelector] == e.serverUUID) {
-            auto &param = outputParam->cast<vector<float>>();
-            vector<float> vecValue = e.value;
-            param.getParameter() = vecValue;
-            ofLogNotice("SnapshotClient") << "Retrieved value for " << e.parameterPath;
+            vector<float> floatVec = e.value;
+            
+            // Get the connected input type to know how to convert the output
+            if(!inputParam->hasInConnection()) {
+                outputParam->cast<vector<float>>().getParameter() = floatVec;
+                return;
+            }
+            
+            auto inConnection = inputParam->getInConnection();
+            if(inConnection == nullptr) {
+                outputParam->cast<vector<float>>().getParameter() = floatVec;
+                return;
+            }
+            
+            auto &sourceParam = inConnection->getSourceParameter();
+            string sourceType = sourceParam.valueType();
+            
+            // Convert output based on the input type
+            if(sourceType == typeid(float).name()) {
+                outputParam->cast<vector<float>>().getParameter() = vector<float>{floatVec[0]};
+            }
+            else if(sourceType == typeid(int).name()) {
+                outputParam->cast<vector<float>>().getParameter() = vector<float>{static_cast<float>(static_cast<int>(floatVec[0]))};
+            }
+            else if(sourceType == typeid(vector<int>).name()) {
+                vector<float> roundedVec;
+                roundedVec.reserve(floatVec.size());
+                for(auto val : floatVec) {
+                    roundedVec.push_back(static_cast<float>(static_cast<int>(val)));
+                }
+                outputParam->cast<vector<float>>().getParameter() = roundedVec;
+            }
+            else {
+                outputParam->cast<vector<float>>().getParameter() = floatVec;
+            }
+            
+            //ofLogNotice("SnapshotClient") << "Retrieved value for " << e.parameterPath;
         }
     }
     
@@ -125,7 +175,7 @@ private:
                 if(server) {
                     newServerUUIDs.push_back(server->getUUID());
                     newServerNames.push_back(server->getName());
-                    ofLogNotice("SnapshotClient") << "Found server: " << server->getName();
+                    //ofLogNotice("SnapshotClient") << "Found server: " << server->getName();
                 }
             }
         }
@@ -144,7 +194,7 @@ private:
         // Update dropdown options
         if(serverParam) {
             serverParam->setDropdownOptions(serverNames);
-            ofLogNotice("SnapshotClient") << "Updated server list with " << serverNames.size() << " servers";
+            //ofLogNotice("SnapshotClient") << "Updated server list with " << serverNames.size() << " servers";
         }
     }
     
@@ -161,8 +211,8 @@ private:
         ofParameter<T> param;
         if constexpr (std::is_same_v<T, vector<float>>) {
             vector<float> defaultVec(1, 0.0f);
-            vector<float> minVec(1, 0.0f);
-            vector<float> maxVec(1, 1.0f);
+            vector<float> minVec(1, -FLT_MAX);
+            vector<float> maxVec(1, FLT_MAX);
             param.set("Input", defaultVec, minVec, maxVec);
         } else {
             param.set("Input", T(), T(), T());
@@ -175,8 +225,8 @@ private:
         ofParameter<T> param;
         if constexpr (std::is_same_v<T, vector<float>>) {
             vector<float> defaultVec(1, 0.0f);
-            vector<float> minVec(1, 0.0f);
-            vector<float> maxVec(1, 1.0f);
+            vector<float> minVec(1, -FLT_MAX);
+            vector<float> maxVec(1, FLT_MAX);
             param.set("Output", defaultVec, minVec, maxVec);
         } else {
             param.set("Output", T(), T(), T());
