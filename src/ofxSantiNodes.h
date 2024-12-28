@@ -107,6 +107,7 @@
 #include "vectorFile.h"
 #include "snapshotServer.h"
 #include "snapshotClient.h"
+#include "constellations.h"
 
 
 //#include "spectrumLines.h"
@@ -221,6 +222,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<vectorFile>("Santi/Vectors");
     o.registerModel<snapshotServer>("Santi/Snapshots");
     o.registerModel<snapshotClient>("Santi/Snapshots");
+    o.registerModel<constellations>("Santi/Stars");
     
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
