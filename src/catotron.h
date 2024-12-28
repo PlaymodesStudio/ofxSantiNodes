@@ -36,7 +36,7 @@ public:
             }
             
             addParameter(inputText.set("Text", ""));
-            addParameter(outputPath.set("Out Path", ""));
+            addOutputParameter(outputPath.set("Out Path", ""));
             addParameter(playButton.set("Play"));
             addParameter(writeButton.set("Write"));
             addParameter(containerActive.set("Docker", false));
@@ -286,6 +286,7 @@ private:
             
             if(result == 0) {
                 lastGeneratedFile.set(outputFile);
+                outputPath.set(outputFile);
                 ofLogNotice("Catotron") << "File saved: " + outputFile;
                 return true;
             } else {
