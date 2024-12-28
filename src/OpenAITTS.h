@@ -27,6 +27,10 @@ public:
     void setup() {
         description = "Text-to-Speech node using OpenAI's API. Generates natural sounding speech.";
         
+        // Add voice selection dropdown
+        vector<string> voiceOptions = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"};
+        addParameterDropdown(selectedVoice, "Voice", 4, voiceOptions); // Default to 'nova' (index 4)
+        
         addParameter(inputText.set("Text", ""));
         addParameter(writeButton.set("Write"));
         addParameter(lastGeneratedFile.set("File", ""));
@@ -104,9 +108,13 @@ private:
                 string escapedText = inputText.get();
                 ofStringReplace(escapedText, "'", "'\"'\"'");
                 
-                // Execute Python script with explicit response_format="wav"
+                // Get the selected voice option
+                vector<string> voiceOptions = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"};
+                string selectedVoiceStr = voiceOptions[selectedVoice];
+                
+                // Execute Python script with explicit response_format="wav" and selected voice
                 string pythonCmd = "PYTHONPATH=\"" + pythonSitePackages + "\" " +
-                                 "\"" + pythonBin + "\" \"" + pythonPath + "\" '" + escapedText + "' \"" + tempFile + "\" wav 2>&1";
+                                 "\"" + pythonBin + "\" \"" + pythonPath + "\" '" + escapedText + "' \"" + tempFile + "\" wav \"" + selectedVoiceStr + "\" 2>&1";
                 
                 ofLogNotice("OpenAITTS") << "Executing command: " << pythonCmd;
                 string pythonOutput = executeCommand(pythonCmd);
@@ -167,19 +175,20 @@ private:
         }
 
     ofParameter<string> inputText;
-        ofParameter<void> writeButton;
-        ofParameter<string> lastGeneratedFile;
-        ofParameter<int> trigger;
+    ofParameter<void> writeButton;
+    ofParameter<string> lastGeneratedFile;
+    ofParameter<int> trigger;
+    ofParameter<int> selectedVoice;  // New parameter for voice selection
         
-        bool writeInProgress;
-        std::future<bool> writeFuture;
-        string pythonPath;
-        string soxPath;
-        string pythonBin;
-        string pythonSitePackages;
-        int triggerCounter;
+    bool writeInProgress;
+    std::future<bool> writeFuture;
+    string pythonPath;
+    string soxPath;
+    string pythonBin;
+    string pythonSitePackages;
+    int triggerCounter;
         
-        ofEventListeners listeners;
+    ofEventListeners listeners;
 };
 
 #endif /* OpenAITTS_h */
