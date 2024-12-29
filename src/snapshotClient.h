@@ -10,23 +10,26 @@ public:
     snapshotClient() : ofxOceanodeNodeModel("Snapshot Client") {
         color = ofColor::cyan;
         
-        // Initialize UUID
-        clientUUID = ofToString(ofRandomuf());
+        // Initialize with empty server list
+        serverNames = {"No Servers"};
+        serverParam = addParameterDropdown(serverSelector, "Server", 0, serverNames);
         
         // Create separate input and output parameters
         inputParam = createInputParam<vector<float>>();
         outputParam = createOutputParam<vector<float>>();
         
-        // Initialize with empty server list
-        serverNames = {"No Servers"};
-        serverParam = addParameterDropdown(serverSelector, "Server", 0, serverNames);
+        selectedServerName = "";
     }
     
     void setup() override {
-        description = "Client node for parameter snapshots";
-        addEventListeners();
-        refreshServerList();
-    }
+           description = "Client node for parameter snapshots";
+           
+           // Generate deterministic UUID based on node name and number
+           generateUUID();
+           
+           addEventListeners();
+           refreshServerList();
+       }
     
     void presetHasLoaded() override {
         refreshServerList();
@@ -43,74 +46,101 @@ public:
     
     // Save client UUID with preset
     void presetSave(ofJson &json) override {
-        json["client_uuid"] = clientUUID;
-        //ofLogNotice("SnapshotClient") << "Saving client UUID: " << clientUUID;
-    }
+            json["server_name"] = selectedServerName;
+            json["client_uuid"] = clientUUID;
+        }
     
     // Load client UUID before other parameters
-    void presetRecallBeforeSettingParameters(ofJson &json) override {
-        if(json.contains("client_uuid")) {
-            clientUUID = json["client_uuid"];
-            //ofLogNotice("SnapshotClient") << "Restored client UUID: " << clientUUID;
+    void presetRecallAfterSettingParameters(ofJson &json) override {
+            if(json.contains("server_name")) {
+                string savedServerName = json["server_name"];
+                // Find the server by name in our current list
+                for(size_t i = 0; i < serverNames.size(); i++) {
+                    if(serverNames[i] == savedServerName) {
+                        serverSelector = i;
+                        selectedServerName = savedServerName;
+                        break;
+                    }
+                }
+            }
+            
+            if(json.contains("client_uuid")) {
+                clientUUID = json["client_uuid"];
+            }
+            
+            refreshServerList();
         }
-    }
     
 private:
-    void addEventListeners() {
-        listeners.unsubscribeAll(); // Clear any existing listeners first
-        listeners.push(serverEvent.newListener(this, &snapshotClient::serverListChanged));
-        listeners.push(serverNameEvent.newListener(this, &snapshotClient::serverNameChanged));
-        listeners.push(saveRequestEvent.newListener(this, &snapshotClient::handleSaveRequest));
-        listeners.push(retrieveEvent.newListener(this, &snapshotClient::handleRetrieveEvent));
-    }
-    
-    void handleSaveRequest(SaveEvent &e) {
-        if(!serverParam || serverSelector.get() >= serverUUIDs.size()) return;
-        
-        if(serverUUIDs[serverSelector] == e.serverUUID) {
-            SaveResponse response;
-            response.clientUUID = clientUUID;
-            response.parameterPath = getConnectedParameterPath();
-            
-            if(!inputParam->hasInConnection()) return;
-            auto inConnection = inputParam->getInConnection();
-            if(inConnection == nullptr) return;
-            
-            auto &sourceParam = inConnection->getSourceParameter();
-            if(sourceParam.valueType() == typeid(vector<float>).name()) {
-                auto vecValue = sourceParam.cast<vector<float>>().getParameter().get();
-                response.value = ofJson(vecValue);
-                //ofLogNotice("SnapshotClient") << "Saving vector float value: " << response.value.dump();
-                ofNotifyEvent(saveResponseEvent, response);
-            }
-            else if(sourceParam.valueType() == typeid(float).name()) {
-                auto floatValue = sourceParam.cast<float>().getParameter().get();
-                response.value = ofJson(vector<float>{floatValue}); // Convert to vector<float> for consistency
-                //ofLogNotice("SnapshotClient") << "Saving float value: " << response.value.dump();
-                ofNotifyEvent(saveResponseEvent, response);
-            }
-            else if(sourceParam.valueType() == typeid(vector<int>).name()) {
-                auto vecValue = sourceParam.cast<vector<int>>().getParameter().get();
-                vector<float> floatVec;
-                floatVec.reserve(vecValue.size());
-                for(auto val : vecValue) {
-                    floatVec.push_back(static_cast<float>(val));
-                }
-                response.value = ofJson(floatVec);
-                //ofLogNotice("SnapshotClient") << "Saving vector int value: " << response.value.dump();
-                ofNotifyEvent(saveResponseEvent, response);
-            }
-            else if(sourceParam.valueType() == typeid(int).name()) {
-                auto intValue = sourceParam.cast<int>().getParameter().get();
-                response.value = ofJson(vector<float>{static_cast<float>(intValue)});
-                //ofLogNotice("SnapshotClient") << "Saving int value: " << response.value.dump();
-                ofNotifyEvent(saveResponseEvent, response);
-            }
-            else {
-                ofLogNotice("SnapshotClient") << "Unsupported parameter type: " << sourceParam.valueType();
+    void serverChanged(int &index) {
+            if(index >= 0 && index < serverNames.size()) {
+                selectedServerName = serverNames[index];
+                generateUUID();
             }
         }
-    }
+    
+    void generateUUID() {
+            string groupName = getParameterGroup().getName();
+            string idStr = ofSplitString(groupName, " ").back();
+            
+            if(selectedServerName.empty()) {
+                selectedServerName = "no_server";
+            }
+            
+            clientUUID = "client_" + idStr + "_" + selectedServerName;
+        }
+    
+    
+    
+    void addEventListeners() {
+            listeners.unsubscribeAll(); // Clear any existing listeners first
+            listeners.push(serverEvent.newListener(this, &snapshotClient::serverListChanged));
+            listeners.push(serverNameEvent.newListener(this, &snapshotClient::serverNameChanged));
+            listeners.push(saveRequestEvent.newListener(this, &snapshotClient::handleSaveRequest));
+            listeners.push(retrieveEvent.newListener(this, &snapshotClient::handleRetrieveEvent));
+            listeners.push(serverSelector.newListener(this, &snapshotClient::serverChanged));
+        }
+    
+    void handleSaveRequest(SaveEvent &e) {
+            if(!serverParam || serverSelector.get() >= serverUUIDs.size()) return;
+            
+            if(serverUUIDs[serverSelector] == e.serverUUID) {
+                SaveResponse response;
+                response.clientUUID = clientUUID;
+                response.parameterPath = getConnectedParameterPath();
+                
+                if(!inputParam->hasInConnection()) return;
+                auto inConnection = inputParam->getInConnection();
+                if(inConnection == nullptr) return;
+                
+                auto &sourceParam = inConnection->getSourceParameter();
+                
+                // Handle different parameter types while preserving original values
+                if(sourceParam.valueType() == typeid(vector<float>).name()) {
+                    auto vecValue = sourceParam.cast<vector<float>>().getParameter().get();
+                    response.value = ofJson(vecValue);
+                }
+                else if(sourceParam.valueType() == typeid(float).name()) {
+                    float floatValue = sourceParam.cast<float>().getParameter().get();
+                    response.value = ofJson(vector<float>{floatValue}); // Store single float as single-element vector
+                }
+                else if(sourceParam.valueType() == typeid(vector<int>).name()) {
+                    auto vecValue = sourceParam.cast<vector<int>>().getParameter().get();
+                    vector<float> floatVec;
+                    floatVec.reserve(vecValue.size());
+                    for(auto val : vecValue) {
+                        floatVec.push_back(static_cast<float>(val));
+                    }
+                    response.value = ofJson(floatVec);
+                }
+                else if(sourceParam.valueType() == typeid(int).name()) {
+                    int intValue = sourceParam.cast<int>().getParameter().get();
+                    response.value = ofJson(vector<float>{static_cast<float>(intValue)});
+                }
+                
+                ofNotifyEvent(saveResponseEvent, response);
+            }
+        }
     
     string getConnectedParameterPath() {
         if(!inputParam->hasInConnection()) return "";
@@ -122,46 +152,47 @@ private:
     }
     
     void handleRetrieveEvent(RetrieveEvent &e) {
-        if(e.clientUUID == clientUUID && serverUUIDs[serverSelector] == e.serverUUID) {
-            vector<float> floatVec = e.value;
-            
-            // Get the connected input type to know how to convert the output
-            if(!inputParam->hasInConnection()) {
-                outputParam->cast<vector<float>>().getParameter() = floatVec;
-                return;
-            }
-            
-            auto inConnection = inputParam->getInConnection();
-            if(inConnection == nullptr) {
-                outputParam->cast<vector<float>>().getParameter() = floatVec;
-                return;
-            }
-            
-            auto &sourceParam = inConnection->getSourceParameter();
-            string sourceType = sourceParam.valueType();
-            
-            // Convert output based on the input type
-            if(sourceType == typeid(float).name()) {
-                outputParam->cast<vector<float>>().getParameter() = vector<float>{floatVec[0]};
-            }
-            else if(sourceType == typeid(int).name()) {
-                outputParam->cast<vector<float>>().getParameter() = vector<float>{static_cast<float>(static_cast<int>(floatVec[0]))};
-            }
-            else if(sourceType == typeid(vector<int>).name()) {
-                vector<float> roundedVec;
-                roundedVec.reserve(floatVec.size());
-                for(auto val : floatVec) {
-                    roundedVec.push_back(static_cast<float>(static_cast<int>(val)));
+            if(e.clientUUID == clientUUID && serverUUIDs[serverSelector] == e.serverUUID) {
+                vector<float> floatVec = e.value;
+                
+                // Get the connected input type to know how to convert the output
+                if(!inputParam->hasInConnection()) {
+                    // If no input connection, pass through the raw values
+                    outputParam->cast<vector<float>>().getParameter() = floatVec;
+                    return;
                 }
-                outputParam->cast<vector<float>>().getParameter() = roundedVec;
+                
+                auto inConnection = inputParam->getInConnection();
+                if(inConnection == nullptr) {
+                    outputParam->cast<vector<float>>().getParameter() = floatVec;
+                    return;
+                }
+                
+                auto &sourceParam = inConnection->getSourceParameter();
+                string sourceType = sourceParam.valueType();
+                
+                // Convert output based on the input type while preserving original values
+                if(sourceType == typeid(float).name()) {
+                    // For single float, use the first value from the vector without normalization
+                    outputParam->cast<vector<float>>().getParameter() = vector<float>{floatVec[0]};
+                }
+                else if(sourceType == typeid(int).name()) {
+                    outputParam->cast<vector<float>>().getParameter() = vector<float>{round(floatVec[0])};
+                }
+                else if(sourceType == typeid(vector<int>).name()) {
+                    vector<float> roundedVec;
+                    roundedVec.reserve(floatVec.size());
+                    for(auto val : floatVec) {
+                        roundedVec.push_back(round(val));
+                    }
+                    outputParam->cast<vector<float>>().getParameter() = roundedVec;
+                }
+                else {
+                    // For vector<float> or unknown types, pass through the values directly
+                    outputParam->cast<vector<float>>().getParameter() = floatVec;
+                }
             }
-            else {
-                outputParam->cast<vector<float>>().getParameter() = floatVec;
-            }
-            
-            //ofLogNotice("SnapshotClient") << "Retrieved value for " << e.parameterPath;
         }
-    }
     
     void refreshServerList() {
         vector<snapshotServer*> servers;
@@ -238,13 +269,15 @@ private:
     
 private:
     string clientUUID;
-    ofParameter<int> serverSelector;
-    shared_ptr<ofxOceanodeParameter<int>> serverParam;
-    shared_ptr<ofxOceanodeParameter<vector<float>>> inputParam;
-    shared_ptr<ofxOceanodeParameter<vector<float>>> outputParam;
-    vector<string> serverUUIDs;
-    vector<string> serverNames;
-    ofEventListeners listeners;
+        ofParameter<int> serverSelector;
+        shared_ptr<ofxOceanodeParameter<int>> serverParam;
+        shared_ptr<ofxOceanodeParameter<vector<float>>> inputParam;
+        shared_ptr<ofxOceanodeParameter<vector<float>>> outputParam;
+        vector<string> serverUUIDs;
+        vector<string> serverNames;
+        string selectedServerName;
+        ofEventListeners listeners;
+
 };
 
 #endif

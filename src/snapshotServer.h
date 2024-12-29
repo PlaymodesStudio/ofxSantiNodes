@@ -70,11 +70,21 @@ public:
     }
     
     void presetRecallAfterSettingParameters(ofJson &json) override {
-        if(json.contains("snapshot_data")) {
-            snapshotData = json["snapshot_data"];
-            //ofLogNotice("SnapshotServer") << "Loaded snapshot data: " << snapshotData.dump(2);
+            if(json.contains("snapshot_data")) {
+                snapshotData = json["snapshot_data"];
+            }
+            if(json.contains("server_name")) {
+                serverName = json["server_name"];
+            }
+            
+            // Announce server presence after loading
+            ServerEvent e = {serverUUID, true};
+            ofNotifyEvent(serverEvent, e);
+            
+            // Announce name
+            NameEvent nameEvt = {serverUUID, serverName};
+            ofNotifyEvent(serverNameEvent, nameEvt);
         }
-    }
     
 private:
     void addEventListeners() {
