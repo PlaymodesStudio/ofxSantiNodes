@@ -6,32 +6,37 @@
 class snapshotServer;
 
 struct ServerEvent {
-    string uuid;
-    bool active;
+   string uuid;
+   string macroContext;
+   bool active;
 };
 
 struct NameEvent {
-    string uuid;
-    string name;
+   string uuid;
+   string macroContext;
+   string name;
 };
 
 struct SaveEvent {
-    string serverUUID;
-    int slot;
+   string serverUUID;
+   string macroContext;
+   int slot;
 };
 
 struct SaveResponse {
-    string clientUUID;
-    string parameterPath;
-    ofJson value;
+   string clientUUID;
+   string macroContext;
+   string parameterPath;
+   ofJson value;
 };
 
 struct RetrieveEvent {
-    string serverUUID;
-    int slot;
-    string clientUUID;
-    string parameterPath;
-    ofJson value;
+   string serverUUID;
+   string macroContext;
+   int slot;
+   string clientUUID;
+   string parameterPath;
+   ofJson value;
 };
 
 static ofEvent<ServerEvent> serverEvent;

@@ -16,15 +16,14 @@ public:
         addParameter(slot.set("Snapshot", 0, 0, 127));
         addParameter(addButton.set("Add"));
         addParameter(replaceButton.set("Replace"));
-        
-        //ofLogNotice("SnapshotServer") << "Created server with UUID: " << serverUUID;
     }
     
     void setup() override {
         description = "Server node for storing/retrieving parameter snapshots";
+        macroContext = getParents(); // Will be empty string if not in macro
         
-        // Announce server existence
-        ServerEvent e = {serverUUID, true};
+        // Announce server existence - if no macro context, maintain global visibility
+        ServerEvent e = {serverUUID, macroContext, true};
         ofNotifyEvent(serverEvent, e);
         
         addEventListeners();
@@ -32,7 +31,7 @@ public:
     
     void presetHasLoaded() override {
         // Re-announce server and setup listeners
-        ServerEvent e = {serverUUID, true};
+        ServerEvent e = {serverUUID, macroContext, true};
         ofNotifyEvent(serverEvent, e);
         addEventListeners();
     }
@@ -41,13 +40,13 @@ public:
         listeners.unsubscribeAll();
         
         // Announce server deactivation
-        ServerEvent e = {serverUUID, false};
+        ServerEvent e = {serverUUID, macroContext, false};
         ofNotifyEvent(serverEvent, e);
     }
     
     void activate() override {
         // Re-announce server and setup listeners
-        ServerEvent e = {serverUUID, true};
+        ServerEvent e = {serverUUID, macroContext, true};
         ofNotifyEvent(serverEvent, e);
         addEventListeners();
     }
@@ -59,32 +58,34 @@ public:
         json["snapshot_data"] = snapshotData;
         json["server_uuid"] = serverUUID;
         json["server_name"] = serverName.get();
-        //ofLogNotice("SnapshotServer") << "Saving preset with data: " << snapshotData.dump(2);
+        json["macro_context"] = macroContext;
     }
     
     void presetRecallBeforeSettingParameters(ofJson &json) override {
         if(json.contains("server_uuid")) {
             serverUUID = json["server_uuid"];
-            //ofLogNotice("SnapshotServer") << "Restored server UUID: " << serverUUID;
+        }
+        if(json.contains("macro_context")) {
+            macroContext = json["macro_context"];
         }
     }
     
     void presetRecallAfterSettingParameters(ofJson &json) override {
-            if(json.contains("snapshot_data")) {
-                snapshotData = json["snapshot_data"];
-            }
-            if(json.contains("server_name")) {
-                serverName = json["server_name"];
-            }
-            
-            // Announce server presence after loading
-            ServerEvent e = {serverUUID, true};
-            ofNotifyEvent(serverEvent, e);
-            
-            // Announce name
-            NameEvent nameEvt = {serverUUID, serverName};
-            ofNotifyEvent(serverNameEvent, nameEvt);
+        if(json.contains("snapshot_data")) {
+            snapshotData = json["snapshot_data"];
         }
+        if(json.contains("server_name")) {
+            serverName = json["server_name"];
+        }
+        
+        // Announce server presence after loading
+        ServerEvent e = {serverUUID, macroContext, true};
+        ofNotifyEvent(serverEvent, e);
+        
+        // Announce name
+        NameEvent nameEvt = {serverUUID, macroContext, serverName};
+        ofNotifyEvent(serverNameEvent, nameEvt);
+    }
     
 private:
     void addEventListeners() {
@@ -108,71 +109,61 @@ private:
 
     void onAdd() {
         int newSlot = findFirstAvailableSlot();
-        slot = newSlot; // This will trigger onSlotChanged, but with empty data
-        //ofLogNotice("SnapshotServer") << "Adding new snapshot in slot " << newSlot;
-        SaveEvent saveEvent = {serverUUID, newSlot};
+        slot = newSlot;
+        SaveEvent saveEvent = {serverUUID, macroContext, newSlot};
         ofNotifyEvent(saveRequestEvent, saveEvent);
     }
 
     void onReplace() {
-        //ofLogNotice("SnapshotServer") << "Replacing slot " << slot;
-        SaveEvent saveEvent = {serverUUID, slot};
+        SaveEvent saveEvent = {serverUUID, macroContext, slot};
         ofNotifyEvent(saveRequestEvent, saveEvent);
     }
     
     void onSlotChanged(int &newSlot) {
-        // Load the new slot automatically
         onRetrieve();
     }
     
     void onRetrieve() {
         string slotKey = ofToString(slot.get());
-        //ofLogNotice("SnapshotServer") << "Retrieving slot " << slotKey;
         
         if(snapshotData.contains(slotKey)) {
             auto slotData = snapshotData[slotKey];
             for(auto it = slotData.begin(); it != slotData.end(); ++it) {
                 RetrieveEvent e;
                 e.serverUUID = serverUUID;
+                e.macroContext = macroContext;
                 e.slot = slot;
                 e.clientUUID = it.key();
                 e.parameterPath = it.value()["path"];
                 e.value = it.value()["value"];
                 ofNotifyEvent(retrieveEvent, e);
-                //ofLogNotice("SnapshotServer") << "Sending retrieve event for client: " << e.clientUUID;
             }
-        } else {
-            //ofLogNotice("SnapshotServer") << "No data found for slot " << slotKey;
         }
     }
     
     void handleSaveResponse(SaveResponse &response) {
-        string slotKey = ofToString(slot);
-        //ofLogNotice("SnapshotServer") << "Handling save response from client: " << response.clientUUID;
-        //ofLogNotice("SnapshotServer") << "Path: " << response.parameterPath;
-        //ofLogNotice("SnapshotServer") << "Value: " << response.value;
+        // Only handle responses from same macro context
+        if(response.macroContext != macroContext) return;
         
+        string slotKey = ofToString(slot);
         snapshotData[slotKey][response.clientUUID] = {
             {"path", response.parameterPath},
             {"value", response.value}
         };
-        
-        //ofLogNotice("SnapshotServer") << "Updated snapshot data: " << snapshotData.dump(2);
     }
     
     void nameChanged(string &newName) {
-        NameEvent e = {serverUUID, newName};
+        NameEvent e = {serverUUID, macroContext, newName};
         ofNotifyEvent(serverNameEvent, e);
-        //ofLogNotice("SnapshotServer") << "Name changed to: " << newName;
     }
     
     void getAllServers(vector<snapshotServer*>& servers) {
         servers.push_back(this);
-        //ofLogNotice("SnapshotServer") << "Responding to get servers request";
     }
     
 private:
     mutable string serverUUID;
+    string macroContext;
     ofParameter<string> serverName;
     ofParameter<int> slot;
     ofParameter<void> addButton;
