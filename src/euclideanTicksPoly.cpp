@@ -55,28 +55,34 @@ void euclideanTicksPoly::calculate() {
     std::vector<float> gatesOutVector(maxSize, 0.0f);
 
     for(size_t i = 0; i < maxSize; i++) {
-        int length = lengthVal[i];
-        int onsets = std::min(onsetsVal[i], length);
-        int offset = offsetVal[i];
-        int inCount = (inCountVal[i] + offset) % length;
-        int onsetmod = onsetsVal[i];
+            int length = std::max(lengthVal[i], 1);  // Ensure length is at least 1
+            int onsets = std::min(onsetsVal[i], length);
+            int offset = offsetVal[i];
+            int inCount = length > 0 ? (inCountVal[i] + offset) % length : 0;
+            int onsetmod = std::max(onsetsVal[i], 1);  // Ensure onsetmod is at least 1
 
-        std::vector<bool> rhythm(length, false);
-        for(int j = 0; j < onsets; j++) {
-            rhythm[(j * length) / onsets] = true;
-        }
+            std::vector<bool> rhythm(length, false);
+            
+            if (length > 0) {  // Only calculate rhythm if length is valid
+                for(int j = 0; j < onsets; j++) {
+                    int idx = (j * length) / onsets;
+                    if (idx >= 0 && idx < length) {  // Add bounds check
+                        rhythm[idx] = true;
+                    }
+                }
 
-        if (rhythm[inCount]) {
-            gatesOutVector[i] = 1.0f;
-            if (shouldResetNext) {
-                outCountVector[i] = 0;
-                shouldResetNext = false;  // Reset the flag
-            } else {
-                outCountVector[i] = (outCountVector[i] + 1) % onsetmod;
+                if (inCount >= 0 && inCount < length && rhythm[inCount]) {  // Add bounds check
+                    gatesOutVector[i] = 1.0f;
+                    if (shouldResetNext) {
+                        outCountVector[i] = 0;
+                        shouldResetNext = false;
+                    } else {
+                        outCountVector[i] = (outCountVector[i] + 1) % onsetmod;
+                    }
+                    tick.trigger();
+                }
             }
-            tick.trigger();  // Trigger the tick output
         }
-    }
 
     gatesOut = gatesOutVector;
     outCount = outCountVector;
