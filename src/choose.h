@@ -5,6 +5,7 @@
 #include <random>
 #include <algorithm>
 #include <numeric>
+#include <set>
 
 class choose : public ofxOceanodeNodeModel {
 public:
@@ -12,7 +13,8 @@ public:
         addParameter(input.set("Input", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
         addParameter(weights.set("Weights", {1.0f}, {0.0f}, {1.0f}));
         addParameter(trigger.set("Trigger", {0}, {0}, {1}));
-        addParameter(urn.set("Urn", false));
+        addParameter(urn.set("URN Seq", false));
+        addParameter(unique.set("Unique", false));
         addOutputParameter(output.set("Output", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
 
         listeners.push(trigger.newListener([this](vector<int> &t){
@@ -27,7 +29,6 @@ public:
             resetUrn();
         }));
 
-        // Initialize lastTrigger with the current trigger value
         lastTrigger = trigger.get();
     }
 
@@ -36,6 +37,7 @@ private:
     ofParameter<vector<float>> weights;
     ofParameter<vector<int>> trigger;
     ofParameter<bool> urn;
+    ofParameter<bool> unique;
     ofParameter<vector<float>> output;
 
     vector<int> lastTrigger;
@@ -53,15 +55,32 @@ private:
 
         vector<float> currentOutput = output.get();
         
-        // Ensure all vectors have the correct size
         size_t size = newTrigger.size();
         currentOutput.resize(size, 0.0f);
         lastTrigger.resize(size, 0);
         lastChosenIndices.resize(size, -1);
 
-        for (size_t i = 0; i < size; ++i) {
-            if (lastTrigger[i] == 0 && newTrigger[i] == 1) {
-                currentOutput[i] = chooseValue(i);
+        if (unique) {
+            // For unique selection, handle all triggered positions together
+            std::vector<size_t> triggeredPositions;
+            for (size_t i = 0; i < size; ++i) {
+                if (lastTrigger[i] == 0 && newTrigger[i] == 1) {
+                    triggeredPositions.push_back(i);
+                }
+            }
+
+            if (!triggeredPositions.empty()) {
+                auto uniqueValues = chooseUniqueValues(triggeredPositions.size());
+                for (size_t i = 0; i < triggeredPositions.size(); ++i) {
+                    currentOutput[triggeredPositions[i]] = uniqueValues[i];
+                }
+            }
+        } else {
+            // Original non-unique behavior
+            for (size_t i = 0; i < size; ++i) {
+                if (lastTrigger[i] == 0 && newTrigger[i] == 1) {
+                    currentOutput[i] = chooseValue(i);
+                }
             }
         }
 
@@ -69,7 +88,60 @@ private:
         lastTrigger = newTrigger;
     }
 
+    // New method to choose multiple unique values
+    vector<float> chooseUniqueValues(size_t count) {
+        vector<float> result;
+        count = std::min(count, input->size());  // Can't select more unique values than we have
+
+        if (urn) {
+            // In urn mode, just take the next 'count' values from the urn
+            if (urnIndex + count > urnSequence.size()) {
+                resetUrn();
+            }
+            for (size_t i = 0; i < count; ++i) {
+                result.push_back(input->at(urnSequence[urnIndex++]));
+            }
+        } else {
+            // For weighted selection, we'll need to modify the weights as we go
+            vector<float> availableIndices(input->size());
+            std::iota(availableIndices.begin(), availableIndices.end(), 0);
+            vector<float> currentWeights = weights->size() == 1 ?
+                vector<float>(input->size(), weights->front()) :
+                vector<float>(weights->begin(), weights->begin() + std::min(weights->size(), input->size()));
+
+            for (size_t i = 0; i < count; ++i) {
+                float weightSum = std::accumulate(currentWeights.begin(), currentWeights.end(), 0.0f);
+                if (weightSum == 0) {
+                    // If all weights are zero, use uniform distribution for remaining selections
+                    size_t remainingCount = availableIndices.size() - i;
+                    std::fill(currentWeights.begin(), currentWeights.end(), 1.0f / remainingCount);
+                    weightSum = 1.0f;
+                }
+
+                float r = dist(gen) * weightSum;
+                float cumulativeWeight = 0.0f;
+                size_t selectedIndex = availableIndices.back();  // Default to last element
+
+                for (size_t j = 0; j < availableIndices.size(); ++j) {
+                    cumulativeWeight += currentWeights[j];
+                    if (r <= cumulativeWeight) {
+                        selectedIndex = availableIndices[j];
+                        // Remove the selected index and its weight
+                        availableIndices.erase(availableIndices.begin() + j);
+                        currentWeights.erase(currentWeights.begin() + j);
+                        break;
+                    }
+                }
+
+                result.push_back(input->at(selectedIndex));
+            }
+        }
+
+        return result;
+    }
+
     float chooseValue(size_t index) {
+        // Original chooseValue method remains unchanged
         if (urn) {
             if (urnIndex >= urnSequence.size()) {
                 resetUrn();
@@ -77,9 +149,8 @@ private:
             
             int chosenIndex = urnSequence[urnIndex++];
             
-            // If it's the same as the last chosen index and there are other options, choose the next one
             if (chosenIndex == lastChosenIndices[index] && input->size() > 1) {
-                urnIndex %= urnSequence.size(); // Wrap around if necessary
+                urnIndex %= urnSequence.size();
                 chosenIndex = urnSequence[urnIndex++];
             }
             
@@ -113,7 +184,7 @@ private:
                 }
             }
             
-            return input->back(); // Fallback in case of rounding errors
+            return input->back();
         }
     }
 
