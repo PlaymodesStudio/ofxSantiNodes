@@ -9,9 +9,9 @@
 
 class TimeBetweenEvents : public ofxOceanodeNodeModel {
 public:
-    TimeBetweenEvents() : ofxOceanodeNodeModel("TimeBtwEv")
+    TimeBetweenEvents() : ofxOceanodeNodeModel("Time Passed")
     {
-        addParameter(input.set("Input", {0}, {0}, {1}));
+        addParameter(input.set("Input", {}, {0}, {1}));
         addParameter(verbose.set("Verbose",false));
         addOutputParameter(output.set("Output", 0, -FLT_MAX, FLT_MAX));
     
