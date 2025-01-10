@@ -90,7 +90,24 @@
 #include "pianoRoll.h"
 #include "voiceExpanding.h"
 #include "voidToTick.h"
-#include "TimeBetweenEvents.h"
+#include "TTS.h"
+#include "voiceExpanding2.h"
+#include "pianoKeyboard.h"
+#include "vectorInterpolation.h"
+#include "starDataExtractor.h"
+#include "carlSagan.h"
+#include "catotron.h"
+#include "OpenAITTS.h"
+#include "vectorExtract.h"
+#include "transport.h"
+#include "chordCypher.h"
+#include "csvStrings.h"
+#include "jazzStandards.h"
+#include "chordProgressions.h"
+#include "vectorFile.h"
+#include "snapshotServer.h"
+#include "snapshotClient.h"
+#include "constellations.h"
 
 
 //#include "spectrumLines.h"
@@ -185,10 +202,29 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<pianoRoll>("Santi/Sequencers");
     o.registerModel<voiceExpanding>("Santi/Voicing");
     o.registerModel<voidToTick>("Santi/Events");
-    o.registerModel<TimeBetweenEvents>("Santi/Events");
+    o.registerModel<TTS>("Santi/TTS");
+    o.registerModel<Catotron>("Santi/TTS");
+    o.registerModel<OpenAITTS>("Santi/TTS");
     //o.registerModel<spectrumLines>("Santi");
     //o.registerModel<pixelStretchVector>("Santi");
     //o.registerModel<vectorSymmetry>("Santi");
+    o.registerModel<voiceExpanding2>("Santi/Radio");
+    o.registerModel<pianoKeyboard>("Santi/Visualizers");
+    o.registerModel<vectorInterpolation>("Santi/Math");
+    o.registerModel<starDataExtractor>("Santi/Stars");
+    o.registerModel<carlSagan>("Santi/Stars");
+    o.registerModel<vectorExtract>("Santi/Vectors");
+    o.registerModel<Transport>("Santi/Sequencers");
+    o.registerModel<chordCypher>("Santi/Pitch");
+    o.registerModel<csvStrings>("Santi/Strings");
+    o.registerModel<jazzStandards>("Santi/Pitch");
+    o.registerModel<chordProgressions>("Santi/Pitch");
+    o.registerModel<vectorFile>("Santi/Vectors");
+    o.registerModel<snapshotServer>("Santi/Snapshots");
+    o.registerModel<snapshotClient>("Santi/Snapshots");
+    o.registerModel<constellations>("Santi/Stars");
+    
+    
     o.registerModel<tableRowId>("Santi/Thalastasi");
     o.registerModel<vectorRegion>("Santi/Thalastasi");
     o.registerModel<geneTable>("Santi/Thalastasi");

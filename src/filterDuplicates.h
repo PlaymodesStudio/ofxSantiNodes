@@ -13,7 +13,7 @@ public:
 
     void setup() {
         addParameter(input.set("Input", {0}, {-FLT_MAX}, {FLT_MAX}));
-        addParameter(output.set("Output", {0}, {-FLT_MAX}, {FLT_MAX}));
+        addOutputParameter(output.set("Output", {0}, {-FLT_MAX}, {FLT_MAX}));
 
         listeners.push(input.newListener([this](vector<float> &vf){
             std::vector<float> uniqueValues;

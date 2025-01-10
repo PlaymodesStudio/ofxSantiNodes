@@ -7,7 +7,7 @@ public:
     void setup() override {
         addParameter(trigger.set("trigger"));
         addParameter(ms.set("ms", 1000, 1, INT_MAX)); // milliseconds
-        addParameter(output.set("output", 0.0f, 0.0f, 1.0f));
+        addOutputParameter(output.set("output", 0.0f, 0.0f, 1.0f));
 
         trigger.addListener(this, &rampTrigger::onTrigger);
         

@@ -9,7 +9,7 @@ public:
         description = "Merges void signals from various inputs into one output";
 
         // Output void parameter
-        addParameter(voidOut.set("Void Out"));
+        addOutputParameter(voidOut.set("Void Out"));
 
         // Setup void input parameters and listen to them
         for (int i = 0; i < 4; ++i) {

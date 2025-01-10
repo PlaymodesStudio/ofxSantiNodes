@@ -3,7 +3,7 @@
 
 void Ocurrence::setup() {
     addParameter(inputVector.set("Input", {0}, {-FLT_MAX}, {FLT_MAX}));
-    addParameter(outputVector.set("Output", {0}, {0}, {INT_MAX}));
+    addOutputParameter(outputVector.set("Output", {0}, {0}, {INT_MAX}));
 
     // Using newListener to attach a listener for inputVector changes
     // Correctly store the listener in the 'listeners' container

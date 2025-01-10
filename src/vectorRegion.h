@@ -10,7 +10,7 @@ public:
         addParameter(input.set("Input", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
         addParameter(idxMin.set("Idx Min", 0, 0, INT_MAX));
         addParameter(idxMax.set("Idx Max", 1, 0, INT_MAX));
-        addParameter(output.set("Output", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
+        addOutputParameter(output.set("Output", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
 
         description = "Outputs a sub-vector of the input vector, comprised between the indices defined by Idx Min and Idx Max";
 

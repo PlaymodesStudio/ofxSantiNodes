@@ -15,7 +15,7 @@ public:
         addParameter(Q.set("Q", {0}, {0}, {100}));
         addParameter(Int.set("Int", false));
         addParameter(Urn.set("Urn", false));
-        addParameter(output.set("Output", {0.0}, {0.0}, {FLT_MAX}));
+        addOutputParameter(output.set("Output", {0.0}, {0.0}, {FLT_MAX}));
 
         listener = index.newListener([this](vector<int> &v){
             vector<float> out;
