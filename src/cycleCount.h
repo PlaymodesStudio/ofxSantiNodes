@@ -31,8 +31,9 @@ public:
         listeners.push(pattern.newListener([this](vector<int> &vp){
             if(vp.empty()) {
                 pattern = vector<int>{1};
+                return;
             }
-        updatePhaseOutput(input.get());
+            updatePhaseOutput(input.get());
         }));
 
         listeners.push(input.newListener([this](vector<float> &inVec){
@@ -44,21 +45,24 @@ public:
             }
 
             vector<int> currentPattern = pattern.get();
-            if(currentPattern.empty()) currentPattern = {1}; // Safeguard
+            if(currentPattern.empty()) {
+                currentPattern = {1};
+            }
 
             for(int i = 0; i < inVec.size(); i++) {
-                if(inVec[i] < lastInput[i]) { // Detect falling edge
+                if(patternPositions[i] >= currentPattern.size()) {
+                    patternPositions[i] = 0;
+                }
+
+                if(inVec[i] < lastInput[i]) {
                     if(shouldResetNextCycle[i]) {
                         fallingEdgeCount[i] = 0;
                         patternPositions[i] = 0;
                         shouldResetNextCycle[i] = false;
                     } else {
-                        // Only increment count if the current pattern position is 1
                         if(currentPattern[patternPositions[i]] == 1) {
                             fallingEdgeCount[i]++;
                         }
-                        
-                        // Move to next pattern position
                         patternPositions[i] = (patternPositions[i] + 1) % currentPattern.size();
                     }
                     resetOut.trigger();
@@ -73,7 +77,7 @@ public:
 
 private:
     ofParameter<vector<float>> input;
-    ofParameter<vector<int>> pattern;  // New pattern parameter
+    ofParameter<vector<int>> pattern;
     ofParameter<void> resetCount;
     ofParameter<void> resetNext;
     ofParameter<int> mod;
@@ -84,7 +88,7 @@ private:
     vector<float> lastInput;
     vector<int> fallingEdgeCount;
     vector<bool> shouldResetNextCycle;
-    vector<int> patternPositions;  // Tracks current position in pattern for each input
+    vector<int> patternPositions;
 
     ofEventListeners listeners;
 
@@ -100,11 +104,22 @@ private:
     }
 
     void updatePhaseOutput(const vector<float>& inputPhase) {
+        // First ensure patternPositions is properly sized
+        if (patternPositions.size() != inputPhase.size()) {
+            patternPositions.resize(inputPhase.size(), 0);
+        }
+
         vector<float> phaseOutput(inputPhase.size());
         vector<int> currentPattern = pattern.get();
-        if(currentPattern.empty()) currentPattern = {1}; // Safeguard
+        if(currentPattern.empty()) {
+            currentPattern = {1};
+        }
 
         for (size_t i = 0; i < inputPhase.size(); ++i) {
+            // Ensure pattern position is valid
+            if(patternPositions[i] >= currentPattern.size()) {
+                patternPositions[i] = 0;
+            }
             // Output the input phase only when pattern is 1, otherwise output 0
             phaseOutput[i] = currentPattern[patternPositions[i]] == 1 ? inputPhase[i] : 0.0f;
         }
