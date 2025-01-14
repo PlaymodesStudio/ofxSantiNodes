@@ -5,21 +5,30 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <algorithm>
+#include <set>
 
 class pianoKeyboard : public ofxOceanodeNodeModel {
 public:
-    pianoKeyboard() : ofxOceanodeNodeModel("Piano Keyboard") {}
+    pianoKeyboard() : ofxOceanodeNodeModel("Piano Keyboard"),
+        width(400),    // Initialize with default values
+        height(100),
+        loNote(48),
+        hiNote(72)
+    {}
     
     void setup() {
-        description = "Displays a piano keyboard that highlights keys based on pitch and gate inputs";
+        description = "Displays a piano keyboard that highlights keys based on pitch and gate inputs. Click keys to create chords.";
         
-        addParameter(pitch.set("Pitch[]", vector<float>(1, 60), vector<float>(1, 0), vector<float>(1, 127)));
-        addParameter(gate.set("Gate[]", vector<float>(1, 0), vector<float>(1, 0), vector<float>(1, 1)));
+        // Add all parameters before creating GUI
+        addParameter(pitch.set("Pitch[]", {60}, {0}, {127}));
+        addParameter(gate.set("Gate[]", {0}, {0}, {1}));
         addParameter(width.set("Width", 400, 100, 1000));
         addParameter(height.set("Height", 100, 50, 300));
-        addParameter(loNote.set("Lo Note", 48, 0, 127)); // C2
-        addParameter(hiNote.set("Hi Note", 72, 0, 127)); // C4
+        addParameter(loNote.set("Lo Note", 48, 0, 127));
+        addParameter(hiNote.set("Hi Note", 72, 0, 127));
+        addOutputParameter(outputNotes.set("Output", {0}, {0}, {127}));
         
+        // Add listeners
         listeners.push(width.newListener([this](int &){
             updateKeyboardGeometry();
         }));
@@ -36,22 +45,28 @@ public:
             updateKeyboardGeometry();
         }));
         
-        addCustomRegion(customKeyboardRegion, [this]() {
+        // Initialize keyboard layout
+        updateKeyboardGeometry();
+        
+        // Add custom region last
+        addCustomRegion(keyboardRegion.set("Keyboard Region", [this](){
+            drawKeyboard();
+        }), [this](){
             drawKeyboard();
         });
-        
-        updateKeyboardGeometry();
     }
-
+    
 private:
     ofParameter<vector<float>> pitch;
     ofParameter<vector<float>> gate;
+    ofParameter<vector<int>> outputNotes;
     ofParameter<int> width;
     ofParameter<int> height;
     ofParameter<int> loNote;
     ofParameter<int> hiNote;
     ofEventListeners listeners;
-    customGuiRegion customKeyboardRegion;
+    customGuiRegion keyboardRegion;
+    std::set<int> selectedNoteSet;
     
     struct KeyGeometry {
         bool isBlack;
@@ -67,12 +82,9 @@ private:
         int startNote = std::max(0, std::min(127, loNote.get()));
         int endNote = std::max(0, std::min(127, hiNote.get()));
         if(endNote < startNote) {
-            int temp = endNote;
-            endNote = startNote;
-            startNote = temp;
+            std::swap(startNote, endNote);
         }
         
-        // Count white keys for width calculation
         int whiteKeyCount = 0;
         for(int note = startNote; note <= endNote; note++) {
             int noteInOctave = note % 12;
@@ -87,7 +99,6 @@ private:
         float blackKeyWidth = whiteKeyWidth * 0.6f;
         
         float currentX = 0;
-        int whiteKeyIndex = 0;
         
         for(int note = startNote; note <= endNote; note++) {
             int noteInOctave = note % 12;
@@ -105,7 +116,6 @@ private:
                     key.x = currentX;
                     key.w = whiteKeyWidth;
                     currentX += whiteKeyWidth;
-                    whiteKeyIndex++;
                     break;
                     
                 case 1: // C#
@@ -118,7 +128,6 @@ private:
                     key.w = blackKeyWidth;
                     break;
             }
-            
             keyGeometry.push_back(key);
         }
     }
@@ -127,39 +136,54 @@ private:
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         
-        // Create invisible button for interaction area
+        // Create invisible button for interaction
         ImGui::InvisibleButton("KeyboardArea", ImVec2(width, height));
         
-        // First draw all white keys
+        // Handle mouse clicks
+        if(ImGui::IsItemClicked()) {
+            ImVec2 mousePos = ImGui::GetIO().MousePos;
+            int clickedNote = getNoteFromPosition(mousePos.x, mousePos.y);
+            if(clickedNote >= 0) {
+                if(selectedNoteSet.find(clickedNote) != selectedNoteSet.end()) {
+                    selectedNoteSet.erase(clickedNote);
+                } else {
+                    selectedNoteSet.insert(clickedNote);
+                }
+                vector<int> notes(selectedNoteSet.begin(), selectedNoteSet.end());
+                outputNotes.set(notes);
+            }
+        }
+        
+        // Draw white keys first
         for(int i = 0; i < keyGeometry.size(); i++) {
             if(!keyGeometry[i].isBlack) {
                 int note = loNote + i;
                 ImVec2 keyPos(pos.x + keyGeometry[i].x, pos.y);
                 ImVec2 keyPosEnd(keyPos.x + keyGeometry[i].w, pos.y + height);
                 
-                // Draw white key background
                 drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(255, 255, 255, 255));
                 drawList->AddRect(keyPos, keyPosEnd, IM_COL32(100, 100, 100, 255));
                 
-                // Check if this note is being played and draw red highlight with alpha
+                if(selectedNoteSet.find(note) != selectedNoteSet.end()) {
+                    drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(0, 255, 0, 100));
+                }
+                
                 float keyGate = 0.0f;
                 for(size_t j = 0; j < pitch->size() && j < gate->size(); j++) {
-                    int pitchValue = static_cast<int>(pitch->at(j) + 0.5f); // Round to nearest integer
+                    int pitchValue = static_cast<int>(pitch->at(j) + 0.5f);
                     if(pitchValue == note) {
                         keyGate = std::max(keyGate, gate->at(j));
                     }
                 }
                 
                 if(keyGate > 0.0f) {
-                    // Alpha ranges from 255 (transparent) to 0 (opaque) based on gate
                     uint8_t alpha = static_cast<uint8_t>(255 * (1.0f - keyGate));
-                    ImU32 highlightColor = IM_COL32(255, 0, 0, 255 - alpha);
-                    drawList->AddRectFilled(keyPos, keyPosEnd, highlightColor);
+                    drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(255, 0, 0, 255 - alpha));
                 }
             }
         }
         
-        // Then draw all black keys on top
+        // Then draw black keys
         float blackKeyHeight = height * 0.6f;
         for(int i = 0; i < keyGeometry.size(); i++) {
             if(keyGeometry[i].isBlack) {
@@ -167,27 +191,56 @@ private:
                 ImVec2 keyPos(pos.x + keyGeometry[i].x, pos.y);
                 ImVec2 keyPosEnd(keyPos.x + keyGeometry[i].w, pos.y + blackKeyHeight);
                 
-                // Draw black key background
                 drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(0, 0, 0, 255));
                 drawList->AddRect(keyPos, keyPosEnd, IM_COL32(100, 100, 100, 255));
                 
-                // Check if this note is being played and draw red highlight with alpha
+                if(selectedNoteSet.find(note) != selectedNoteSet.end()) {
+                    drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(0, 255, 0, 100));
+                }
+                
                 float keyGate = 0.0f;
                 for(size_t j = 0; j < pitch->size() && j < gate->size(); j++) {
-                    int pitchValue = static_cast<int>(pitch->at(j) + 0.5f); // Round to nearest integer
+                    int pitchValue = static_cast<int>(pitch->at(j) + 0.5f);
                     if(pitchValue == note) {
                         keyGate = std::max(keyGate, gate->at(j));
                     }
                 }
                 
                 if(keyGate > 0.0f) {
-                    // Alpha ranges from 255 (transparent) to 0 (opaque) based on gate
                     uint8_t alpha = static_cast<uint8_t>(255 * (1.0f - keyGate));
-                    ImU32 highlightColor = IM_COL32(255, 0, 0, 255 - alpha);
-                    drawList->AddRectFilled(keyPos, keyPosEnd, highlightColor);
+                    drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(255, 0, 0, 255 - alpha));
                 }
             }
         }
+    }
+    
+    int getNoteFromPosition(float mouseX, float mouseY) {
+        ImVec2 pos = ImGui::GetCursorScreenPos();
+        float relativeX = mouseX - pos.x;
+        float relativeY = mouseY - pos.y;
+        
+        float blackKeyHeight = height * 0.6f;
+        if(relativeY <= blackKeyHeight) {
+            for(int i = 0; i < keyGeometry.size(); i++) {
+                if(keyGeometry[i].isBlack) {
+                    if(relativeX >= keyGeometry[i].x &&
+                       relativeX <= keyGeometry[i].x + keyGeometry[i].w) {
+                        return loNote + i;
+                    }
+                }
+            }
+        }
+        
+        for(int i = 0; i < keyGeometry.size(); i++) {
+            if(!keyGeometry[i].isBlack) {
+                if(relativeX >= keyGeometry[i].x &&
+                   relativeX <= keyGeometry[i].x + keyGeometry[i].w) {
+                    return loNote + i;
+                }
+            }
+        }
+        
+        return -1;
     }
 };
 
