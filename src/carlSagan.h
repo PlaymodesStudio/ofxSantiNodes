@@ -6,6 +6,7 @@
     #include <vector>
     #include <string>
     #include <random>
+#include <regex>
 
     class NarrativeManager {
     public:
@@ -70,13 +71,13 @@
                     }
                 }
             }
-            return "unknown";
+            return "de color desconegut";
         }
 
         string getStarType(const string& spectralType, const string& subtype, const string& language) {
                 string key = language;
                 if (starTypes.find(key) == starTypes.end()) {
-                    return "unknown";
+                    return "estel de tipus espectral desconegut";
                 }
 
                 // Normalitzem la subkey abans de fer la cerca
@@ -96,7 +97,7 @@
                     return starTypes[key][lookupKey];
                 }
 
-                return "unknown";
+                return "estel de tipus espectral desconegut";
             }
 
         
@@ -212,6 +213,9 @@
             // Dropdowns
             languageParam.set("Language", 0, 0, 1); // 0: Català, 1: English
             styleParam.set("Style", 0, 0, 1); // 0: Minimal, 1: Sagan
+            
+            useNumeralsParam.set("Use Numerals", false);
+
 
             // Add parameters
             addParameter(parallaxIn);
@@ -225,6 +229,7 @@
             addParameterDropdown(languageParam, "Language", 0, {"Català", "English"});
             addParameterDropdown(styleParam, "Style", 0, {"Minimal", "Sagan"});
             addParameter(narrativeOut);
+            addParameter(useNumeralsParam);
 
             setupListeners();
         }
@@ -377,43 +382,196 @@
             string lang = (languageParam.get() == 0) ? "ca" : "en";
             string style = (styleParam.get() == 0) ? "minimal" : "sagan";
             
-            // Primer processem el tipus espectral
+            // First process spectral type
             SpectralTypeComponents spectralComponents = parseSpectralType(spectralTypeIn.get());
-            //ofLogNotice("updateNarrative") << "Processing spectral type: " << spectralTypeIn.get();
             
-            // Obtenim el tipus d'estel
-            string starType = NarrativeManager::getInstance().getStarType(
-                spectralComponents.classKey,
-                spectralComponents.subKey,
-                lang
-            );
-            //ofLogNotice("updateNarrative") << "Star type determined: " << starType;
-
-            // Preparem tots els replacements
+            // Prepare all replacements
             map<string, string> replacements;
             replacements["STAR_NAME"] = processStarName(starNameIn.get(), lang);
             replacements["CONSTELLATION"] = constellationIn.get();
             replacements["COLOR"] = NarrativeManager::getInstance().getColorDescription(bvColorIn.get(), lang);
-            replacements["DISTANCE"] = formatNumber(parallaxToLightYears(parallaxIn.get()), 1,lang);
+            replacements["DISTANCE"] = formatNumber(parallaxToLightYears(parallaxIn.get()), 1, lang);
             replacements["MULTIPLE_COUNT"] = ofToString(multipleCountIn.get());
             replacements["MAGNITUDE"] = formatNumber(magnitudeIn.get(), 2, lang);
-            replacements["STAR_TYPE"] = starType;  // Usem el tipus que hem processat abans
-            replacements["MASS"] = formatNumber(sunXIn.get(), 2,lang);
+            replacements["STAR_TYPE"] = NarrativeManager::getInstance().getStarType(
+                spectralComponents.classKey,
+                spectralComponents.subKey,
+                lang
+            );
+            replacements["MASS"] = formatNumber(sunXIn.get(), 2, lang);
 
-            // Debug dels valors
-            for(const auto& [key, value] : replacements) {
-                //ofLogNotice("updateNarrative") << "Replacement " << key << ": " << value;
-            }
-
-            // Obtenim i processem el template
+            // Get and process the template
             string template_text = NarrativeManager::getInstance().getNarrative(lang, style, true);
             if (!template_text.empty()) {
                 string newNarrative = processTemplate(template_text, replacements);
+                
                 if (!newNarrative.empty()) {
-                    //ofLogNotice("updateNarrative") << "Setting new narrative: " << newNarrative;
+                    if (useNumeralsParam.get()) {
+                        std::regex number_pattern(R"((?:^|\s|-)(\d+(?:\.\d+)?))");
+                        string result = newNarrative;
+                        vector<pair<string, string>> replacements;
+                        
+                        // Find all numbers in text
+                        std::smatch match;
+                        string::const_iterator searchStart(newNarrative.cbegin());
+                        
+                        while (std::regex_search(searchStart, newNarrative.cend(), match, number_pattern)) {
+                            string numStr = match[1].str();
+                            string wordVersion;
+                            
+                            if (numStr.find('.') != string::npos) {
+                                // It's a decimal
+                                size_t dotPos = numStr.find('.');
+                                int intPart = stoi(numStr.substr(0, dotPos));
+                                string decPart = numStr.substr(dotPos + 1);
+                                wordVersion = numberToWords(intPart, false) + " coma " + decPart;
+                            } else {
+                                // It's an integer
+                                wordVersion = numberToWords(stoi(numStr), false);
+                            }
+                            
+                            replacements.push_back({numStr, wordVersion});
+                            searchStart = match.suffix().first;
+                        }
+                        
+                        // Apply replacements in reverse order
+                        for (auto it = replacements.rbegin(); it != replacements.rend(); ++it) {
+                            size_t pos = result.rfind(it->first);
+                            if (pos != string::npos) {
+                                result.replace(pos, it->first.length(), it->second);
+                            }
+                        }
+                        
+                        newNarrative = result;
+                    }
+                    
                     narrativeOut.set(newNarrative);
                 }
             }
+        }
+        
+        string convertNumbersToWords(const string& text) {
+            string result = text;
+            
+            // Expressió regular per trobar números que:
+            // - Comencen amb un espai o són a l'inici del text (\b)
+            // - Contenen dígits i opcionalment un punt decimal amb més dígits
+            // - Acaben amb un espai o són al final del text (\b)
+            std::regex numberPattern("\\b(\\d+(?:\\.\\d+)?)\\b");
+            
+            string workingText = text;
+            while (true) {
+                std::smatch match;
+                if (!std::regex_search(workingText, match, numberPattern)) break;
+                
+                // Obtenim el número complet (inclosa la part decimal si existeix)
+                string numberStr = match[1];
+                
+                // Comprovem si té decimals
+                size_t decimalPos = numberStr.find('.');
+                if (decimalPos != string::npos) {
+                    // Si té decimals, deixem el número com està
+                    workingText = workingText.substr(match.position() + match.length());
+                    continue;
+                }
+                
+                // Si és un número sencer, el convertim a paraules
+                int number = stoi(numberStr);
+                string numberWord = numberToWords(number);
+                
+                // Calculem la posició al text original
+                size_t originalPos = text.length() - workingText.length() + match.position();
+                
+                // Substituïm mantenint els espais al voltant
+                result.replace(originalPos, match[1].length(), numberWord);
+                
+                // Actualitzem el text de treball
+                workingText = workingText.substr(match.position() + match.length());
+            }
+            
+            return result;
+        }
+        
+        // Afegim un paràmetre per indicar el gènere
+        string numberToWords(int number, bool isFeminine = false) {
+            static const vector<string> units_masc = {
+                "", "un", "dos", "tres", "quatre", "cinc", "sis", "set", "vuit", "nou", "deu",
+                "onze", "dotze", "tretze", "catorze", "quinze", "setze", "disset", "divuit", "dinou"
+            };
+            
+            static const vector<string> units_fem = {
+                "", "una", "dues", "tres", "quatre", "cinc", "sis", "set", "vuit", "nou", "deu",
+                "onze", "dotze", "tretze", "catorze", "quinze", "setze", "disset", "divuit", "dinou"
+            };
+            
+            static const vector<string> tens = {
+                "", "", "vint", "trenta", "quaranta", "cinquanta",
+                "seixanta", "setanta", "vuitanta", "noranta"
+            };
+            
+            const vector<string>& units = isFeminine ? units_fem : units_masc;
+            
+            if (number == 0) return "zero";
+            if (number < 0) return "menys " + numberToWords(abs(number), isFeminine);
+            
+            string result;
+            
+            // Milions
+            if (number >= 1000000) {
+                int millions = number / 1000000;
+                if (millions == 1) {
+                    result += "un milió ";
+                } else {
+                    result += numberToWords(millions, false) + " milions "; // Milions sempre en masculí
+                }
+                number %= 1000000;
+                if (number > 0) result += "";
+            }
+            
+            // Milers
+            if (number >= 1000) {
+                int thousands = number / 1000;
+                if (thousands == 1) {
+                    result += "mil ";
+                } else {
+                    result += numberToWords(thousands, false) + " mil "; // Mil sempre en masculí
+                }
+                number %= 1000;
+                if (number > 0) result += "";
+            }
+            
+            // Centenes
+            if (number >= 100) {
+                int hundreds = number / 100;
+                if (hundreds == 1) {
+                    result += "cent ";
+                } else if (hundreds == 2) {
+                    result += "dos-cents ";
+                } else {
+                    result += units_masc[hundreds] + "-cents "; // Cents sempre en masculí
+                }
+                number %= 100;
+            }
+            
+            // Desenes i unitats
+            if (number > 0) {
+                if (number < 20) {
+                    result += units[number];
+                } else {
+                    int ten = number / 10;
+                    int unit = number % 10;
+                    
+                    if (unit == 0) {
+                        result += tens[ten];
+                    } else if (ten == 2) {
+                        result += "vint-i-" + units[unit];
+                    } else {
+                        result += tens[ten] + "-" + units[unit];
+                    }
+                }
+            }
+            
+            return result;
         }
 
         size_t findMatchingBrace(const string& text, size_t startPos) {
@@ -454,26 +612,58 @@
                 string placeholder = text.substr(pos + 1, endPos - pos - 1);
                 string replacement = "";
 
-                // Processa condicions i placeholders
+                // Check if placeholder has a gender suffix
+                bool isFeminine = false;
+                if (placeholder.find(":f") != string::npos) {
+                    isFeminine = true;
+                    placeholder = placeholder.substr(0, placeholder.find(":f"));
+                }
+
+                // Process conditions and placeholders
                 if (placeholder.find(":") != string::npos) {
-                    // És una condició
+                    // It's a condition
                     string condition = placeholder.substr(0, placeholder.find(":"));
                     string content = placeholder.substr(placeholder.find(":") + 1);
 
                     bool showContent = evaluateCondition(condition, replacements);
                     if (showContent) {
-                        replacement = processTemplate(content, replacements); // Recursió
+                        replacement = processTemplate(content, replacements); // Recursion
                     }
                 } else if (replacements.find(placeholder) != replacements.end()) {
-                    // Substitueix un placeholder simple
+                    // Replace a simple placeholder
                     replacement = replacements.at(placeholder);
+                    if (isFeminine && useNumeralsParam.get()) {
+                        // Convert to feminine number if needed
+                        try {
+                            // Handle decimal numbers
+                            string numStr = replacement;
+                            size_t decimalPos = numStr.find("coma");
+                            if (decimalPos != string::npos) {
+                                string intPart = numStr.substr(0, decimalPos);
+                                string decPart = numStr.substr(decimalPos);
+                                float value = std::stof(intPart);
+                                replacement = numberToWords((int)value, true) + " " + decPart;
+                            } else {
+                                float value = std::stof(numStr);
+                                replacement = numberToWords((int)value, true);
+                            }
+                        } catch (const std::invalid_argument& e) {
+                            ofLogWarning("processTemplate") << "Failed to convert number to words: " << e.what();
+                            // Keep the original replacement if we can't convert it
+                        } catch (const std::out_of_range& e) {
+                            ofLogWarning("processTemplate") << "Number out of range for conversion: " << e.what();
+                            // Keep the original replacement if the number is too large/small
+                        } catch (const std::exception& e) {
+                            ofLogWarning("processTemplate") << "Unexpected error in number conversion: " << e.what();
+                            // Keep the original replacement for any other errors
+                        }
+                    }
                 } else {
-                    // Placeholder no trobat
+                    // Placeholder not found
                     ofLogWarning("processTemplate") << "Replacement for {" << placeholder << "} was not found!";
                 }
 
                 text.replace(pos, endPos - pos + 1, replacement);
-                // No incrementem pos, ja que el text pot canviar de mida
             }
 
             return text;
@@ -534,35 +724,36 @@
 
 
         string formatNumber(float number, int precision, const string& lang) {
-            // Check if it's a magnitude that needs the minus/menys prefix
-            bool isNegative = number < 0;
-            string numStr = ofToString(abs(number), precision); // Use absolute value
+            if (useNumeralsParam.get() && precision == 0) {
+                // Si useNumerals està activat i no necessitem decimals,
+                // retornem el número directament per ser convertit després
+                return ofToString((int)abs(number));
+            }
 
-            // Find the position of the decimal point
+            // La resta del codi segueix igual...
+            bool isNegative = number < 0;
+            string numStr = ofToString(abs(number), precision);
+
             size_t decimalPos = numStr.find('.');
             if (decimalPos != string::npos) {
-                // If the first decimal after the point is a zero, eliminate the decimal
                 if (numStr[decimalPos + 1] == '0') {
-                    numStr = numStr.substr(0, decimalPos); // Return only the integer part
+                    numStr = numStr.substr(0, decimalPos);
                 } else if (precision > 1) {
-                    // Keep only the first decimal and eliminate the restants
                     numStr = numStr.substr(0, decimalPos + 2);
                 }
             }
 
-            // Add language-specific prefix for negative numbers
             if (isNegative) {
                 if (lang == "ca") {
                     numStr = "menys " + numStr;
-                } else { // en
+                } else {
                     numStr = "minus " + numStr;
                 }
             }
 
-            // Replace decimal separator according to language
             if (lang == "ca") {
                 ofStringReplace(numStr, ".", " coma ");
-            } else { // en
+            } else {
                 ofStringReplace(numStr, ".", " point ");
             }
 
@@ -580,6 +771,7 @@
             ofParameter<int> languageParam;
             ofParameter<int> styleParam;
             ofParameter<string> narrativeOut;
-            
+            ofParameter<bool> useNumeralsParam;
+
             ofEventListeners listeners;
     };
