@@ -9,6 +9,7 @@
 class boolToVoid : public ofxOceanodeNodeModel {
 public:
     boolToVoid() : ofxOceanodeNodeModel("BoolToVoid") {
+        addParameter(triggerReset.set("Reset"));
         addParameter(boolIn.set("Bool In",false));
         addParameter(voidOut.set("Void Out"));
         lastBool = false;
@@ -20,12 +21,17 @@ public:
             }
             else if(!boolIn) lastBool=false;
         });
+        resetListener = triggerReset.newListener([this]{
+            boolIn=false;
+        });
     }
 
 private:
     ofParameter<bool> boolIn;
     ofParameter<void> voidOut;
+    ofParameter<void> triggerReset;
     ofEventListener boolInListener;
+    ofEventListener resetListener;
     bool lastBool;
 };
 
