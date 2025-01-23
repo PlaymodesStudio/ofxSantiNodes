@@ -22,14 +22,23 @@ public:
 
 private:
     void process() {
-        const auto& inputVals = input.get();
+        vector<float> inputVals = input.get();
+        
+        
+        if(lastValues.size()!=input.get().size())
+        {
+            lastValues.resize(input.get().size(),0);
+        }
+        
         vector<float> rises(inputVals.size(), 0);
         vector<float> falls(inputVals.size(), 0);
         vector<float> all(inputVals.size(), 0);
         
-        if(inputVals.size() > 1) {
-            for(size_t i = 1; i < inputVals.size(); i++) {
-                float prev = inputVals[i-1];
+        if(inputVals.size() > 1) 
+        {
+            for(size_t i = 0; i < inputVals.size(); i++)
+            {
+                float prev = lastValues[i];
                 float curr = inputVals[i];
                 
                 // Rising edge (0→1)
@@ -48,6 +57,9 @@ private:
         riseGates = rises;
         fallGates = falls;
         allGates = all;
+
+        // copy the actual values to the lastValues for next iteration
+        lastValues = inputVals;
     }
 
     ofParameter<vector<float>> input;
@@ -55,6 +67,8 @@ private:
     ofParameter<vector<float>> fallGates;
     ofParameter<vector<float>> allGates;
     ofEventListener listener;
+    
+    vector<float> lastValues;
 };
 
 #endif /* binaryEdgeDetector_h */
