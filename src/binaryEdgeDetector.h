@@ -34,7 +34,7 @@ private:
         vector<float> falls(inputVals.size(), 0);
         vector<float> all(inputVals.size(), 0);
         
-        if(inputVals.size() > 1) 
+        if(inputVals.size() >= 1) //afegit = per a que funcioni amb escalars
         {
             for(size_t i = 0; i < inputVals.size(); i++)
             {
