@@ -4,6 +4,8 @@
 #include "ofxOceanodeNodeModel.h"
 #include <future>
 #include <thread>
+#include <iomanip>
+#include <sstream>
 
 class Catotron : public ofxOceanodeNodeModel {
 public:
@@ -14,6 +16,8 @@ public:
             triggerCounter = 0;
             triggerStartFrame = 0;
             writeInProgress = false;
+            currentFileIndex = 0;
+            maxFiles = 20;
             
             // Set docker compose directory to data/catotron
             dockerComposeDir = ofToDataPath("catotron", true);
@@ -250,51 +254,58 @@ private:
     }
 
     void executeTTSWrite() {
-        if(inputText.get().empty()) {
-            ofLogWarning("Catotron") << "No text specified";
-            return;
-        }
-        
-        if (writeInProgress) {
-            ofLogWarning("Catotron") << "Write operation already in progress";
-            return;
-        }
-        
-        writeInProgress = true;
-        writeFuture = std::async(std::launch::async, [this]() {
-            ofLogNotice("Catotron") << "Executing TTS Write...";
-            
-            string timestamp = ofGetTimestampString();
-            string tempFile = ofToDataPath("tts/temp_tts.wav", true);
-            string outputFile = ofToDataPath("tts/tts_" + timestamp + ".wav", true);
-            string tempJson = ofToDataPath("tts/temp.json", true);
-            
-            string jsonContent = "{\"text\":\"" + inputText.get() + "\",\"lang\":\"ca\"}";
-            
-            ofFile jsonFile(tempJson, ofFile::WriteOnly);
-            jsonFile.write(jsonContent.c_str(), jsonContent.length());
-            jsonFile.close();
-            
-            string cmd = "curl -X POST http://127.0.0.1:5050/api/short "
-                       "-H \"Content-Type: application/json\" "
-                       "-d @\"" + tempJson + "\" "
-                       "> \"" + tempFile + "\" && "
-                       + soxPath + " \"" + tempFile + "\" -r 44100 \"" + outputFile + "\" && "
-                       "rm \"" + tempFile + "\" \"" + tempJson + "\"";
-            
-            int result = system(cmd.c_str());
-            
-            if(result == 0) {
-                lastGeneratedFile.set(outputFile);
-                outputPath.set(outputFile);
-                ofLogNotice("Catotron") << "File saved: " + outputFile;
-                return true;
-            } else {
-                ofLogError("Catotron") << "Failed to save file";
-                return false;
+            if(inputText.get().empty()) {
+                ofLogWarning("Catotron") << "No text specified";
+                return;
             }
-        });
-    }
+            
+            if (writeInProgress) {
+                ofLogWarning("Catotron") << "Write operation already in progress";
+                return;
+            }
+            
+            writeInProgress = true;
+            writeFuture = std::async(std::launch::async, [this]() {
+                ofLogNotice("Catotron") << "Executing TTS Write...";
+                
+                // Generate the filename using the current index
+                std::stringstream ss;
+                ss << std::setw(2) << std::setfill('0') << currentFileIndex;
+                string indexStr = ss.str();
+                
+                string tempFile = ofToDataPath("tts/temp_tts.wav", true);
+                string outputFile = ofToDataPath("tts/catotron_" + indexStr + ".wav", true);
+                string tempJson = ofToDataPath("tts/temp.json", true);
+                
+                // Increment the file index for next time
+                currentFileIndex = (currentFileIndex + 1) % maxFiles;
+                
+                string jsonContent = "{\"text\":\"" + inputText.get() + "\",\"lang\":\"ca\"}";
+                
+                ofFile jsonFile(tempJson, ofFile::WriteOnly);
+                jsonFile.write(jsonContent.c_str(), jsonContent.length());
+                jsonFile.close();
+                
+                string cmd = "curl -X POST http://127.0.0.1:5050/api/short "
+                           "-H \"Content-Type: application/json\" "
+                           "-d @\"" + tempJson + "\" "
+                           "> \"" + tempFile + "\" && "
+                           + soxPath + " \"" + tempFile + "\" -r 44100 \"" + outputFile + "\" && "
+                           "rm \"" + tempFile + "\" \"" + tempJson + "\"";
+                
+                int result = system(cmd.c_str());
+                
+                if(result == 0) {
+                    lastGeneratedFile.set(outputFile);
+                    outputPath.set(outputFile);
+                    ofLogNotice("Catotron") << "File saved: " + outputFile;
+                    return true;
+                } else {
+                    ofLogError("Catotron") << "Failed to save file";
+                    return false;
+                }
+            });
+        }
     
     ofParameter<string> inputText;
         ofParameter<string> outputPath;
@@ -314,6 +325,8 @@ private:
         string dockerComposeDir;
         int triggerCounter;
         int triggerStartFrame;
+        int currentFileIndex;
+        int maxFiles;
         
         ofEventListeners listeners;
 };
