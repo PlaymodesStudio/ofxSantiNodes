@@ -287,8 +287,64 @@
             // Convert to uppercase for matching
             string upperType = ofToUpper(cleanType);
 
-            // Remove uncertain marks
-            size_t colonPos = upperType.find(":");
+            // Create string for luminosity class checking
+            string typeForLuminosity = upperType;
+            size_t colonPos = typeForLuminosity.find(":");
+            if (colonPos != string::npos) {
+                // If there's a colon, use everything after it
+                typeForLuminosity = typeForLuminosity.substr(colonPos + 1);
+            } else {
+                // If no colon, use the full string but remove the spectral number if present
+                for(size_t i = 0; i < typeForLuminosity.length(); i++) {
+                    if(isdigit(typeForLuminosity[i])) {
+                        typeForLuminosity = typeForLuminosity.substr(i + 1);
+                        break;
+                    }
+                }
+            }
+
+            // Default subKey
+            components.subKey = "default";
+
+            // Check for luminosity classes in order of specificity
+            if (typeForLuminosity.find("IA-O") != string::npos ||
+                typeForLuminosity.find("IA") != string::npos ||
+                typeForLuminosity.find("IB-II") != string::npos ||
+                typeForLuminosity.find("IB") != string::npos ||
+                ((typeForLuminosity.find("I") != string::npos || typeForLuminosity.find("1") != string::npos) &&
+                 typeForLuminosity.find("II") == string::npos &&
+                 typeForLuminosity.find("III") == string::npos &&
+                 typeForLuminosity.find("IV") == string::npos &&
+                 typeForLuminosity.find("V") == string::npos)) {
+                components.subKey = "supergiants";
+            }
+            else if (typeForLuminosity.find("III") != string::npos) {
+                components.subKey = "giants";
+            }
+            else if (typeForLuminosity.find("II") != string::npos) {
+                // II stars are generally closer to giants in properties
+                components.subKey = "giants";
+            }
+            else if (typeForLuminosity.find("IV-V") != string::npos ||
+                     typeForLuminosity.find("IV/V") != string::npos) {
+                components.subKey = "dwarfs";
+            }
+            else if (typeForLuminosity.find("IV") != string::npos) {
+                // Subgiants grouped with giants
+                components.subKey = "giants";
+            }
+            else if (typeForLuminosity.find("V") != string::npos ||
+                     typeForLuminosity.find("VI") != string::npos ||
+                     typeForLuminosity.find("VII") != string::npos) {
+                components.subKey = "dwarfs";
+            }
+            
+            // Remove trailing 'A' if it's the last character (like in K0IIIa)
+            if (!upperType.empty() && upperType.back() == 'A') {
+                upperType.pop_back();
+            }
+            
+            // Remove colonPos from main upperType for further processing
             if (colonPos != string::npos) {
                 upperType = upperType.substr(0, colonPos);
             }
@@ -319,41 +375,6 @@
                 if (upperType[ePos-1] != 'P' && upperType[ePos-1] != 'F') {
                     upperType.erase(ePos, 1);
                 }
-            }
-
-            // Default subKey
-            components.subKey = "default";
-
-            // Check for luminosity classes in order of specificity
-            if (upperType.find("IA-O") != string::npos ||
-                upperType.find("IA") != string::npos ||
-                upperType.find("IB") != string::npos ||
-                ((upperType.find("I") != string::npos || upperType.find("1") != string::npos) &&
-                 upperType.find("II") == string::npos &&
-                 upperType.find("III") == string::npos &&
-                 upperType.find("IV") == string::npos &&
-                 upperType.find("V") == string::npos)) {
-                components.subKey = "supergiants";
-            }
-            else if (upperType.find("III") != string::npos) {
-                components.subKey = "giants";
-            }
-            else if (upperType.find("II") != string::npos) {
-                // II stars are generally closer to giants in properties
-                components.subKey = "giants";
-            }
-            else if (upperType.find("IV-V") != string::npos ||
-                     upperType.find("IV/V") != string::npos) {
-                components.subKey = "dwarfs";
-            }
-            else if (upperType.find("IV") != string::npos) {
-                // Subgiants grouped with giants
-                components.subKey = "giants";
-            }
-            else if (upperType.find("V") != string::npos ||
-                     upperType.find("VI") != string::npos ||
-                     upperType.find("VII") != string::npos) {
-                components.subKey = "dwarfs";
             }
 
             // Handle shell stars and peculiar cases
