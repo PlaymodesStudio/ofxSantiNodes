@@ -22,7 +22,8 @@ private:
     ofParameter<vector<float>> amplitudes;
     ofParameter<vector<float>> hpCutoff;
     ofParameter<vector<float>> lpCutoff;
-    ofParameter<float> detuneAmount;
+    ofParameter<vector<float>> detuneAmount;
+    vector<float> previousDetuneAmounts;
     vector<float> detuneFactors;
     ofParameter<float>oddHarmonicAmp;
     ofParameter<float>evenHarmonicAmp;

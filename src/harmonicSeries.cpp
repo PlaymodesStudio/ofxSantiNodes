@@ -5,6 +5,9 @@
 void harmonicSeries::setup() {
     description = "Generates the harmonic series of given pitches. "
                   "Offers different shapes for amplitude distributions across the harmonic series, as well a simulation of LP and HP filtering.";
+    
+    previousDetuneAmounts.clear();
+    detuneFactors.clear();
 
     addParameter(pitch.set("Pitch", {0}, {-FLT_MAX}, {FLT_MAX}));
     addParameter(partialsNum.set("Partials", 1, 1, INT_MAX));
@@ -12,7 +15,7 @@ void harmonicSeries::setup() {
     addParameter(ampIn.set("Amp In", {1}, {0}, {1}));
     addParameter(lpCutoff.set("LP Cut", {1}, {0}, {1}));
     addParameter(hpCutoff.set("HP Cut", {0}, {0}, {1}));
-    addParameter(detuneAmount.set("Detune", 0.0f, 0.0f, 1.0f));
+    addParameter(detuneAmount.set("Detune", {0}, {0}, {1}));
     addParameter(oddHarmonicAmp.set("Odd", 1.0f, 0.0f, 1.0f));
     addParameter(evenHarmonicAmp.set("Even", 1.0f, 0.0f, 1.0f));
     addParameter(harmonicStretch.set("Stretch", 1.0f, 0.05f, 8.0f));
@@ -48,10 +51,11 @@ void harmonicSeries::setup() {
         calculate();
     })));
     
-    listeners.push_back(std::make_unique<ofEventListener>(detuneAmount.newListener([this](float &amount) {
+    listeners.push_back(std::make_unique<ofEventListener>(detuneAmount.newListener([this](vector<float> &amounts) {
             calculateDetuneFactors();
             calculate();
         })));
+    
     listeners.push_back(std::make_unique<ofEventListener>(oddHarmonicAmp.newListener([this](float &amp) {
            calculate();
        })));
@@ -65,18 +69,55 @@ void harmonicSeries::setup() {
     
     calculateDetuneFactors();
     calculate();
-}
+    
+    }
 
 // function to calculate the detune factors for each harmonic
 void harmonicSeries::calculateDetuneFactors() {
-    float maxDetuneInSemitones = detuneAmount.get();
-    float maxDetuneFactor = pow(2.0, maxDetuneInSemitones / 12.0f);
+    vector<float> currentDetuneAmounts = detuneAmount.get();
+    int numPartials = partialsNum.get();
+    
+    // Resize vectors if needed
+    if (detuneFactors.size() != numPartials) {
+        int oldSize = detuneFactors.size();
+        detuneFactors.resize(numPartials);
+        previousDetuneAmounts.resize(numPartials);
+        
+        // Initialize new elements
+        for (int i = oldSize; i < numPartials; i++) {
+            float currentDetuneAmount;
+            if (i < currentDetuneAmounts.size()) {
+                currentDetuneAmount = currentDetuneAmounts[i];
+            } else if (!currentDetuneAmounts.empty()) {
+                currentDetuneAmount = currentDetuneAmounts.back();
+            } else {
+                currentDetuneAmount = 0.0f;
+            }
+            
+            float maxDetuneFactor = pow(2.0, currentDetuneAmount / 12.0f);
+            detuneFactors[i] = ofRandom(2.0 - maxDetuneFactor, maxDetuneFactor);
+            previousDetuneAmounts[i] = currentDetuneAmount;
+        }
+    }
 
-    // Store the computed detune factors
-    detuneFactors.clear();
-    for (int i = 1; i <= partialsNum.get(); i++) {
-        float detuneFactor = ofRandom(2.0 - maxDetuneFactor, maxDetuneFactor);
-        detuneFactors.push_back(detuneFactor);
+    // For each partial, only regenerate if detune amount changed
+    for (int i = 0; i < numPartials; i++) {
+        // Get the appropriate detune amount for this partial
+        float currentDetuneAmount;
+        if (i < currentDetuneAmounts.size()) {
+            currentDetuneAmount = currentDetuneAmounts[i];
+        } else if (!currentDetuneAmounts.empty()) {
+            currentDetuneAmount = currentDetuneAmounts.back();
+        } else {
+            currentDetuneAmount = 0.0f;
+        }
+
+        // Only generate new random value if detune amount changed
+        if (currentDetuneAmount != previousDetuneAmounts[i]) {
+            float maxDetuneFactor = pow(2.0, currentDetuneAmount / 12.0f);
+            detuneFactors[i] = ofRandom(2.0 - maxDetuneFactor, maxDetuneFactor);
+            previousDetuneAmounts[i] = currentDetuneAmount;
+        }
     }
 }
 
@@ -87,8 +128,7 @@ void harmonicSeries::calculate() {
     int numPartials = partialsNum.get();
     int shapeIndex = harmonicShape.get();
     vector<float> inputAmplitudes = ampIn.get();
-    float maxDetuneInSemitones = detuneAmount.get();
-    float maxDetuneFactor = pow(2.0, maxDetuneInSemitones / 12.0f);
+    vector<float> detuneAmounts = detuneAmount.get();
     float stretchFactor = harmonicStretch.get();
 
     for (int idx = 0; idx < pitch.get().size(); idx++) {
@@ -105,6 +145,7 @@ void harmonicSeries::calculate() {
             float stretchedHarmonic = (i == 1) ? i : pow(i, stretchFactor);
             float detuneFactor = (i == 1) ? 1.0 : detuneFactors[i - 1];
             float partialFreq = freq * stretchedHarmonic * detuneFactor;
+                       
 
             out.push_back(partialFreq);
             outPitch.push_back(69 + 12 * log2(partialFreq / 440.0f));
