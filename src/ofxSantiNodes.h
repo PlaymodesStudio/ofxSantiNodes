@@ -108,8 +108,10 @@
 #include "snapshotServer.h"
 #include "snapshotClient.h"
 #include "constellations.h"
+#include "timeline.h"
 #include "padXY.h"
 #include "binaryEdgeDetector.h"
+#include "circularSpeakerScheme.h"
 
 
 //#include "spectrumLines.h"
@@ -225,9 +227,10 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<snapshotServer>("Santi/Snapshots");
     o.registerModel<snapshotClient>("Santi/Snapshots");
     o.registerModel<constellations>("Santi/Stars");
+    o.registerModel<timeline>("Santi/Sequencers");
     o.registerModel<padXY>("Santi/GUI");
     o.registerModel<binaryEdgeDetector>("Santi/General");
-    
+    o.registerModel<circularSpeakerScheme>("Santi/Visualizers");
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
     o.registerModel<vectorRegion>("Santi/Thalastasi");
