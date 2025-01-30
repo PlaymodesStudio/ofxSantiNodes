@@ -15,10 +15,21 @@ private:
     ofParameter<int> outputSize;
     ofParameter<std::vector<float>> outputPitch;
     ofParameter<std::vector<float>> outputGate;
+    
+    // New auxiliary parameters
+    ofParameter<std::vector<float>> inputAux1;
+    ofParameter<std::vector<float>> inputAux2;
+    ofParameter<std::vector<float>> inputAux3;
+    ofParameter<std::vector<float>> inputAux4;
+    
+    ofParameter<std::vector<float>> outputAux1;
+    ofParameter<std::vector<float>> outputAux2;
+    ofParameter<std::vector<float>> outputAux3;
+    ofParameter<std::vector<float>> outputAux4;
 
     std::vector<int> voiceAge;
     ofEventListeners listeners;
 
     void resizeOutputs(int size);
-    size_t findOldestVoice(const std::vector<float>& gates);  // Changed from findOldestFreeSlot
+    size_t findOldestVoice(const std::vector<float>& gates);
 };
