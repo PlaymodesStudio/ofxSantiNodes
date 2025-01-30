@@ -112,6 +112,7 @@
 #include "padXY.h"
 #include "binaryEdgeDetector.h"
 #include "circularSpeakerScheme.h"
+#include "sampleAndHold.h"
 
 
 //#include "spectrumLines.h"
@@ -231,6 +232,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<padXY>("Santi/GUI");
     o.registerModel<binaryEdgeDetector>("Santi/General");
     o.registerModel<circularSpeakerScheme>("Santi/Visualizers");
+    o.registerModel<sampleAndHold>("Santi/General");
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
     o.registerModel<vectorRegion>("Santi/Thalastasi");
