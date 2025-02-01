@@ -9,7 +9,7 @@ class conversions : public ofxOceanodeNodeModel {
 public:
     conversions() : ofxOceanodeNodeModel("Conversions") {
         addParameter(input.set("Input", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
-        addParameterDropdown(operation, "Op", 0, {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance"});
+        addParameterDropdown(operation, "Op", 0, {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance", "lin-log", "log-lin"});
         addOutputParameter(output.set("Output", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
         
         description = "Converts between various units or scales.";
@@ -23,7 +23,7 @@ public:
         currentBPM = bpm;
         processInput(input);  // Recalculate when BPM changes
     }
-
+    
 private:
     ofParameter<vector<float>> input;
     ofParameter<int> operation;
@@ -33,15 +33,52 @@ private:
     
     float currentBPM;
     
+    // Convert linear 0-1 to logarithmic 0-1 with psychoacoustic curve
+    float linearToLog(float value) {
+        // Ensure input is in 0-1 range
+        value = std::clamp(value, 0.0f, 1.0f);
+        
+        // Constants for psychoacoustic curve
+        const float minDb = -60.0f;  // Minimum dB (silence threshold)
+        const float epsilon = 1e-6f;  // Small value to prevent log(0)
+        
+        // Convert to dB scale with smooth transition near zero
+        float dbValue = 20.0f * log10(value + epsilon);
+        
+        // Normalize to 0-1 range
+        return (dbValue - minDb) / (-minDb);
+    }
+    
+    // Convert logarithmic 0-1 to linear 0-1 with psychoacoustic curve
+    float logToLinear(float value) {
+        // Ensure input is in 0-1 range
+        value = std::clamp(value, 0.0f, 1.0f);
+        
+        // Constants for psychoacoustic curve
+        const float minDb = -60.0f;  // Minimum dB (silence threshold)
+        
+        // Convert from normalized to dB
+        float dbValue = value * (-minDb) + minDb;
+        
+        // Convert from dB to linear scale
+        return pow(10.0f, dbValue / 20.0f);
+    }
+    
     void processInput(const vector<float>& vf) {
         vector<float> out;
-        vector<string> operations = {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance"};
-
+        vector<string> operations = {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance", "lin-log", "log-lin"};
+        
         int opIndex = operation.get();
         string op = operations[opIndex];
         
         for(const auto& value : vf){
-            if(op == "ms-hz") {
+            if(op == "lin-log") {
+                out.push_back(linearToLog(value));
+            }
+            else if(op == "log-lin") {
+                out.push_back(logToLinear(value));
+            }
+            else if(op == "ms-hz") {
                 out.push_back(1000.0 / value);
             }
             else if(op == "hz-ms") {
@@ -183,24 +220,24 @@ private:
                 out.push_back(bpm);
             }
             else if (op == "luminance-volume") {
-                            float luminance = std::clamp(value, 0.0f, 1.0f);
-                            float gamma = 2.2f;
-                            float corrected_luminance = pow(luminance, 1.0f/gamma);
-                            float epsilon = 1e-10f;
-                            float volume_db = 20.0f * log10(corrected_luminance + epsilon);
-                            float amplitude_multiplier = pow(10.0f, volume_db / 20.0f);
-                            out.push_back(amplitude_multiplier);
-                        }
+                float luminance = std::clamp(value, 0.0f, 1.0f);
+                float gamma = 2.2f;
+                float corrected_luminance = pow(luminance, 1.0f/gamma);
+                float epsilon = 1e-10f;
+                float volume_db = 20.0f * log10(corrected_luminance + epsilon);
+                float amplitude_multiplier = pow(10.0f, volume_db / 20.0f);
+                out.push_back(amplitude_multiplier);
+            }
             else if (op == "volume-luminance") {
-                            float volume = std::clamp(value, 0.0f, 1.0f);
-                            float epsilon = 1e-10f;
-                            float volume_db = 20.0f * log10(volume + epsilon);
-                            float linear_luminance = pow(10.0f, volume_db / 20.0f);
-                            float gamma = 2.2f;
-                            float luminance = pow(linear_luminance, gamma);
-                            luminance = std::clamp(luminance, 0.0f, 1.0f);
-                            out.push_back(luminance);
-                        }
+                float volume = std::clamp(value, 0.0f, 1.0f);
+                float epsilon = 1e-10f;
+                float volume_db = 20.0f * log10(volume + epsilon);
+                float linear_luminance = pow(10.0f, volume_db / 20.0f);
+                float gamma = 2.2f;
+                float luminance = pow(linear_luminance, gamma);
+                luminance = std::clamp(luminance, 0.0f, 1.0f);
+                out.push_back(luminance);
+            }
         }
         output = out;
     }
