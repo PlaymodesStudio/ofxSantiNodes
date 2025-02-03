@@ -114,6 +114,7 @@
 #include "circularSpeakerScheme.h"
 #include "sampleAndHold.h"
 #include "risingEdgeReindexer.h"
+#include "dbap.h"
 
 
 //#include "spectrumLines.h"
@@ -235,6 +236,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<circularSpeakerScheme>("Santi/Visualizers");
     o.registerModel<sampleAndHold>("Santi/General");
     o.registerModel<risingEdgeReindexer>("Santi/General");
+    o.registerModel<dbap>("Santi/AudioUtils");
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
     o.registerModel<vectorRegion>("Santi/Thalastasi");
