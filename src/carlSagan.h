@@ -403,10 +403,46 @@
             string lang = (languageParam.get() == 0) ? "ca" : "en";
             string style = (styleParam.get() == 0) ? "minimal" : "sagan";
             
-            // First process spectral type
-            SpectralTypeComponents spectralComponents = parseSpectralType(spectralTypeIn.get());
+            // First check: if star name is empty or missing, return immediately
+            if (starNameIn.get().empty()) {
+                narrativeOut.set(lang == "ca" ? "estel no reconegut" : "unrecognized star");
+                return;
+            }
             
-            // Prepare all replacements
+            // Additional checks for unknown star conditions
+            bool isUnknown = false;
+            
+            // Check critical parameters
+            if (parallaxIn.get() <= 0 && magnitudeIn.get() == 0 &&
+                bvColorIn.get() == 0 && spectralTypeIn.get().empty()) {
+                isUnknown = true;
+            }
+            
+            // Process spectral type only if star isn't unknown
+            SpectralTypeComponents spectralComponents;
+            if (!isUnknown) {
+                spectralComponents = parseSpectralType(spectralTypeIn.get());
+                
+                // Additional check: if we get default values for critical components
+                string starType = NarrativeManager::getInstance().getStarType(
+                    spectralComponents.classKey,
+                    spectralComponents.subKey,
+                    lang
+                );
+                
+                // If star type returns unknown and we don't have other identifying information
+                if ((starType == "estel de tipus espectral desconegut" || starType.empty()) &&
+                    constellationIn.get().empty()) {
+                    isUnknown = true;
+                }
+            }
+            
+            if (isUnknown) {
+                narrativeOut.set(lang == "ca" ? "estel no reconegut" : "unrecognized star");
+                return;
+            }
+            
+            // Prepare replacements only if star is known
             map<string, string> replacements;
             replacements["STAR_NAME"] = processStarName(starNameIn.get(), lang);
             replacements["CONSTELLATION"] = constellationIn.get();
@@ -420,19 +456,19 @@
                 lang
             );
             replacements["MASS"] = formatNumber(sunXIn.get(), 2, lang);
-
+            
             // Get and process the template
             string template_text = NarrativeManager::getInstance().getNarrative(lang, style, true);
             if (!template_text.empty()) {
                 string newNarrative = processTemplate(template_text, replacements);
                 
                 if (!newNarrative.empty()) {
+                    // Process numerals if needed
                     if (useNumeralsParam.get()) {
                         std::regex number_pattern(R"((?:^|\s|-)(\d+(?:\.\d+)?))");
                         string result = newNarrative;
                         vector<pair<string, string>> replacements;
                         
-                        // Find all numbers in text
                         std::smatch match;
                         string::const_iterator searchStart(newNarrative.cbegin());
                         
@@ -441,13 +477,11 @@
                             string wordVersion;
                             
                             if (numStr.find('.') != string::npos) {
-                                // It's a decimal
                                 size_t dotPos = numStr.find('.');
                                 int intPart = stoi(numStr.substr(0, dotPos));
                                 string decPart = numStr.substr(dotPos + 1);
                                 wordVersion = numberToWords(intPart, false) + " coma " + decPart;
                             } else {
-                                // It's an integer
                                 wordVersion = numberToWords(stoi(numStr), false);
                             }
                             
@@ -455,7 +489,6 @@
                             searchStart = match.suffix().first;
                         }
                         
-                        // Apply replacements in reverse order
                         for (auto it = replacements.rbegin(); it != replacements.rend(); ++it) {
                             size_t pos = result.rfind(it->first);
                             if (pos != string::npos) {
@@ -467,7 +500,11 @@
                     }
                     
                     narrativeOut.set(newNarrative);
+                } else {
+                    narrativeOut.set(lang == "ca" ? "estel no reconegut" : "unrecognized star");
                 }
+            } else {
+                narrativeOut.set(lang == "ca" ? "estel no reconegut" : "unrecognized star");
             }
         }
         
