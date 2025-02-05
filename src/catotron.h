@@ -306,13 +306,19 @@ private:
         writeFuture = std::async(std::launch::async, [this]() {
             ofLogNotice("Catotron") << "Executing TTS Write...";
             
+            // Get current timestamp
+            auto now = std::chrono::system_clock::now();
+            auto timeT = std::chrono::system_clock::to_time_t(now);
+            auto timeMS = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()
+            ).count() % 1000;
+            
             std::stringstream ss;
-            ss << std::setw(2) << std::setfill('0') << currentFileIndex;
-            string indexStr = ss.str();
+            ss << std::put_time(std::localtime(&timeT), "%Y%m%d_%H%M%S");
+            ss << "_" << std::setw(3) << std::setfill('0') << timeMS;
+            string timestamp = ss.str();
             
-            string outputFile = ofToDataPath("tts/catotron_" + indexStr + ".wav", true);
-            currentFileIndex = (currentFileIndex + 1) % maxFiles;
-            
+            string outputFile = ofToDataPath("tts/catotron_" + timestamp + ".wav", true);
             string jsonContent = "{\"text\":\"" + inputText.get() + "\",\"lang\":\"ca\"}";
             
             if(performCurlRequest("http://127.0.0.1:5050/api/short", jsonContent, outputFile)) {
