@@ -44,7 +44,10 @@ public:
         lastUpdateTime = 0;
         
         listeners.push(hipInput.newListener([this](int &){
-                    updateDataFromHIP();
+					if(hipInput>0)
+					{
+						updateDataFromHIP();
+					}
                 }));
         
         listeners.push(hdInput.newListener([this](int &){

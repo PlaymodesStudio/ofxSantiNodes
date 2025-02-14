@@ -30,100 +30,104 @@ public:
 
 private:
     void processInput() {
-        const auto& currentInput = input.get();
-        
-        // Ensure prevInput matches current size
-        if(prevInput.size() != currentInput.size()) {
-            prevInput.resize(currentInput.size(), 0.0f);
-            if(fixedSize) {
-                positionMap.resize(currentInput.size(), -1); // Reset position map
-            }
-        }
-        
-        if(fixedSize) {
-            // Fixed-size mode with position tracking
-            
-            // First, handle zeros (deactivations)
-            for(size_t i = 0; i < currentInput.size(); i++) {
-                if(prevInput[i] != 0 && currentInput[i] == 0) {
-                    // Find and clear this index's position
-                    for(size_t pos = 0; pos < positionMap.size(); pos++) {
-                        if(positionMap[pos] == static_cast<int>(i)) {
-                            positionMap[pos] = -1;
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            // Then handle rising edges
-            for(size_t i = 0; i < currentInput.size(); i++) {
-                if(prevInput[i] == 0 && currentInput[i] != 0) {
-                    // Find first available position
-                    for(size_t pos = 0; pos < positionMap.size(); pos++) {
-                        if(positionMap[pos] == -1) {
-                            positionMap[pos] = i;
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            // Create output based on position map
-            vector<float> outputVals(currentInput.size(), 0.0f);
-            vector<int> idxVals(currentInput.size(), -1);
-            
-            for(size_t pos = 0; pos < positionMap.size(); pos++) {
-                if(positionMap[pos] != -1) {
-                    outputVals[pos] = currentInput[positionMap[pos]];
-                    idxVals[pos] = positionMap[pos];
-                }
-            }
-            
-            output = outputVals;
-            idx = idxVals;
-            
-        } else {
-            // Dynamic-size mode
-            // Check for new rising edges and process zeros
-            for(size_t i = 0; i < currentInput.size(); i++) {
-                // Rising edge detection
-                if(prevInput[i] == 0 && currentInput[i] != 0) {
-                    // Remove this index if it exists already
-                    activeIndices.erase(
-                        std::remove(activeIndices.begin(), activeIndices.end(), i),
-                        activeIndices.end()
-                    );
-                    // Add to end of sequence
-                    activeIndices.push_back(i);
-                }
-                // Zero detection
-                else if(prevInput[i] != 0 && currentInput[i] == 0) {
-                    // Remove from sequence
-                    activeIndices.erase(
-                        std::remove(activeIndices.begin(), activeIndices.end(), i),
-                        activeIndices.end()
-                    );
-                }
-            }
-            
-            // Create dynamic-size output
-            vector<float> outputVals;
-            vector<int> idxVals;
-            
-            for(size_t originalIdx : activeIndices) {
-                if(originalIdx < currentInput.size()) {
-                    outputVals.push_back(currentInput[originalIdx]);
-                    idxVals.push_back(originalIdx);
-                }
-            }
-            
-            output = outputVals;
-            idx = idxVals;
-        }
-        
-        // Update previous input
-        prevInput = currentInput;
+		
+		if(input.get().size()!=0)
+		{
+			const auto& currentInput = input.get();
+			
+			// Ensure prevInput matches current size
+			if(prevInput.size() != currentInput.size()) {
+				prevInput.resize(currentInput.size(), 0.0f);
+				if(fixedSize) {
+					positionMap.resize(currentInput.size(), -1); // Reset position map
+				}
+			}
+			
+			if(fixedSize) {
+				// Fixed-size mode with position tracking
+				
+				// First, handle zeros (deactivations)
+				for(size_t i = 0; i < currentInput.size(); i++) {
+					if(prevInput[i] != 0 && currentInput[i] == 0) {
+						// Find and clear this index's position
+						for(size_t pos = 0; pos < positionMap.size(); pos++) {
+							if(positionMap[pos] == static_cast<int>(i)) {
+								positionMap[pos] = -1;
+								break;
+							}
+						}
+					}
+				}
+				
+				// Then handle rising edges
+				for(size_t i = 0; i < currentInput.size(); i++) {
+					if(prevInput[i] == 0 && currentInput[i] != 0) {
+						// Find first available position
+						for(size_t pos = 0; pos < positionMap.size(); pos++) {
+							if(positionMap[pos] == -1) {
+								positionMap[pos] = i;
+								break;
+							}
+						}
+					}
+				}
+				
+				// Create output based on position map
+				vector<float> outputVals(currentInput.size(), 0.0f);
+				vector<int> idxVals(currentInput.size(), -1);
+				
+				for(size_t pos = 0; pos < positionMap.size(); pos++) {
+					if((positionMap[pos] != -1)&&(positionMap[pos]<currentInput.size())) {
+						outputVals[pos] = currentInput[positionMap[pos]];
+						idxVals[pos] = positionMap[pos];
+					}
+				}
+				
+				output = outputVals;
+				idx = idxVals;
+				
+			} else {
+				// Dynamic-size mode
+				// Check for new rising edges and process zeros
+				for(size_t i = 0; i < currentInput.size(); i++) {
+					// Rising edge detection
+					if(prevInput[i] == 0 && currentInput[i] != 0) {
+						// Remove this index if it exists already
+						activeIndices.erase(
+							std::remove(activeIndices.begin(), activeIndices.end(), i),
+							activeIndices.end()
+						);
+						// Add to end of sequence
+						activeIndices.push_back(i);
+					}
+					// Zero detection
+					else if(prevInput[i] != 0 && currentInput[i] == 0) {
+						// Remove from sequence
+						activeIndices.erase(
+							std::remove(activeIndices.begin(), activeIndices.end(), i),
+							activeIndices.end()
+						);
+					}
+				}
+				
+				// Create dynamic-size output
+				vector<float> outputVals;
+				vector<int> idxVals;
+				
+				for(size_t originalIdx : activeIndices) {
+					if(originalIdx < currentInput.size()) {
+						outputVals.push_back(currentInput[originalIdx]);
+						idxVals.push_back(originalIdx);
+					}
+				}
+				
+				output = outputVals;
+				idx = idxVals;
+			}
+			
+			// Update previous input
+			prevInput = currentInput;
+		}
     }
 
     ofParameter<vector<float>> input;

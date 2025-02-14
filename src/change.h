@@ -11,12 +11,14 @@ class change : public ofxOceanodeNodeModel {
 public:
     change() : ofxOceanodeNodeModel("Change") {
         addParameter(input.set("Input", {0}, {-FLT_MAX}, {FLT_MAX}));
+        addOutputParameter(triggerChanged.set("Trigger"));
         addOutputParameter(output.set("Output", {0}, {-FLT_MAX}, {FLT_MAX}));
         
         listener = input.newListener([this](vector<float> &vf){
             if(vf != previousInput) {
                 previousInput = vf;
                 output = vf;
+                triggerChanged.trigger();
             }
         });
     }
@@ -24,6 +26,7 @@ public:
 private:
     ofParameter<vector<float>> input;
     ofParameter<vector<float>> output;
+    ofParameter<void> triggerChanged;
     vector<float> previousInput;
     ofEventListener listener;
 };
