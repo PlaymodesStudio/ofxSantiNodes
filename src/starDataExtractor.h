@@ -418,34 +418,38 @@ private:
         //ofLogNotice("starDataExtractor") << "\nLooking up HD" << hdNum;
 
         if (bsc5pData.find(hdNum) != bsc5pData.end()) {
+            
             StarData &data = bsc5pData[hdNum];
-            parallax.set(data.parallax);
-            magnitude.set(data.magnitude);
-            bvColor.set(data.bvColor);
-            spectralType.set(data.spectralType);
-            multipleCount.set(data.multipleCount);
+            if(data.parallax!=NULL)
+            {
+                parallax.set(data.parallax);
+                magnitude.set(data.magnitude);
+                bvColor.set(data.bvColor);
+                spectralType.set(data.spectralType);
+                multipleCount.set(data.multipleCount);
 
-            // Infer mass and calculate sunX
-            float inferredMass = inferMass(data.spectralType, data.bvColor);
-            sunX.set(inferredMass);
+                // Infer mass and calculate sunX
+                float inferredMass = inferMass(data.spectralType, data.bvColor);
+                sunX.set(inferredMass);
 
-            // Try to get HR number from HD-HR map
-            if (hdToHrMap.find(hdNum) != hdToHrMap.end()) {
-                int hr = hdToHrMap[hdNum];
-               // ofLogNotice("starDataExtractor") << "Found HR" << hr << " for HD" << hdNum;
+                // Try to get HR number from HD-HR map
+                if (hdToHrMap.find(hdNum) != hdToHrMap.end()) {
+                    int hr = hdToHrMap[hdNum];
+                   // ofLogNotice("starDataExtractor") << "Found HR" << hr << " for HD" << hdNum;
 
-                if (iauNameData.find(hr) != iauNameData.end()) {
-                    StarNameData &nameData = iauNameData[hr];
-                    //ofLogNotice("starDataExtractor") << "Found IAU data: " << nameData.properName
-                       //                              << " in " << nameData.constellation;
-                    starName.set(nameData.properName);
-                    constellation.set(nameData.constellation);
-                    return;
+                    if (iauNameData.find(hr) != iauNameData.end()) {
+                        StarNameData &nameData = iauNameData[hr];
+                        //ofLogNotice("starDataExtractor") << "Found IAU data: " << nameData.properName
+                           //                              << " in " << nameData.constellation;
+                        starName.set(nameData.properName);
+                        constellation.set(nameData.constellation);
+                        return;
+                    }
                 }
-            }
+                starName.set("HD " + ofToString(hdNum));
+                constellation.set("");
 
-            starName.set("HD " + ofToString(hdNum));
-            constellation.set("");
+            }
         } else {
             //ofLogNotice("starDataExtractor") << "No BSC5P data for HD" << hdNum;
             parallax.set(0);
