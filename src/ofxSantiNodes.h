@@ -115,6 +115,13 @@
 #include "sampleAndHold.h"
 #include "risingEdgeReindexer.h"
 #include "dbap.h"
+#include "probabilityDropdownList.h"
+#include "prepend.h"
+#include "append.h"
+#include "ftos.h"
+#include "string2float.h"
+#include "stringBox.h"
+#include "txtReader.h"
 
 
 //#include "spectrumLines.h"
@@ -237,6 +244,13 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<sampleAndHold>("Santi/General");
     o.registerModel<risingEdgeReindexer>("Santi/General");
     o.registerModel<dbap>("Santi/AudioUtils");
+    o.registerModel<probabilityDropdownList>("Santi/Strings");
+    o.registerModel<prepend>("Santi/Strings");
+    o.registerModel<append>("Santi/Strings");
+    o.registerModel<ftos>("Santi/Strings");
+    o.registerModel<string2float>("Santi/Strings");
+    o.registerModel<stringBox>("Santi/Strings");
+    o.registerModel<txtReader>("Santi/Strings");
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
     o.registerModel<vectorRegion>("Santi/Thalastasi");
