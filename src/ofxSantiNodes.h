@@ -122,6 +122,8 @@
 #include "string2float.h"
 #include "stringBox.h"
 #include "txtReader.h"
+#include "envelopeGenerator2.h"
+#include "multiOscSender.h"
 
 
 //#include "spectrumLines.h"
@@ -250,7 +252,9 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<ftos>("Santi/Strings");
     o.registerModel<string2float>("Santi/Strings");
     o.registerModel<stringBox>("Santi/Strings");
-    o.registerModel<txtReader>("Santi/Strings");
+	o.registerModel<txtReader>("Santi/Strings");
+	o.registerModel<envelopeGenerator2>("Santi/AudioUtils");
+	o.registerModel<multiOscSender>("Santi/OSC");
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
     o.registerModel<vectorRegion>("Santi/Thalastasi");
