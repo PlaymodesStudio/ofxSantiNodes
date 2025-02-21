@@ -11,52 +11,30 @@ public:
 	}
 	
 	void setup() override {
-		// Predefined lists for each category
-		rhythmOptions = {
-			"none",
-			"kick_pattern_1",
-			"snare_groove",
-			"hihat_16th",
-			"percussion_latin"
-		};
-		
-		textureOptions = {
-			"none",
-			"pad_warm",
-			"strings_sus",
-			"noise_filtered",
-			"grain_cloud"
-		};
-		
-		harmonyOptions = {
-			"none",
-			"chord_maj7",
-			"arp_minor",
-			"bass_walking",
-			"progression_ii_V_I"
-		};
+		// Initialize with "none" option
+		rhythmOptions = {"none"};
+		textureOptions = {"none"};
+		harmonyOptions = {"none"};
+		fxOptions = {"none"};
 
-		fxOptions = {
-			"none",
-			"reverb_long",
-			"delay_tape",
-			"distortion",
-			"filter_sweep",
-			"bitcrush"
-		};
+		// Add path parameter
+		addParameter(elementsPath.set("Path", ""));
+		addParameter(browseButton.set("Open"));
+		
+		// Add file load listener
+		listeners.push(elementsPath.newListener([this](string &path){
+			loadElementsFromFile(path);
+		}));
 
 		// Add parameters
-		addParameter(widgetWidth.set("Width", 200, 100, 500));
+		addParameter(widgetWidth.set("Width", 360, 100, 500));
 		addParameter(numRows.set("Rows", 8, 1, 32));
-		addParameter(globalProb.set("Global Prob", 100, 0, 100));
-		addParameter(groupProb.set("Group Prob", {1.0f}, {0.0f}, {1.0f}));
+		addParameter(globalProb.set("Global %", 100, 0, 100));
+		addParameter(groupProb.set("Group %", {1.0f}, {0.0f}, {1.0f}));
 		addParameter(trigger.set("GO"));
 		addOutputParameter(output.set("Output", ""));
 		
-		// Parameters for saving state
-		addParameter(cellData.set("CellData", ""));
-		addParameter(probData.set("ProbData", ""));
-		addParameter(groupData.set("GroupData", ""));
+
 		
 		// Initialize data structures
 		cellContents.resize(32);  // Maximum size
@@ -69,9 +47,16 @@ public:
 			drawGui();
 		});
 		
-		// Setup trigger listener
+		// Setup listeners
 		listeners.push(trigger.newListener([this]() {
 			generateOutput();
+		}));
+		
+		listeners.push(browseButton.newListener([this]() {
+			ofFileDialogResult result = ofSystemLoadDialog("Select elements file", false);
+			if(result.bSuccess) {
+				elementsPath = result.getPath();
+			}
 		}));
 
 		// Setup row count listener
@@ -145,7 +130,7 @@ public:
 
 private:
 	void drawGui() {
-		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4, 4));
+		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4, 2));
 		
 		float currentWidth = widgetWidth.get();
 		ImGui::SetNextItemWidth(currentWidth);
@@ -153,11 +138,11 @@ private:
 		// Main probability table
 		if (ImGui::BeginTable("##ProbabilityTable", 6, ImGuiTableFlags_Borders, ImVec2(currentWidth, 0))) {
 			ImGui::TableSetupColumn("Element", ImGuiTableColumnFlags_WidthStretch);
-			ImGui::TableSetupColumn("Prob%", ImGuiTableColumnFlags_WidthFixed, 50.0f);
-			ImGui::TableSetupColumn("Group", ImGuiTableColumnFlags_WidthFixed, 50.0f);
-			ImGui::TableSetupColumn("Result", ImGuiTableColumnFlags_WidthFixed, 50.0f);
-			ImGui::TableSetupColumn("Clear", ImGuiTableColumnFlags_WidthFixed, 40.0f);
-			ImGui::TableSetupColumn("Move", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+			ImGui::TableSetupColumn("%", ImGuiTableColumnFlags_WidthFixed, 35.0f);
+			ImGui::TableSetupColumn("G", ImGuiTableColumnFlags_WidthFixed, 35.0f);
+			ImGui::TableSetupColumn("O", ImGuiTableColumnFlags_WidthFixed, 16);
+			ImGui::TableSetupColumn("X", ImGuiTableColumnFlags_WidthFixed, 16);
+			ImGui::TableSetupColumn("^", ImGuiTableColumnFlags_WidthFixed, 32.0f);
 			ImGui::TableHeadersRow();
 
 			for (int row = 0; row < numRows; row++) {
@@ -226,7 +211,7 @@ private:
 				ImGui::TableSetColumnIndex(3);
 				ImGui::PushStyleColor(ImGuiCol_Button, lastResults[row] ?
 					ImVec4(0.2f, 0.8f, 0.2f, 1.0f) : ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-				ImGui::Button(("##result" + ofToString(row)).c_str(), ImVec2(20, 20));
+				ImGui::Button(("##result" + ofToString(row)).c_str(), ImVec2(16, 16));
 				ImGui::PopStyleColor();
 
 				// Clear button
@@ -290,6 +275,13 @@ private:
 			}
 			return;
 		}
+
+		// First determine which groups are active this round
+		vector<bool> activeGroups(groupProb->size(), false);
+		for(int i = 0; i < groupProb->size(); i++) {
+			float random = ofRandom(1.0f);
+			activeGroups[i] = (random < groupProb.get()[i]);
+		}
 		
 		// Process each cell
 		for(int i = 0; i < numRows; i++) {
@@ -299,21 +291,22 @@ private:
 				continue;
 			}
 			
-			// Get group probability multiplier
-			float groupMultiplier = 1.0f;
-			if(groups[i] < groupProb->size()) {
-				groupMultiplier = groupProb.get()[groups[i]];
-			}
+			// Check if element's group is active
+			int elementGroup = groups[i];
+			bool groupActive = (elementGroup >= groupProb->size()) || activeGroups[elementGroup];
 			
-			// Calculate final probability
-			float finalProb = probabilities[i] * groupMultiplier;
-			float random = ofRandom(100);
-			bool succeeded = (random < finalProb);
-			lastResults[i] = succeeded;
-			
-			if(succeeded) {
-				if(!result.empty()) result += " ";
-				result += cellContents[i].second;
+			if(groupActive) {
+				// Only check individual probability if group is active
+				float random = ofRandom(100);
+				bool succeeded = (random < probabilities[i]);
+				lastResults[i] = succeeded;
+				
+				if(succeeded) {
+					if(!result.empty()) result += " ";
+					result += cellContents[i].second;
+				}
+			} else {
+				lastResults[i] = false;
 			}
 		}
 		
@@ -337,11 +330,48 @@ private:
 	ofParameter<int> numRows;
 	ofParameter<int> globalProb;
 	ofParameter<vector<float>> groupProb;
-	ofParameter<string> cellData;
-	ofParameter<string> probData;
-	ofParameter<string> groupData;
+	ofParameter<string> elementsPath;
+	ofParameter<void> browseButton;
 	
 	customGuiRegion guiRegion;
+
+	void loadElementsFromFile(const string& path) {
+		if(path.empty()) return;
+		
+		// Reset lists but keep "none" option
+		rhythmOptions = {"none"};
+		textureOptions = {"none"};
+		harmonyOptions = {"none"};
+		fxOptions = {"none"};
+		
+		// Read file
+		ofFile file(path);
+		if(!file.exists()) {
+			ofLogError("probabilityDropdownList") << "File not found: " << path;
+			return;
+		}
+
+		// Read file line by line
+		ofBuffer buffer = ofBufferFromFile(path);
+		for(auto line : buffer.getLines()) {
+			string element = ofTrim(line);
+			if(element.empty()) continue;
+			
+			// Categorize based on prefix
+			if(element.substr(0,2) == "fx") {
+				fxOptions.push_back(element);
+			}
+			else if(element.substr(0,1) == "r") {
+				rhythmOptions.push_back(element);
+			}
+			else if(element.substr(0,1) == "h") {
+				harmonyOptions.push_back(element);
+			}
+			else if(element.substr(0,1) == "t") {
+				textureOptions.push_back(element);
+			}
+		}
+	}
 	ofEventListeners listeners;
 };
 
