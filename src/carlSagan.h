@@ -773,11 +773,11 @@
         }
 
 
-        float parallaxToLightYears(float parallax) {
-            if (parallax <= 0) return 0;
-            float parsecs = 1.0f / parallax; // Paral·laxi en arcsegons
-            return parsecs * 3.26156f; // Convertir parsecs a anys llum
-        }
+		float parallaxToLightYears(float parallax) {
+			if (parallax <= 0) return 0;
+			float parsecs = 1000.0f / parallax; // Paral·laxi en milliarcsegons
+			return parsecs * 3.26156f; // Convertir parsecs a anys llum
+		}
 
 
 
