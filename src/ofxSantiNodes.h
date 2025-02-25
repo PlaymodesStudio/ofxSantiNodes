@@ -124,6 +124,7 @@
 #include "txtReader.h"
 #include "envelopeGenerator2.h"
 #include "multiOscSender.h"
+#include "filenameExtractor.h"
 
 
 //#include "spectrumLines.h"
@@ -253,6 +254,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<string2float>("Santi/Strings");
     o.registerModel<stringBox>("Santi/Strings");
 	o.registerModel<txtReader>("Santi/Strings");
+	o.registerModel<filenameExtractor>("Santi/Strings");
 	o.registerModel<envelopeGenerator2>("Santi/AudioUtils");
 	o.registerModel<multiOscSender>("Santi/OSC");
     
