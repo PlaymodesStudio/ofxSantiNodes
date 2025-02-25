@@ -108,23 +108,13 @@ private:
 	void sendIntListMessage(const string& address, const vector<int>& list) {
 		if(!sender.isReady()) return;
 		
-		bool hasNonZero = false;
+		ofxOscMessage message;
+		message.setAddress(address);
+		message.addIntArg(list.size());
 		for(int val : list) {
-			if(val != 0) {
-				hasNonZero = true;
-				break;
-			}
+			message.addIntArg(val);
 		}
-		
-		if(hasNonZero) {
-			ofxOscMessage message;
-			message.setAddress(address);
-			message.addIntArg(list.size());
-			for(int val : list) {
-				message.addIntArg(val);
-			}
-			sender.sendMessage(message);
-		}
+		sender.sendMessage(message);
 	}
 	
 	void sendSingleIntMessage(const string& address, int value) {
