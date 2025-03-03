@@ -80,7 +80,6 @@
 #include "noteMatrix.h"
 #include "indexMonitor.h"
 #include "phasorSwing.h"
-//#include "textureColumnCurve.h"
 #include "valueIndex.h"
 #include "valuesChanged.h"
 #include "shell.h"
@@ -125,6 +124,9 @@
 #include "envelopeGenerator2.h"
 #include "multiOscSender.h"
 #include "filenameExtractor.h"
+#include "voidCounter.h"
+#include "duplicator.h"
+#include "markovVector.h"
 
 
 //#include "spectrumLines.h"
@@ -225,8 +227,8 @@ static void registerModels(ofxOceanode &o)
     //o.registerModel<spectrumLines>("Santi");
     //o.registerModel<pixelStretchVector>("Santi");
     //o.registerModel<vectorSymmetry>("Santi");
-    o.registerModel<voiceExpanding2>("Santi/Radio");
-    o.registerModel<pianoKeyboard>("Santi/Visualizers");
+    o.registerModel<voiceExpanding2>("Santi/Voicing");
+    o.registerModel<pianoKeyboard>("Santi/GUI");
     o.registerModel<vectorInterpolation>("Santi/Math");
     o.registerModel<starDataExtractor>("Santi/Stars");
     o.registerModel<carlSagan>("Santi/Stars");
@@ -243,7 +245,7 @@ static void registerModels(ofxOceanode &o)
     //o.registerModel<timeline>("Santi/Sequencers");
     o.registerModel<padXY>("Santi/GUI");
     o.registerModel<binaryEdgeDetector>("Santi/General");
-    o.registerModel<circularSpeakerScheme>("Santi/Visualizers");
+    o.registerModel<circularSpeakerScheme>("Santi/GUI");
     o.registerModel<sampleAndHold>("Santi/General");
     o.registerModel<risingEdgeReindexer>("Santi/General");
     o.registerModel<dbap>("Santi/AudioUtils");
@@ -257,6 +259,9 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<filenameExtractor>("Santi/Strings");
 	o.registerModel<envelopeGenerator2>("Santi/AudioUtils");
 	o.registerModel<multiOscSender>("Santi/OSC");
+	o.registerModel<voidCounter>("Santi/Events");
+	o.registerModel<duplicator>("Santi/Vectors");
+	o.registerModel<markovVector>("Santi/Sequencers");
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
     o.registerModel<vectorRegion>("Santi/Thalastasi");
