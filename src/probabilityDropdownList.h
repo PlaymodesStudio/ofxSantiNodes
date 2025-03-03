@@ -727,21 +727,27 @@ private:
 		}
 	
 	void generateOutput() {
-		string result;
+		// Create a completely new, empty result string
+		string result = "";
+		
+		// Reset ALL visual indicators
+		for(int i = 0; i < lastResults.size(); i++) {
+			lastResults[i] = false;
+		}
 		
 		// Check global probability
 		float globalRandom = ofRandom(100);
 		bool globalPass = (globalRandom < globalProb);
 		
-		// If global probability fails, clear everything and return
+		// If global probability fails, explicitly set an empty string and return
 		if (!globalPass) {
-			output = "";
-			for(int i = 0; i < numRows; i++) {
-				lastResults[i] = false;
-			}
+			output.set(""); // Use set() method to ensure proper event notification
 			return;
 		}
 
+		// Create a vector to collect all selected elements
+		vector<string> selectedElements;
+		
 		// First determine which groups are active this round
 		vector<bool> activeGroups(groupProb->size(), false);
 		for(int i = 0; i < groupProb->size(); i++) {
@@ -749,11 +755,10 @@ private:
 			activeGroups[i] = (random < groupProb.get()[i]);
 		}
 		
-		// Process each cell
-		for(int i = 0; i < numRows; i++) {
+		// Process each cell within bounds
+		for(int i = 0; i < numRows && i < cellContents.size() && i < probabilities.size() && i < groups.size(); i++) {
 			// Skip empty cells or cells with "none"
 			if(cellContents[i].second.empty() || cellContents[i].second == "none") {
-				lastResults[i] = false;
 				continue;
 			}
 			
@@ -765,18 +770,27 @@ private:
 				// Only check individual probability if group is active
 				float random = ofRandom(100);
 				bool succeeded = (random < probabilities[i]);
-				lastResults[i] = succeeded;
 				
-				if(succeeded) {
-					if(!result.empty()) result += " ";
-					result += cellContents[i].second;
+				// Set the visual indicator if within bounds
+				if(i < lastResults.size()) {
+					lastResults[i] = succeeded;
 				}
-			} else {
-				lastResults[i] = false;
+				
+				// Add to selected elements only if succeeded
+				if(succeeded) {
+					selectedElements.push_back(cellContents[i].second);
+				}
 			}
 		}
 		
-		output = result;
+		// Build the result string from selected elements
+		for(size_t i = 0; i < selectedElements.size(); i++) {
+			if(i > 0) result += " ";
+			result += selectedElements[i];
+		}
+		
+		// Explicitly set the output with the set() method to ensure proper event notification
+		output.set(result);
 	}
 
 private:
