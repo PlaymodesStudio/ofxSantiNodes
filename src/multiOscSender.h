@@ -13,6 +13,8 @@ public:
 		notegridInput.set("/notegrid", 100, 0, INT_MAX);
 		paletaInput.set("/paleta", 3, 0, INT_MAX);
 		escalaInput.set("/escala", 4, 0, INT_MAX);
+		snapshotInput.set("/snapshot", -1, -1, INT_MAX);
+		bpmInput.set("/bpm", 120, 1, 999);
 		
 		// Initialize vectors with their actual sizes and ranges
 		vector<int> transposeDefault(4, 0);
@@ -44,6 +46,8 @@ public:
 		addParameter(notegridInput);
 		addParameter(paletaInput);
 		addParameter(escalaInput);
+		addParameter(snapshotInput);
+		addParameter(bpmInput); // Add the BPM parameter to the node
 		
 		addParameter(transposeList);
 		addParameter(rootList);
@@ -132,6 +136,8 @@ private:
 		sendSingleIntMessage("/notegrid", notegridInput);
 		sendSingleIntMessage("/paleta", paletaInput);
 		sendSingleIntMessage("/escala", escalaInput);
+		sendSingleIntMessage("/snapshot", snapshotInput);
+		sendSingleIntMessage("/bpm", bpmInput); // Send the BPM message
 		
 		// Send int list messages only if they contain non-zero values
 		sendIntListMessage("/transposeList", transposeList);
@@ -169,11 +175,13 @@ private:
 	ofParameter<vector<int>> transposeList;
 	ofParameter<vector<int>> rootList;
 	
-	// New integer parameters
+	// Integer parameters
 	ofParameter<int> barsInput;
 	ofParameter<int> notegridInput;
 	ofParameter<int> paletaInput;
 	ofParameter<int> escalaInput;
+	ofParameter<int> snapshotInput;
+	ofParameter<int> bpmInput; // Added BPM parameter declaration
 	
 	ofParameter<bool> goButton;
 	ofParameter<int> oscPort;
