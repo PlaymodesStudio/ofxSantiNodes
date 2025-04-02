@@ -25,21 +25,24 @@ public:
     }
     
     void setup() {
-        description = "Text-to-Speech node using OpenAI's API. Generates natural sounding speech.";
+		description = "Text-to-Speech node using OpenAI's API. Generates natural sounding speech. Requires: 1) Miniconda installed via 'brew install --cask miniconda', 2) OpenAI Python package installed via '/opt/homebrew/Caskroom/miniconda/base/bin/pip install openai', and 3) SoX audio utility installed via 'brew install sox'. Supports multiple voice options.";
         
-        // Add voice selection dropdown
-        vector<string> voiceOptions = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"};
-        addParameterDropdown(selectedVoice, "Voice", 4, voiceOptions); // Default to 'nova' (index 4)
-        
-        addParameter(inputText.set("Text", ""));
-        addParameter(writeButton.set("Write"));
-        addParameter(lastGeneratedFile.set("File", ""));
-        addOutputParameter(trigger.set("Trigger", 0, 0, 1));
-        
-        listeners.push(writeButton.newListener([this](){
-            executeTTSWrite();
-        }));
-    }
+		vector<string> voiceOptions = {"alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"};
+			addParameterDropdown(selectedVoice, "Voice", 7, voiceOptions); // Default to 'nova' (index 7)
+			
+			// Add emotion/speed instructions
+			addParameter(instructionsText.set("Instructions", ""));
+			
+			
+			addParameter(inputText.set("Text", ""));
+			addParameter(writeButton.set("Write"));
+			addParameter(lastGeneratedFile.set("File", ""));
+			addOutputParameter(trigger.set("Trigger", 0, 0, 1));
+			
+			listeners.push(writeButton.newListener([this](){
+				executeTTSWrite();
+			}));
+		}
     
     void update(ofEventArgs &a) override {
         if (writeInProgress && writeFuture.valid()) {
@@ -109,12 +112,21 @@ private:
                 ofStringReplace(escapedText, "'", "'\"'\"'");
                 
                 // Get the selected voice option
-                vector<string> voiceOptions = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"};
+				vector<string> voiceOptions = {"alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"};
                 string selectedVoiceStr = voiceOptions[selectedVoice];
+				
+				// Process instructions (if any)
+					string instructionsParam = "";
+					if (!instructionsText.get().empty()) {
+						string escapedInstructions = instructionsText.get();
+						ofStringReplace(escapedInstructions, "'", "'\"'\"'");
+						instructionsParam = " \"" + escapedInstructions + "\"";
+					}
                 
                 // Execute Python script with explicit response_format="wav" and selected voice
-                string pythonCmd = "PYTHONPATH=\"" + pythonSitePackages + "\" " +
-                                 "\"" + pythonBin + "\" \"" + pythonPath + "\" '" + escapedText + "' \"" + tempFile + "\" wav \"" + selectedVoiceStr + "\" 2>&1";
+				string pythonCmd = "PYTHONPATH=\"" + pythonSitePackages + "\" " +
+									 "\"" + pythonBin + "\" \"" + pythonPath + "\" '" + escapedText + "' \"" + tempFile +
+									 "\" wav \"" + selectedVoiceStr + "\"" + instructionsParam + " 2>&1";
                 
                 ofLogNotice("OpenAITTS") << "Executing command: " << pythonCmd;
                 string pythonOutput = executeCommand(pythonCmd);
@@ -179,6 +191,8 @@ private:
     ofParameter<string> lastGeneratedFile;
     ofParameter<int> trigger;
     ofParameter<int> selectedVoice;  // New parameter for voice selection
+	ofParameter<string> instructionsText;
+
         
     bool writeInProgress;
     std::future<bool> writeFuture;
