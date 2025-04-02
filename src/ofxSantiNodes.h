@@ -127,6 +127,10 @@
 #include "voidCounter.h"
 #include "duplicator.h"
 #include "markovVector.h"
+#include "scalaTuning.h"
+#include "framerateControl.h"
+#include "scFreezer.h"
+#include "vectorSampler.h"
 
 
 //#include "spectrumLines.h"
@@ -262,6 +266,10 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<voidCounter>("Santi/Events");
 	o.registerModel<duplicator>("Santi/Vectors");
 	o.registerModel<markovVector>("Santi/Sequencers");
+	o.registerModel<scalaTuning>("Santi/AudioUtils");
+	o.registerModel<framerateControl>("Santi/General");
+	o.registerModel<scFreezer>("Santi/AudioUtils");
+	o.registerModel<vectorSampler>("Santi/Vectors");
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
     o.registerModel<vectorRegion>("Santi/Thalastasi");
