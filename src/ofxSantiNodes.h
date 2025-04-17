@@ -93,8 +93,8 @@
 #include "voiceExpanding2.h"
 #include "pianoKeyboard.h"
 #include "vectorInterpolation.h"
-#include "starDataExtractor.h"
-#include "carlSagan.h"
+//#include "starDataExtractor.h"
+//#include "carlSagan.h"
 #include "catotron.h"
 #include "OpenAITTS.h"
 #include "vectorExtract.h"
@@ -106,7 +106,7 @@
 #include "vectorFile.h"
 #include "snapshotServer.h"
 #include "snapshotClient.h"
-#include "constellations.h"
+//#include "constellations.h"
 //#include "timeline.h"
 #include "padXY.h"
 #include "binaryEdgeDetector.h"
@@ -129,8 +129,10 @@
 #include "markovVector.h"
 #include "scalaTuning.h"
 #include "framerateControl.h"
-#include "scFreezer.h"
+//#include "scFreezer.h"
 #include "vectorSampler.h"
+#include "gateDuration.h"
+#include "dataBufferFeedbackMs.h"
 
 
 //#include "spectrumLines.h"
@@ -234,8 +236,8 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<voiceExpanding2>("Santi/Voicing");
     o.registerModel<pianoKeyboard>("Santi/GUI");
     o.registerModel<vectorInterpolation>("Santi/Math");
-    o.registerModel<starDataExtractor>("Santi/Stars");
-    o.registerModel<carlSagan>("Santi/Stars");
+    //o.registerModel<starDataExtractor>("Santi/Stars");
+    //o.registerModel<carlSagan>("Santi/Stars");
     o.registerModel<vectorExtract>("Santi/Vectors");
     o.registerModel<Transport>("Santi/Sequencers");
     o.registerModel<chordCypher>("Santi/Pitch");
@@ -245,7 +247,7 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<vectorFile>("Santi/Vectors");
     o.registerModel<snapshotServer>("Santi/Snapshots");
     o.registerModel<snapshotClient>("Santi/Snapshots");
-    o.registerModel<constellations>("Santi/Stars");
+    //o.registerModel<constellations>("Santi/Stars");
     //o.registerModel<timeline>("Santi/Sequencers");
     o.registerModel<padXY>("Santi/GUI");
     o.registerModel<binaryEdgeDetector>("Santi/General");
@@ -268,8 +270,9 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<markovVector>("Santi/Sequencers");
 	o.registerModel<scalaTuning>("Santi/AudioUtils");
 	o.registerModel<framerateControl>("Santi/General");
-	o.registerModel<scFreezer>("Santi/AudioUtils");
 	o.registerModel<vectorSampler>("Santi/Vectors");
+	o.registerModel<gateDuration>("Santi/Sequencers");
+	o.registerModel<dataBufferFeedbackMs>("Santi/Vectors");
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
     o.registerModel<vectorRegion>("Santi/Thalastasi");
