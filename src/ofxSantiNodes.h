@@ -133,6 +133,7 @@
 #include "vectorSampler.h"
 #include "gateDuration.h"
 #include "dataBufferFeedbackMs.h"
+#include "multiSliderGrid.h"
 
 
 //#include "spectrumLines.h"
@@ -273,6 +274,7 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<vectorSampler>("Santi/Vectors");
 	o.registerModel<gateDuration>("Santi/Sequencers");
 	o.registerModel<dataBufferFeedbackMs>("Santi/Vectors");
+	o.registerModel<multiSliderGrid>("Santi/General");
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
     o.registerModel<vectorRegion>("Santi/Thalastasi");
