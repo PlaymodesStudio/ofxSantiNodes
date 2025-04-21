@@ -591,11 +591,27 @@ private:
 			ImGui::GetColorU32(ImGuiCol_Border)
 		);
 		
-		// Removed slot text display as requested
-		
 		// Calculate dimensions for drawing with spacing between sliders
 		const float sliderSpacing = 2.0f; // Spacing between sliders
 		float sliderWidth = (widgetSize.x - (sliderSpacing * (size - 1))) / size;
+		
+		// Calculate zero position for visualization
+		float zeroY = cursorPos.y + widgetSize.y;
+		if (minVal < 0 && maxVal > 0) {
+			// If range crosses zero, calculate zero position proportionally
+			float zeroNormalized = -minVal / (maxVal - minVal);
+			zeroY = cursorPos.y + widgetSize.y - (zeroNormalized * widgetSize.y);
+		}
+		
+		// Draw horizontal line at zero position if min is negative
+		if (minVal < 0) {
+			drawList->AddLine(
+				ImVec2(cursorPos.x, zeroY),
+				ImVec2(cursorPos.x + widgetSize.x, zeroY),
+				ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 0.5f)), // White line at zero
+				1.5f
+			);
+		}
 		
 		// Draw the horizontal grid lines only at quantization levels
 		for (int i = 0; i < q; i++) {
@@ -662,24 +678,54 @@ private:
 				ImGui::GetColorU32(ImGuiCol_FrameBg, 0.5f)
 			);
 			
-			// Get the quantized value for this slider
-			float quantizedValue = displayValues[i]; // Values are already quantized
-			float barHeight = quantizedValue * widgetSize.y;
+			// Get the value for this slider (normalized 0-1)
+			float normalizedValue = displayValues[i]; // Values are already normalized 0-1
+			
+			// Map to actual output value for visualization calculation
+			float outputValue = ofMap(normalizedValue, 0.0f, 1.0f, minVal, maxVal);
+			
+			// Calculate bar position and height based on sign
+			float barTop, barBottom;
+			float barHeight;
+			ImU32 barColor;
+			
+			if (minVal >= 0) {
+				// All positive range - standard display from bottom
+				float valueRatio = normalizedValue;
+				barHeight = valueRatio * widgetSize.y;
+				barTop = cursorPos.y + widgetSize.y - barHeight;
+				barBottom = cursorPos.y + widgetSize.y;
+				barColor = ImGui::GetColorU32(ImGuiCol_PlotHistogram);
+			} else if (outputValue >= 0) {
+				// Mixed range with positive value - start from zero line
+				float zeroToMaxRatio = outputValue / (maxVal - minVal);
+				barHeight = zeroToMaxRatio * widgetSize.y;
+				barTop = zeroY - barHeight;
+				barBottom = zeroY;
+				barColor = ImGui::GetColorU32(ImGuiCol_PlotHistogram);
+			} else {
+				// Negative value - draw below zero line
+				float minToZeroRatio = -outputValue / (maxVal - minVal);
+				barHeight = minToZeroRatio * widgetSize.y;
+				barTop = zeroY;
+				barBottom = zeroY + barHeight;
+				barColor = ImGui::GetColorU32(ImVec4(0.7f, 0.2f, 0.2f, 1.0f)); // Reddish for negative
+			}
 			
 			// Draw the slider bar
 			drawList->AddRectFilled(
-				ImVec2(x, cursorPos.y + widgetSize.y - barHeight),
-				ImVec2(x + sliderWidth, cursorPos.y + widgetSize.y),
-				ImGui::GetColorU32(ImGuiCol_PlotHistogram)
+				ImVec2(x, barTop),
+				ImVec2(x + sliderWidth, barBottom),
+				barColor
 			);
 			
-			// Draw a marker at the quantized value for better visibility
-			float quantizedY = cursorPos.y + widgetSize.y - (quantizedValue * widgetSize.y);
+			// Calculate the Y position for the marker based on normalized value
+			float markerY = cursorPos.y + (1.0f - normalizedValue) * widgetSize.y;
 			
 			// Draw horizontal marker line at the current value
 			drawList->AddLine(
-				ImVec2(x, quantizedY),
-				ImVec2(x + sliderWidth, quantizedY),
+				ImVec2(x, markerY),
+				ImVec2(x + sliderWidth, markerY),
 				ImGui::GetColorU32(ImGuiCol_Text),
 				2.0f
 			);
@@ -693,11 +739,11 @@ private:
 			
 			if (hoverSliderIdx >= 0 && hoverSliderIdx < size && hoverSliderIdx < displayValues.size()) {
 				// Get the quantized value (from display values which include shift)
-				float quantizedValue = displayValues[hoverSliderIdx]; // Already quantized
-				float outputValue = ofMap(quantizedValue, 0.0f, 1.0f, minVal, maxVal);
+				float normalizedValue = displayValues[hoverSliderIdx]; // Already quantized
+				float outputValue = ofMap(normalizedValue, 0.0f, 1.0f, minVal, maxVal);
 				
 				// Calculate the actual step this represents
-				int step = round(quantizedValue * (q - 1));
+				int step = round(normalizedValue * (q - 1));
 				
 				// Show tooltip with values
 				ImGui::BeginTooltip();
