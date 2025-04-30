@@ -93,12 +93,9 @@
 #include "voiceExpanding2.h"
 #include "pianoKeyboard.h"
 #include "vectorInterpolation.h"
-//#include "starDataExtractor.h"
-//#include "carlSagan.h"
 #include "catotron.h"
 #include "OpenAITTS.h"
 #include "vectorExtract.h"
-#include "transport.h"
 #include "chordCypher.h"
 #include "csvStrings.h"
 #include "jazzStandards.h"
@@ -106,8 +103,6 @@
 #include "vectorFile.h"
 #include "snapshotServer.h"
 #include "snapshotClient.h"
-//#include "constellations.h"
-//#include "timeline.h"
 #include "padXY.h"
 #include "binaryEdgeDetector.h"
 #include "circularSpeakerScheme.h"
@@ -129,16 +124,11 @@
 #include "markovVector.h"
 #include "scalaTuning.h"
 #include "framerateControl.h"
-//#include "scFreezer.h"
 #include "vectorSampler.h"
 #include "gateDuration.h"
 #include "dataBufferFeedbackMs.h"
 #include "multiSliderGrid.h"
 
-
-//#include "spectrumLines.h"
-//#include "pixelStretchVector.h"
-//#include "vectorSymmetry.h"
 
 namespace ofxOceanodeSanti{
 
@@ -218,7 +208,6 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<noteMatrix>("Santi/Sequencers");
     o.registerModel<indexMonitor>("Santi/Utils");
     o.registerModel<phasorSwing>("Santi/AudioUtils");
-    //o.registerModel<textureColumnCurve>("Santi");
     o.registerModel<valueIndex>("Santi/Vectors");
     o.registerModel<valuesChanged>("Santi/Vectors");
     o.registerModel<shell>("Santi/Utils");
@@ -231,16 +220,10 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<TTS>("Santi/TTS");
     o.registerModel<Catotron>("Santi/TTS");
     o.registerModel<OpenAITTS>("Santi/TTS");
-    //o.registerModel<spectrumLines>("Santi");
-    //o.registerModel<pixelStretchVector>("Santi");
-    //o.registerModel<vectorSymmetry>("Santi");
     o.registerModel<voiceExpanding2>("Santi/Voicing");
     o.registerModel<pianoKeyboard>("Santi/GUI");
     o.registerModel<vectorInterpolation>("Santi/Math");
-    //o.registerModel<starDataExtractor>("Santi/Stars");
-    //o.registerModel<carlSagan>("Santi/Stars");
     o.registerModel<vectorExtract>("Santi/Vectors");
-    o.registerModel<Transport>("Santi/Sequencers");
     o.registerModel<chordCypher>("Santi/Pitch");
     o.registerModel<csvStrings>("Santi/Strings");
     o.registerModel<jazzStandards>("Santi/Pitch");
@@ -248,8 +231,6 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<vectorFile>("Santi/Vectors");
     o.registerModel<snapshotServer>("Santi/Snapshots");
     o.registerModel<snapshotClient>("Santi/Snapshots");
-    //o.registerModel<constellations>("Santi/Stars");
-    //o.registerModel<timeline>("Santi/Sequencers");
     o.registerModel<padXY>("Santi/GUI");
     o.registerModel<binaryEdgeDetector>("Santi/General");
     o.registerModel<circularSpeakerScheme>("Santi/GUI");
