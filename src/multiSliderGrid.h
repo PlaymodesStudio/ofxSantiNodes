@@ -6,7 +6,7 @@
 
 class multiSliderGrid : public ofxOceanodeNodeModel {
 public:
-	multiSliderGrid() : ofxOceanodeNodeModel("MultiSlider Grid") {
+	multiSliderGrid() : ofxOceanodeNodeModel("MultiSlider Grid"), isLoadingPreset(false) {
 		description = "A customizable grid of sliders with quantization. Each slider value can be set interactively "
 					 "and outputs as a vector. The grid displays both slider positions and quantization steps. "
 					 "Multiple slots allow saving and recalling different patterns.";
@@ -21,8 +21,18 @@ public:
 		addParameter(q.set("Q", 8, 2, 64));
 		addParameter(minVal.set("Min", 0.0f, -FLT_MAX, FLT_MAX));
 		addParameter(maxVal.set("Max", 1.0f, -FLT_MAX, FLT_MAX));
-		addParameter(shift.set("Shift", 0, 0, 63));  // Add shift parameter
-		addParameter(setIncremental.set("Set++"));  // Add button for incremental setup
+		addParameter(shift.set("Shift", 0, 0, 63));  // Shift parameter
+		
+		// Replace setIncremental button with a dropdown for pattern selection
+		vector<string> patternOptions = {
+			"Pattern...", "Incremental", "Decremental", "Top", "Bottom", "Middle",
+			"Random", "Alternate", "Cosine", "Triangle", "V-Shape", "A-Shape"
+		};
+		addParameterDropdown(patternDropdown, "Fill Pattern", 0, patternOptions,
+							ofxOceanodeParameterFlags_DisableSavePreset | ofxOceanodeParameterFlags_DisableSaveProject);
+		
+		// Initialize loading flag to prevent automatic pattern application during preset loading
+		isLoadingPreset = false;
 		
 		// Slot management parameters
 		addParameter(slot.set("Slot", 0, 0, NUM_SLOTS - 1));
@@ -83,6 +93,16 @@ public:
 			updateOutputValues();
 		}));
 		
+		// Add listener for pattern dropdown
+		listeners.push(patternDropdown.newListener([this](int &pattern){
+			// Only apply pattern if it's not index 0 (which is "Pattern...") and not during preset loading
+			if (pattern > 0 && !isLoadingPreset) {
+				applySelectedPattern();
+				// Reset dropdown to "Pattern..." after applying
+				patternDropdown.setWithoutEventNotifications(0);
+			}
+		}));
+		
 		// Add listener for slot changes
 		listeners.push(slot.newListener([this](int &newSlot){
 			// Ignore negative slot values
@@ -108,11 +128,6 @@ public:
 			resetAllSlots();
 		});
 		
-		// Add listener for set incremental button
-		setIncrementalListener = setIncremental.newListener([this](){
-			setIncrementalValues();
-		});
-		
 		// Add listeners for file operations
 		filenameListener = filename.newListener([this](string &path){
 			if (!path.empty()) {
@@ -131,6 +146,25 @@ public:
 				saveFileDialog();
 			}
 		});
+	}
+	
+	// Apply the pattern selected in the dropdown
+	void applySelectedPattern() {
+		int patternIndex = patternDropdown.get();
+		switch (patternIndex) {
+			case 1: setIncrementalValues(); break;
+			case 2: setDecrementalValues(); break;
+			case 3: setTopValues(); break;
+			case 4: setBottomValues(); break;
+			case 5: setMiddleValues(); break;
+			case 6: setRandomValues(); break;
+			case 7: setAlternateValues(); break;
+			case 8: setCosineValues(); break;
+			case 9: setTriangleValues(); break;
+			case 10: setVShapeValues(); break;
+			case 11: setAShapeValues(); break;
+			default: break; // Index 0 is "Pattern..." which does nothing
+		}
 	}
 	
 	// Initialize all slots with empty vectors
@@ -228,22 +262,230 @@ public:
 		updateOutputValues();
 	}
 	
+	// Pattern generation functions
+	
 	void setIncrementalValues() {
-		// Set values to incremental pattern (0, 1, 2, ... size-1)
-		vector<float> incrementalValues(size);
+		vector<float> patternValues(size);
 		
 		for (int i = 0; i < size; i++) {
 			// Calculate normalized value between 0 and 1
 			float normalizedValue = (float)i / (size - 1);
 			
-			// Quantize to the nearest allowed step if needed
+			// Quantize to the nearest allowed step
 			normalizedValue = round(normalizedValue * (q - 1)) / (q - 1);
 			
-			incrementalValues[i] = normalizedValue;
+			patternValues[i] = normalizedValue;
 		}
 		
-		// Update the current slot with the incremental values
-		storage[slot.get()] = incrementalValues;
+		// Update the current slot with the pattern values
+		storage[slot.get()] = patternValues;
+		
+		// Update the output
+		updateOutputValues();
+	}
+	
+	void setDecrementalValues() {
+		vector<float> patternValues(size);
+		
+		for (int i = 0; i < size; i++) {
+			// Calculate normalized value between 1 and 0
+			float normalizedValue = 1.0f - ((float)i / (size - 1));
+			
+			// Quantize to the nearest allowed step
+			normalizedValue = round(normalizedValue * (q - 1)) / (q - 1);
+			
+			patternValues[i] = normalizedValue;
+		}
+		
+		// Update the current slot with the pattern values
+		storage[slot.get()] = patternValues;
+		
+		// Update the output
+		updateOutputValues();
+	}
+	
+	void setTopValues() {
+		vector<float> patternValues(size, 1.0f);
+		
+		// Ensure quantization
+		for (int i = 0; i < size; i++) {
+			patternValues[i] = round(patternValues[i] * (q - 1)) / (q - 1);
+		}
+		
+		// Update the current slot with the pattern values
+		storage[slot.get()] = patternValues;
+		
+		// Update the output
+		updateOutputValues();
+	}
+	
+	void setBottomValues() {
+		vector<float> patternValues(size, 0.0f);
+		
+		// Already quantized to 0, but just to be explicit
+		for (int i = 0; i < size; i++) {
+			patternValues[i] = round(patternValues[i] * (q - 1)) / (q - 1);
+		}
+		
+		// Update the current slot with the pattern values
+		storage[slot.get()] = patternValues;
+		
+		// Update the output
+		updateOutputValues();
+	}
+	
+	void setMiddleValues() {
+		vector<float> patternValues(size, 0.5f);
+		
+		// Ensure quantization
+		for (int i = 0; i < size; i++) {
+			patternValues[i] = round(patternValues[i] * (q - 1)) / (q - 1);
+		}
+		
+		// Update the current slot with the pattern values
+		storage[slot.get()] = patternValues;
+		
+		// Update the output
+		updateOutputValues();
+	}
+	
+	void setRandomValues() {
+		vector<float> patternValues(size);
+		
+		for (int i = 0; i < size; i++) {
+			// Random value between 0 and 1
+			float normalizedValue = ofRandom(1.0f);
+			
+			// Quantize to the nearest allowed step
+			normalizedValue = round(normalizedValue * (q - 1)) / (q - 1);
+			
+			patternValues[i] = normalizedValue;
+		}
+		
+		// Update the current slot with the pattern values
+		storage[slot.get()] = patternValues;
+		
+		// Update the output
+		updateOutputValues();
+	}
+	
+	void setAlternateValues() {
+		vector<float> patternValues(size);
+		
+		for (int i = 0; i < size; i++) {
+			// Alternate between 0 and 1
+			float normalizedValue = (i % 2 == 0) ? 1.0f : 0.0f;
+			
+			// Quantize (though these values should already align with quantization)
+			normalizedValue = round(normalizedValue * (q - 1)) / (q - 1);
+			
+			patternValues[i] = normalizedValue;
+		}
+		
+		// Update the current slot with the pattern values
+		storage[slot.get()] = patternValues;
+		
+		// Update the output
+		updateOutputValues();
+	}
+	
+	void setCosineValues() {
+		vector<float> patternValues(size);
+		
+		for (int i = 0; i < size; i++) {
+			// Cosine wave scaled to 0-1 range
+			float angle = (float)i / (size - 1) * TWO_PI;
+			float normalizedValue = (cos(angle) + 1.0f) * 0.5f;
+			
+			// Quantize to the nearest allowed step
+			normalizedValue = round(normalizedValue * (q - 1)) / (q - 1);
+			
+			patternValues[i] = normalizedValue;
+		}
+		
+		// Update the current slot with the pattern values
+		storage[slot.get()] = patternValues;
+		
+		// Update the output
+		updateOutputValues();
+	}
+	
+	void setTriangleValues() {
+		vector<float> patternValues(size);
+		
+		for (int i = 0; i < size; i++) {
+			float phase = (float)i / (size - 1);
+			float normalizedValue;
+			
+			// Triangle wave
+			if (phase < 0.5f) {
+				normalizedValue = phase * 2.0f; // 0 to 1 in first half
+			} else {
+				normalizedValue = 2.0f - phase * 2.0f; // 1 to 0 in second half
+			}
+			
+			// Quantize to the nearest allowed step
+			normalizedValue = round(normalizedValue * (q - 1)) / (q - 1);
+			
+			patternValues[i] = normalizedValue;
+		}
+		
+		// Update the current slot with the pattern values
+		storage[slot.get()] = patternValues;
+		
+		// Update the output
+		updateOutputValues();
+	}
+	
+	void setVShapeValues() {
+		vector<float> patternValues(size);
+		
+		for (int i = 0; i < size; i++) {
+			float phase = (float)i / (size - 1);
+			float normalizedValue;
+			
+			// V shape (high at edges, low in center)
+			if (phase < 0.5f) {
+				normalizedValue = 1.0f - phase * 2.0f; // 1 to 0 in first half
+			} else {
+				normalizedValue = (phase - 0.5f) * 2.0f; // 0 to 1 in second half
+			}
+			
+			// Quantize to the nearest allowed step
+			normalizedValue = round(normalizedValue * (q - 1)) / (q - 1);
+			
+			patternValues[i] = normalizedValue;
+		}
+		
+		// Update the current slot with the pattern values
+		storage[slot.get()] = patternValues;
+		
+		// Update the output
+		updateOutputValues();
+	}
+	
+	void setAShapeValues() {
+		vector<float> patternValues(size);
+		
+		for (int i = 0; i < size; i++) {
+			float phase = (float)i / (size - 1);
+			float normalizedValue;
+			
+			// A shape (low at edges, high in center)
+			if (phase < 0.5f) {
+				normalizedValue = phase * 2.0f; // 0 to 1 in first half
+			} else {
+				normalizedValue = 2.0f - phase * 2.0f; // 1 to 0 in second half
+			}
+			
+			// Quantize to the nearest allowed step
+			normalizedValue = round(normalizedValue * (q - 1)) / (q - 1);
+			
+			patternValues[i] = normalizedValue;
+		}
+		
+		// Update the current slot with the pattern values
+		storage[slot.get()] = patternValues;
 		
 		// Update the output
 		updateOutputValues();
@@ -308,6 +550,9 @@ public:
 	}
 	
 	void loadFromJson(const ofJson &json) {
+		// Set loading flag to prevent pattern application during loading
+		isLoadingPreset = true;
+		
 		// Clear existing storage
 		storage.clear();
 		
@@ -386,8 +631,14 @@ public:
 		// Set to the actual target value
 		slot = currentSlotValue;
 		
+		// Reset pattern dropdown to "Pattern..." (without triggering its listener)
+		patternDropdown.setWithoutEventNotifications(0);
+		
 		// Update the output
 		updateOutputValues();
+		
+		// Reset loading flag
+		isLoadingPreset = false;
 	}
 	
 	void saveToJson(ofJson &json) {
@@ -427,9 +678,15 @@ public:
 				json["slotData_" + ofToString(i)] = storage[i];
 			}
 		}
+		
+		// Note: pattern dropdown and apply button shouldn't be saved
+		// as they have the DisableSavePreset flag
 	}
 	
 	void presetRecallAfterSettingParameters(ofJson &json) {
+		// Set loading flag to prevent pattern dropdown from applying patterns during preset loading
+		isLoadingPreset = true;
+		
 		// 1. Handle the filename parameter if it exists
 		if (json.count("filename") > 0) {
 			string savedFilename = json["filename"].get<string>();
@@ -451,6 +708,9 @@ public:
 					// Load from the external file instead of the preset
 					ofJson fileJson = ofLoadJson(fullPath);
 					loadFromJson(fileJson);
+					
+					// Reset loading flag before returning
+					isLoadingPreset = false;
 					
 					// Skip the rest of preset loading since we've loaded from file
 					return;
@@ -518,6 +778,12 @@ public:
 		
 		// 8. Force an output update
 		updateOutputValues();
+		
+		// Reset pattern dropdown to "Pattern..." (without triggering its listener)
+		patternDropdown.setWithoutEventNotifications(0);
+		
+		// Reset loading flag now that we're done
+		isLoadingPreset = false;
 	}
 
 private:
@@ -528,17 +794,19 @@ private:
 	ofParameter<int> q;
 	ofParameter<float> minVal;
 	ofParameter<float> maxVal;
-	ofParameter<int> shift;  // Added shift parameter
+	ofParameter<int> shift;
 	ofParameter<vector<float>> output;
+	
+	// Pattern generation parameters
+	ofParameter<int> patternDropdown;  // Dropdown for selecting pattern
+	bool isLoadingPreset;              // Flag to prevent pattern application during preset loading
 	
 	// Slot management parameters
 	ofParameter<int> slot;
 	ofParameter<void> resetSlot;
 	ofParameter<void> resetAll;
-	ofParameter<void> setIncremental;  // Button to set incremental pattern
 	ofEventListener resetListener;
 	ofEventListener resetAllListener;
-	ofEventListener setIncrementalListener;
 	
 	// File handling parameters
 	ofParameter<string> filename;
