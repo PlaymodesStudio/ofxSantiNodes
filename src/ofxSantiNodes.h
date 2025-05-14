@@ -132,6 +132,9 @@
 #include "flipflop.h"
 #include "vectorFold.h"
 #include "edgeDetector.h"
+#include "deltaTime.h"
+#include "rgb2rgbw.h"
+#include "rgbw2rgb.h"
 
 
 
@@ -265,6 +268,9 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<flipflop>("Santi/General");
 	o.registerModel<vectorFold>("Santi/Vectors");
 	o.registerModel<edgeDetector>("Santi/General");
+	o.registerModel<deltaTime>("Santi/General");
+	o.registerModel<rgb2rgbw>("Santi/General");
+	o.registerModel<rgbw2rgb>("Santi/General");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
