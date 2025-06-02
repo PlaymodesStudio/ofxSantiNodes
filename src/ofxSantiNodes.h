@@ -136,6 +136,8 @@
 #include "rgb2rgbw.h"
 #include "rgbw2rgb.h"
 #include "divmult2ms.h"
+#include "Fold.h"
+#include "trigonometry.h"
 
 
 
@@ -273,6 +275,8 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<rgb2rgbw>("Santi/General");
 	o.registerModel<rgbw2rgb>("Santi/General");
 	o.registerModel<divmult2ms>("Santi/General");
+	o.registerModel<fold>("Santi/General");
+	o.registerModel<trigonometry>("Santi/General");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
