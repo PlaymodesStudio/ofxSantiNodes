@@ -138,6 +138,7 @@
 #include "divmult2ms.h"
 #include "Fold.h"
 #include "trigonometry.h"
+#include "stringComparator.h"
 
 
 
@@ -277,6 +278,7 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<divmult2ms>("Santi/General");
 	o.registerModel<fold>("Santi/General");
 	o.registerModel<trigonometry>("Santi/General");
+	o.registerModel<stringComparator>("Santi/Strings");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
