@@ -37,7 +37,7 @@ public:
 
     void resetPhase() override
     {
-        cout << "Reset Phaseeeee" << endl;
+        //cout << "Reset Phaseeeee" << endl;
         phaseHasReset.trigger();
     }
 private:
