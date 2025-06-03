@@ -55,7 +55,6 @@
 #include "vectorPointer.h"
 #include "vectorSplit.h"
 #include "vectorTimer.h"
-#include "voidToGate.h"
 #include "boolToVoid.h"
 #include "voiceStealing.h"
 #include "ocurrence.h"
@@ -196,7 +195,6 @@ static void registerModels(ofxOceanode &o)
     o.registerModel<vectorPointer>("Santi/Vectors");
     o.registerModel<split>("Santi/Vectors");
     o.registerModel<vectorTimer>("Santi/General");
-    o.registerModel<voidToGate>("Santi/Conversions");
     o.registerModel<boolToVoid>("Santi/Conversions");
     o.registerModel<floatToBool>("Santi/Conversions");
     o.registerModel<boolToFloat>("Santi/Conversions");
