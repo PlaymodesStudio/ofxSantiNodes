@@ -41,9 +41,10 @@ private:
 	// Hardware constants based on API documentation
 	static const int NUM_KNOBS_PER_PAGE = 8;    // 8 knobs per page
 	static const int NUM_SWITCHES_PER_PAGE = 8; // 8 switches per page
-	static const int NUM_PAGES = 8;             // 8 pages total
+	static const int NUM_PAGES = 4;             // 4 pages total
 	static const int TOTAL_KNOBS = 32;          // 32 total knobs
 	static const int TOTAL_SWITCHES = 32;       // 32 total switches
+	static const int MAX_SETUPS = 64;
 
 	// Control configuration structures
 	struct KnobConfig {
@@ -64,8 +65,10 @@ private:
 		// LED OFF color is always black (70) per requirements
 	};
 
-	vector<KnobConfig> knobConfigs;
-	vector<SwitchConfig> switchConfigs;
+	// For each of the 64 setups, store a full array of 32 KnobConfig and 32 SwitchConfig.
+	// If a setup has never been configured, we can leave its 'exists' flag = false and skip saving its data.
+	vector<vector<KnobConfig>> allKnobConfigs;     // size 64 × 32
+	vector<vector<SwitchConfig>> allSwitchConfigs; // size 64 × 32
 
 	// Page selection
 	ofParameter<int> selectedPage;

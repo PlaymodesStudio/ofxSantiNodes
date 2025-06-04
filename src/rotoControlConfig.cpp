@@ -43,39 +43,45 @@ static void drawThickSeparator() {
 
 
 void rotoControlConfig::setup() {
-	description = "Configure ROTO-CONTROL knobs, switches, and setups. Set names, colors, MIDI channels, CC numbers, and step counts for each control across multiple pages. Manage device setups for different configurations.";
-	
-	// Initialize knob and switch configurations
-	knobConfigs.resize(TOTAL_KNOBS);
-	switchConfigs.resize(TOTAL_SWITCHES);
-	
-	for (int i = 0; i < TOTAL_KNOBS; i++) {
-		knobConfigs[i].name = "Knob " + ofToString((i % NUM_KNOBS_PER_PAGE) + 1);
-		knobConfigs[i].color = 0;
-		knobConfigs[i].midiChannel = 1;
-		knobConfigs[i].midiCC = i % 128;
-		knobConfigs[i].steps = 0;
-		knobConfigs[i].configured = false;
+	description = "Configure ROTO-CONTROL knobs, switches, and setups. "
+				  "Set names, colors, MIDI channels, CC numbers, and step counts for each control "
+				  "across multiple pages. Manage device setups for different configurations.";
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// **NEW**: Resize 2D arrays so each of the 64 setups has 32 knobs & 32 switches.
+	allKnobConfigs.resize(MAX_SETUPS);
+	allSwitchConfigs.resize(MAX_SETUPS);
+	for (int s = 0; s < MAX_SETUPS; ++s) {
+		allKnobConfigs[s].resize(TOTAL_KNOBS);
+		allSwitchConfigs[s].resize(TOTAL_SWITCHES);
+		// Initialize each entry with default values
+		for (int i = 0; i < TOTAL_KNOBS; i++) {
+			allKnobConfigs[s][i].name = "Knob " + ofToString((i % NUM_KNOBS_PER_PAGE) + 1);
+			allKnobConfigs[s][i].color = 0;
+			allKnobConfigs[s][i].midiChannel = 1;
+			allKnobConfigs[s][i].midiCC = i % 128;
+			allKnobConfigs[s][i].steps = 0;
+			allKnobConfigs[s][i].configured = false;
+		}
+		for (int i = 0; i < TOTAL_SWITCHES; i++) {
+			allSwitchConfigs[s][i].name = "Switch " + ofToString((i % NUM_SWITCHES_PER_PAGE) + 1);
+			allSwitchConfigs[s][i].color = 0;
+			allSwitchConfigs[s][i].midiChannel = 1;
+			allSwitchConfigs[s][i].midiCC = (64 + i) % 128; // Start switches at CC 64
+			allSwitchConfigs[s][i].configured = false;
+		}
 	}
-	
-	for (int i = 0; i < TOTAL_SWITCHES; i++) {
-		switchConfigs[i].name = "Switch " + ofToString((i % NUM_SWITCHES_PER_PAGE) + 1);
-		switchConfigs[i].color = 0;
-		switchConfigs[i].midiChannel = 1;
-		switchConfigs[i].midiCC = (64 + i) % 128; // Start switches at CC 64
-		switchConfigs[i].configured = false;
-	}
-	
+
 	// Initialize setup management
-	availableSetups.resize(64); // Setups 0-63 (0 is current)
-	for (int i = 0; i < 64; i++) {
+	availableSetups.resize(MAX_SETUPS);
+	for (int i = 0; i < MAX_SETUPS; i++) {
 		availableSetups[i].index = i;
 		availableSetups[i].name = (i == 0) ? "Current Setup" : "Setup " + ofToString(i);
 		availableSetups[i].exists = false;
 	}
-	
-	// Setup management parameters
-	addParameter(selectedSetupIndex.set("Setup Slot", 0, 0, 63));
+
+	// UI parameters: select which slot (0..63) is active
+	addParameter(selectedSetupIndex.set("Setup Slot", 0, 0, MAX_SETUPS - 1));
 	addParameter(setupName.set("Setup Name", "Current Setup"));
 
 	// Thicker separator after Setup section
@@ -83,6 +89,39 @@ void rotoControlConfig::setup() {
 		ofParameter<std::function<void()>>().set("", [](){ drawThickSeparator(); }),
 		ofParameter<std::function<void()>>().set("", [](){ drawThickSeparator(); })
 	);
+	
+	listeners.push(selectedSetupIndex.newListener([this](int &index){
+			if(ignoreListeners) return;
+			
+			// Update setupName based on what we know about this slot
+			if(index < availableSetups.size()) {
+				ignoreListeners = true;
+				if(availableSetups[index].exists) {
+					setupName = availableSetups[index].name;
+				} else {
+					setupName = (index == 0) ? "Current Setup" : "Setup " + ofToString(index);
+				}
+				ignoreListeners = false;
+			}
+			
+			// Load the selected setup
+			loadSelectedSetup();
+		}));
+	
+	listeners.push(selectedPage.newListener([this](int &newPage){
+			if (ignoreListeners) return;
+			onPageChanged();
+			updateSelectedKnobParameters();
+			updateSelectedSwitchParameters();
+		}));
+	
+	setupSerialPort();
+	if(serialConnected){
+			// Query current setup - this will update selectedSetupIndex AND setupName
+			getCurrentSetup();
+			// Queue up all setup queries
+			refreshAvailableSetups();
+		}
 	
 	// Page selection
 	addParameter(selectedPage.set("Page", 0, 0, NUM_PAGES - 1));
@@ -95,10 +134,10 @@ void rotoControlConfig::setup() {
 
 	// Knob parameters
 	addParameter(selectedKnob.set("Knob", 0, 0, NUM_KNOBS_PER_PAGE - 1));
-	addParameter(knobName.set("Name", "Knob 1"));
-	addParameter(knobMidiChannel.set("MIDI Ch", 1, 1, 16));
-	addParameter(knobMidiCC.set("MIDI CC", 0, 0, 127));
-	addParameter(knobSteps.set("Steps", 0, 0, 10));
+	addParameter(knobName.set("K Name", "Knob 1"));
+	addParameter(knobMidiChannel.set("K MIDI Ch", 1, 1, 16));
+	addParameter(knobMidiCC.set("K MIDI CC", 0, 0, 127));
+	addParameter(knobSteps.set("K Steps", 0, 0, 10));
 
 	// Knob color dropdown at end of knob block
 	addCustomRegion(
@@ -174,13 +213,13 @@ void rotoControlConfig::setup() {
 
 			int idx = getAbsoluteKnobIndex();
 			int currColor = 0;
-			if (idx >= 0 && idx < knobConfigs.size()) {
-				currColor = knobConfigs[idx].color;
+			if (idx >= 0 && idx < TOTAL_KNOBS) {
+			     currColor = allKnobConfigs[selectedSetupIndex.get()][idx].color;
 			}
 			if (currColor < 0) currColor = 0;
 			if (currColor >= IM_ARRAYSIZE(colorNames)) currColor = IM_ARRAYSIZE(colorNames) - 1;
 
-			ImGui::Text("Color:      ");
+			ImGui::Text("K Color:    ");
 			ImGui::SameLine();
 			ImGui::ColorButton("##knobColorPreview", palette[currColor], 0, ImVec2(20, 20));
 			ImGui::SameLine();
@@ -192,7 +231,7 @@ void rotoControlConfig::setup() {
 					ImGui::ColorButton("##knobColorSwatch", palette[i], 0, ImVec2(15, 15));
 					ImGui::SameLine();
 					if (ImGui::Selectable(colorNames[i], isSelected)) {
-						knobConfigs[idx].color = i;
+						allKnobConfigs[selectedSetupIndex.get()][idx].color = i;
 						storeCurrentKnobSettings();
 						applyKnobConfiguration(idx);
 					}
@@ -214,9 +253,9 @@ void rotoControlConfig::setup() {
 
 	// Switch parameters
 	addParameter(selectedSwitch.set("Switch", 0, 0, NUM_SWITCHES_PER_PAGE - 1));
-	addParameter(switchName.set("Name", "Switch 1"));
-	addParameter(switchMidiChannel.set("MIDI Ch", 1, 1, 16));
-	addParameter(switchMidiCC.set("MIDI CC", 64, 0, 127));
+	addParameter(switchName.set("S Name", "Switch 1"));
+	addParameter(switchMidiChannel.set("S MIDI Ch", 1, 1, 16));
+	addParameter(switchMidiCC.set("S MIDI CC", 64, 0, 127));
 
 	// Switch color dropdown at end of switch block
 	addCustomRegion(
@@ -291,13 +330,13 @@ void rotoControlConfig::setup() {
 
 			int idx = getAbsoluteSwitchIndex();
 			int currColor = 0;
-			if (idx >= 0 && idx < switchConfigs.size()) {
-				currColor = switchConfigs[idx].color;
+			if (idx >= 0 && idx < TOTAL_SWITCHES) {
+			     currColor = allSwitchConfigs[selectedSetupIndex.get()][idx].color;
 			}
 			if (currColor < 0) currColor = 0;
 			if (currColor >= IM_ARRAYSIZE(colorNames)) currColor = IM_ARRAYSIZE(colorNames) - 1;
 
-			ImGui::Text("Color:      ");
+			ImGui::Text("S Color:    ");
 			ImGui::SameLine();
 			ImGui::ColorButton("##switchColorPreview", palette[currColor], 0, ImVec2(20, 20));
 			ImGui::SameLine();
@@ -309,7 +348,7 @@ void rotoControlConfig::setup() {
 					ImGui::ColorButton("##switchColorSwatch", palette[i], 0, ImVec2(15, 15));
 					ImGui::SameLine();
 					if (ImGui::Selectable(colorNames[i], isSelected)) {
-						switchConfigs[idx].color = i;
+						allSwitchConfigs[selectedSetupIndex.get()][idx].color = i;
 						storeCurrentSwitchSettings();
 						applySwitchConfiguration(idx);
 					}
@@ -329,50 +368,30 @@ void rotoControlConfig::setup() {
 		ofParameter<std::function<void()>>().set("", [](){ drawThickSeparator(); })
 	);
 	
-	// Listen for page changes
-	listeners.push(selectedPage.newListener([this](int &){
-		onPageChanged();
-		updateSelectedKnobParameters();
-		updateSelectedSwitchParameters();
-	}));
-	
-	listeners.push(selectedSetupIndex.newListener([this](int &index){
-		if (ignoreListeners) return;
+	// Setup name change listener
+		listeners.push(setupName.newListener([this](string &newName){
+			if (ignoreListeners) return;
+			int slot = selectedSetupIndex.get();
+			if (slot < 0 || slot >= availableSetups.size()) return;
+		
+			// Start config update session
+			sendSerialCommand(CMD_GENERAL, CMD_START_CONFIG_UPDATE, {});
+		
+			// Send SET SETUP NAME
+			setSetupName(slot, newName);
+		
+			// End config update session
+			sendSerialCommand(CMD_GENERAL, CMD_END_CONFIG_UPDATE, {});
+		
+			// Update local cache
+			availableSetups[slot].name = newName;
+			availableSetups[slot].exists = true;
+		
+			// Re-query current setup to confirm
+			getCurrentSetup();
+		}));
 
-		// Si no existeix encara, posem nom per defecte
-		if (index < availableSetups.size()) {
-			if (availableSetups[index].exists) {
-				setupName = availableSetups[index].name;
-			} else {
-				setupName = (index == 0) ? "Current Setup" : "Setup " + ofToString(index);
-			}
-		}
 
-		// Carreguem sempre el setup seleccionat al dispositiu
-		loadSelectedSetup();
-	}));
-
-	listeners.push(setupName.newListener([this](string &newName){
-		if (ignoreListeners) return;
-		int slot = selectedSetupIndex.get();
-		if (slot < 0 || slot >= availableSetups.size()) return;
-	
-		// 1) Iniciem sessió de config‐update
-		sendSerialCommand(CMD_GENERAL, CMD_START_CONFIG_UPDATE, {});
-	
-		// 2) Enviem SET SETUP NAME
-		setSetupName(slot, newName);
-	
-		// 3) Tanquem sessió de config‐update
-		sendSerialCommand(CMD_GENERAL, CMD_END_CONFIG_UPDATE, {});
-	
-		// 4) Actualitzem localment la llista de noms i marquem que aquest setup existeix
-		availableSetups[slot].name = newName;
-		availableSetups[slot].exists = true;
-	
-		// 5) Tornem a demanar al dispositiu el nom del setup actual perquè confirmi
-		getCurrentSetup();
-	}));
 	
 	// Listen for knob selection changes
 	listeners.push(selectedKnob.newListener([this](int &){
@@ -432,14 +451,7 @@ void rotoControlConfig::setup() {
 	updateSelectedKnobParameters();
 	updateSelectedSwitchParameters();
 	
-	// Connect to the ROTO-CONTROL device
-	setupSerialPort();
 	
-	// Get current setup info on startup
-	if (serialConnected) {
-		getCurrentSetup();
-		refreshAvailableSetups();
-	}
 }
 
 
@@ -490,62 +502,193 @@ void rotoControlConfig::closeSerialPort() {
 }
 
 void rotoControlConfig::readSerialResponses() {
+	if (!serialConnected) return;
+
+	// If there is data waiting on the serial port, read up to 256 bytes
 	if (serial.available() > 0) {
 		unsigned char buffer[256];
 		int numBytes = serial.readBytes(buffer, MIN(256, serial.available()));
-		
-		if (numBytes > 0) {
-			for (int i = 0; i < numBytes; i++) {
-				if (buffer[i] == RESP_START_MARKER && i+1 < numBytes) {
-					unsigned char responseCode = buffer[i+1];
-					
-					if (responseCode == RESP_SUCCESS) {
-						ofLogNotice("rotoControlConfig") << "Received successful response from ROTO-CONTROL";
-						
-						// Podria ser GET_CURRENT_SETUP o GET_SETUP <i>
-						if (i+2 < numBytes) {
-							// Comprovem que tenim prou bytes per llegir SI + nom (13 bytes)
-							if (i+3+13 <= numBytes) {
-								unsigned char setupIndex = buffer[i+2];
-								
-								// Extreiem el nom (13 bytes, null-terminated)
-								string setupNameFromDevice = "";
-								for (int j = 0; j < 13; j++) {
-									if (i+3+j < numBytes && buffer[i+3+j] != 0) {
-										setupNameFromDevice += (char)buffer[i+3+j];
-									}
-								}
-								
-								// 1) Actualitzem always availableSetups[i]: nom i existeix=true
-								if (setupIndex < availableSetups.size()) {
-									availableSetups[setupIndex].name   = setupNameFromDevice;
-									availableSetups[setupIndex].exists = true;
-								}
-								
-								// 2) Si aquest setupIndex coincideix amb l'actual selectedSetupIndex,
-								//    actualitzem el nom al UI (sense canviar l'index)
-								if (setupIndex == selectedSetupIndex.get()) {
-									ignoreListeners = true;
-									setupName = setupNameFromDevice;
-									ignoreListeners = false;
-								}
-								
-								ofLogNotice("rotoControlConfig") << "Updated setup " << (int)setupIndex
-																 << " name: " << setupNameFromDevice;
-								
-								// Avancem l'i per saltejar els 2+13 bytes ja processats
-								i += 2 + 13;
+		if (numBytes <= 0) return;
+
+		for (int i = 0; i < numBytes; ++i) {
+			// ────────────────────────────────────────────────────────────────────────
+			// 1) Handle any "A5"-prefixed responses (GET_CURRENT_SETUP / GET_SETUP)
+			// ────────────────────────────────────────────────────────────────────────
+			if (buffer[i] == RESP_START_MARKER) {
+				// ────────────────────────────────────────────────────────────────────
+				// 1a) TRY TO PARSE GET_CURRENT_SETUP reply:
+				//     A5 02 01 <CL=0x000D> <SI> <13-byte ASCII name>
+				//     (length == 13) :contentReference[oaicite:0]{index=0}
+				// ────────────────────────────────────────────────────────────────────
+				if ((i + 4) < numBytes) {
+					unsigned char cmdType = buffer[i + 1];  // should be CMD_MIDI (0x02)
+					unsigned char subType = buffer[i + 2];  // 0x01 = GET_CURRENT_SETUP
+					unsigned short length = (static_cast<unsigned short>(buffer[i + 3]) << 8)
+											| static_cast<unsigned short>(buffer[i + 4]);
+
+					if (cmdType == CMD_MIDI && subType == 0x01 && length == 13) {
+						// Make sure we have all 13 bytes of payload in the buffer
+						if ((i + 5 + 12) < numBytes) {
+							unsigned char setupIndex = buffer[i + 5];
+							std::string nameFromDevice;
+							nameFromDevice.reserve(13);
+							for (int j = 0; j < 13; ++j) {
+								unsigned char c = buffer[i + 6 + j];
+								if (c != 0) nameFromDevice.push_back(static_cast<char>(c));
 							}
+
+							// 1) Cache into our local list
+							if (setupIndex < availableSetups.size()) {
+								availableSetups[setupIndex].name   = nameFromDevice;
+								availableSetups[setupIndex].exists = true;
+							}
+
+							// 2) Update GUI fields
+							ignoreListeners = true;
+							selectedSetupIndex = setupIndex;
+							setupName = nameFromDevice;
+							ignoreListeners = false;
+
+							ofLogNotice("rotoControlConfig")
+								<< "GET_CURRENT_SETUP reply: slot=" << (int)setupIndex
+								<< ", name=\"" << nameFromDevice << "\"";
+
+							// Skip exactly (1 + 1 + 1 + 2 + 1 + 13) = 19 bytes
+							i += 5 + 13 - 1;
+							continue;
+						} else {
+							// Not enough bytes yet; wait for more on next update()
+							break;
 						}
-					} else {
-						ofLogError("rotoControlConfig") << "Received error response from ROTO-CONTROL: " << (int)responseCode;
 					}
-					i++;
+				}
+
+				// ────────────────────────────────────────────────────────────────────
+				// 1b) TRY TO PARSE GET_SETUP reply:
+				//     A5 <RC> <SI> <SN:0D>  (no length field) :contentReference[oaicite:1]{index=1}
+				//     RC = Response code (00 = SUCCESS)
+				//     SI = Setup index (00–3F)
+				//     SN = 13-byte NULL-terminated ASCII name
+				// ────────────────────────────────────────────────────────────────────
+				// We need at least: [A5][RC][SI] + 13 bytes of name = 1 + 1 + 1 + 13 = 16 bytes
+				if ((i + 1 + 1 + 13) < numBytes) {
+					unsigned char rc    = buffer[i + 1];
+					unsigned char slot  = buffer[i + 2];
+
+					// If the RC is non-zero, it’s an error—skip it (still consume 2 bytes + 13 name bytes)
+					// Otherwise, read the 13-byte name
+					if (rc == RESP_SUCCESS) {
+						std::string nameFromDevice;
+						nameFromDevice.reserve(13);
+						for (int j = 0; j < 13; ++j) {
+							unsigned char c = buffer[i + 3 + j];
+							if (c != 0) nameFromDevice.push_back(static_cast<char>(c));
+						}
+
+						// 1) Store into our local array
+						if (slot < availableSetups.size()) {
+							availableSetups[slot].name   = nameFromDevice;
+							availableSetups[slot].exists = true;
+						}
+
+						// 2) If this is the currently selected slot in the GUI, update the text field
+						if (slot == selectedSetupIndex.get()) {
+							ignoreListeners = true;
+							setupName = nameFromDevice;
+							ignoreListeners = false;
+						}
+
+						ofLogNotice("rotoControlConfig")
+							<< "GET_SETUP reply: slot=" << (int)slot
+							<< ", name=\"" << nameFromDevice << "\"";
+					} else {
+						ofLogWarning("rotoControlConfig")
+							<< "GET_SETUP reply returned error code: " << (int)rc;
+					}
+
+					// Skip exactly 16 bytes: [A5][RC][SI][13-byte SN]
+					i += 1 + 1 + 1 + 13 - 1;
+					continue;
+				} else {
+					// Not enough bytes yet; wait for more on next update()
+					break;
 				}
 			}
+
+			// ────────────────────────────────────────────────────────────────────────
+			// 2) Handle any "5A"-prefixed commands coming *FROM* ROTO (asynchronous)
+			//    a) SET MODE   (page change on hardware)
+			//    b) SET SETUP  (setup change on hardware)
+			// ────────────────────────────────────────────────────────────────────────
+			if (buffer[i] == CMD_START_MARKER && (i + 4) < numBytes) {
+				unsigned char cmdType = buffer[i + 1];
+				unsigned char subType = buffer[i + 2];
+				unsigned short length = (static_cast<unsigned short>(buffer[i + 3]) << 8)
+										| static_cast<unsigned short>(buffer[i + 4]);
+
+				// ───────────────
+				// a) SET MODE (page change on hardware)
+				//    5A 01 03 <CL=0x0002> <AM> <PI>
+				// ───────────────
+				if (cmdType == CMD_GENERAL && subType == CMD_SET_MODE
+					&& length == 2 && (i + 5 + 1) < numBytes)
+				{
+					unsigned char modeByte = buffer[i + 5];  // (ignored)
+					unsigned char pageByte = buffer[i + 6];  // PI
+					int newPage = (pageByte / 8);            // each page is a multiple of 8
+
+					ignoreListeners = true;
+					selectedPage = newPage;
+					ignoreListeners = false;
+
+					ofLogNotice("rotoControlConfig")
+						<< "Device switched to page " << newPage;
+
+					// Immediately refresh GUI knobs/switches
+					updateSelectedKnobParameters();
+					updateSelectedSwitchParameters();
+
+					// Skip exactly (1+1+1+2+2) = 7 bytes: [5A][01][03][MSB][LSB][AM][PI]
+					i += 5 + 2 - 1;
+					continue;
+				}
+
+				// ───────────────
+				// b) SET SETUP (setup change on hardware)
+				//    5A 02 03 <CL=0x0001> <SI>
+				// ───────────────
+				if (cmdType == CMD_MIDI && subType == 0x03
+					&& length == 1 && (i + 5) < numBytes)
+				{
+					unsigned char newSetup = buffer[i + 5];
+
+					ignoreListeners = true;
+					selectedSetupIndex = newSetup;
+					ignoreListeners = false;
+
+					ofLogNotice("rotoControlConfig")
+						<< "Device switched to setup " << (int)newSetup;
+
+					// Immediately request GET_SETUP for that slot so we repopulate name (and controls)
+					{
+						std::vector<unsigned char> payload;
+						payload.push_back(newSetup);
+						sendSerialCommand(CMD_MIDI, 0x02 /* GET_SETUP */, payload);
+					}
+
+					// Skip exactly (1+1+1+2+1) = 6 bytes: [5A][02][03][MSB][LSB][SI]
+					i += 5 + 1 - 1;
+					continue;
+				}
+			}
+
+			// ────────────────────────────────────────────────────────────────────────
+			// Not an A5 or 5A packet we care about—advance to next byte
+			// ────────────────────────────────────────────────────────────────────────
 		}
 	}
 }
+
 
 void rotoControlConfig::sendSerialCommand(unsigned char commandType, unsigned char subType, vector<unsigned char> payload) {
 	if (!serialConnected) {
@@ -607,50 +750,53 @@ int rotoControlConfig::getAbsoluteSwitchIndex() {
 
 void rotoControlConfig::updateSelectedKnobParameters() {
 	int index = getAbsoluteKnobIndex();
-	if (index < 0 || index >= knobConfigs.size()) return;
-	
+	if (index < 0 || index >= TOTAL_KNOBS) return;
 	ignoreListeners = true;
 	
-	knobName = knobConfigs[index].name;
-	knobMidiChannel = knobConfigs[index].midiChannel;
-	knobMidiCC = knobConfigs[index].midiCC;
-	knobSteps = knobConfigs[index].steps;
+	auto &kc = allKnobConfigs[selectedSetupIndex.get()][index];
+	knobName = kc.name;
+	knobMidiChannel = kc.midiChannel;
+	knobMidiCC = kc.midiCC;
+	knobSteps = kc.steps;
 	
 	ignoreListeners = false;
 }
 
 void rotoControlConfig::updateSelectedSwitchParameters() {
 	int index = getAbsoluteSwitchIndex();
-	if (index < 0 || index >= switchConfigs.size()) return;
-	
+	if (index < 0 || index >= TOTAL_SWITCHES) return;
+
 	ignoreListeners = true;
 	
-	switchName = switchConfigs[index].name;
-	switchMidiChannel = switchConfigs[index].midiChannel;
-	switchMidiCC = switchConfigs[index].midiCC;
+	auto &sc = allSwitchConfigs[selectedSetupIndex.get()][index];
+	switchName = sc.name;
+	switchMidiChannel = sc.midiChannel;
+	switchMidiCC = sc.midiCC;
 	
 	ignoreListeners = false;
 }
 
 void rotoControlConfig::storeCurrentKnobSettings() {
 	int index = getAbsoluteKnobIndex();
-	if (index < 0 || index >= knobConfigs.size()) return;
+	if (index < 0 || index >= TOTAL_KNOBS) return;
 	
-	knobConfigs[index].name = knobName;
-	knobConfigs[index].midiChannel = knobMidiChannel;
-	knobConfigs[index].midiCC = knobMidiCC;
-	knobConfigs[index].steps = knobSteps;
-	knobConfigs[index].configured = true;
+	auto &kc = allKnobConfigs[selectedSetupIndex.get()][index];
+	kc.name = knobName;
+	kc.midiChannel = knobMidiChannel;
+	kc.midiCC = knobMidiCC;
+	kc.steps = knobSteps;
+	kc.configured = true;
 }
 
 void rotoControlConfig::storeCurrentSwitchSettings() {
 	int index = getAbsoluteSwitchIndex();
-	if (index < 0 || index >= switchConfigs.size()) return;
+	if (index < 0 || index >= TOTAL_SWITCHES) return;
 	
-	switchConfigs[index].name = switchName;
-	switchConfigs[index].midiChannel = switchMidiChannel;
-	switchConfigs[index].midiCC = switchMidiCC;
-	switchConfigs[index].configured = true;
+	auto &sc = allSwitchConfigs[selectedSetupIndex.get()][index];
+	sc.name = switchName;
+	sc.midiChannel = switchMidiChannel;
+	sc.midiCC = switchMidiCC;
+	sc.configured = true;
 }
 
 void rotoControlConfig::applyKnobConfiguration(int knobIndex) {
@@ -662,13 +808,13 @@ void rotoControlConfig::applyKnobConfiguration(int knobIndex) {
 		}
 	}
 	
-	if (knobIndex < 0 || knobIndex >= knobConfigs.size()) {
+	if (knobIndex < 0 || knobIndex >= TOTAL_KNOBS) {
 		ofLogError("rotoControlConfig") << "Invalid knob index: " << knobIndex;
 		return;
 	}
 	
-	KnobConfig& config = knobConfigs[knobIndex];
-	
+	auto &config = allKnobConfigs[selectedSetupIndex.get()][knobIndex];
+
 	// Start config update session
 	sendSerialCommand(CMD_GENERAL, CMD_START_CONFIG_UPDATE);
 	
@@ -759,13 +905,13 @@ void rotoControlConfig::applySwitchConfiguration(int switchIndex) {
 		}
 	}
 	
-	if (switchIndex < 0 || switchIndex >= switchConfigs.size()) {
+	if (switchIndex < 0 || switchIndex >= TOTAL_SWITCHES) {
 		ofLogError("rotoControlConfig") << "Invalid switch index: " << switchIndex;
 		return;
 	}
 	
-	SwitchConfig& config = switchConfigs[switchIndex];
-	
+	auto &config = allSwitchConfigs[selectedSetupIndex.get()][switchIndex];
+
 	// Start config update session
 	sendSerialCommand(CMD_GENERAL, CMD_START_CONFIG_UPDATE);
 	
@@ -863,6 +1009,7 @@ void rotoControlConfig::getCurrentSetup() {
 }
 
 void rotoControlConfig::saveCurrentSetup() {
+
 	if (!serialConnected) {
 		ofLogWarning("rotoControlConfig") << "Cannot save setup: Serial device not connected";
 		return;
@@ -883,21 +1030,18 @@ void rotoControlConfig::saveCurrentSetup() {
 	
 	// Save all current knob configurations to the setup
 	for (int i = 0; i < TOTAL_KNOBS; i++) {
-		if (knobConfigs[i].configured) {
-			// The knob configuration commands will automatically save to current setup
-			applyKnobConfiguration(i);
-			ofSleepMillis(30);
+			if (allKnobConfigs[setupIndex][i].configured) {
+				applyKnobConfiguration(i);
+				ofSleepMillis(30);
+			}
 		}
-	}
-	
-	// Save all current switch configurations to the setup
-	for (int i = 0; i < TOTAL_SWITCHES; i++) {
-		if (switchConfigs[i].configured) {
-			// The switch configuration commands will automatically save to current setup
-			applySwitchConfiguration(i);
-			ofSleepMillis(30);
+		// 4) Save all switches of the current setup:
+		for (int i = 0; i < TOTAL_SWITCHES; i++) {
+			if (allSwitchConfigs[setupIndex][i].configured) {
+				applySwitchConfiguration(i);
+				ofSleepMillis(30);
+			}
 		}
-	}
 	
 	// If saving to a different slot, set that setup as current
 	if (setupIndex > 0) {
@@ -936,7 +1080,9 @@ void rotoControlConfig::loadSelectedSetup() {
 	ofSleepMillis(100); // Deixem temps al dispositiu per processar
 
 	// Demanem el CURRENT SETUP per refrescar nom i existència
-	getCurrentSetup();
+	std::vector<unsigned char> payload;
+	payload.push_back(static_cast<unsigned char>(setupIndex));
+	sendSerialCommand(CMD_MIDI, 0x02 /* GET_SETUP */, payload);
 }
 
 
@@ -966,199 +1112,163 @@ void rotoControlConfig::setCurrentSetup(int setupIndex) {
 }
 
 void rotoControlConfig::presetRecallBeforeSettingParameters(ofJson &json) {
-	// Clear existing configurations
-	knobConfigs.clear();
-	switchConfigs.clear();
-	knobConfigs.resize(TOTAL_KNOBS);
-	switchConfigs.resize(TOTAL_SWITCHES);
 	
-	// Initialize with default values
-	for (int i = 0; i < TOTAL_KNOBS; i++) {
-		knobConfigs[i].name = "Knob " + ofToString((i % NUM_KNOBS_PER_PAGE) + 1);
-		knobConfigs[i].color = 0;
-		knobConfigs[i].midiChannel = 1;
-		knobConfigs[i].midiCC = i % 128;
-		knobConfigs[i].steps = 0;
-		knobConfigs[i].configured = false;
-	}
-	
-	for (int i = 0; i < TOTAL_SWITCHES; i++) {
-		switchConfigs[i].name = "Switch " + ofToString((i % NUM_SWITCHES_PER_PAGE) + 1);
-		switchConfigs[i].color = 0;
-		switchConfigs[i].midiChannel = 1;
-		switchConfigs[i].midiCC = (64 + i) % 128;
-		switchConfigs[i].configured = false;
-	}
-	
-	// Initialize setup management if not already done
-	if (availableSetups.size() != 64) {
-		availableSetups.clear();
-		availableSetups.resize(64);
-		for (int i = 0; i < 64; i++) {
-			availableSetups[i].index = i;
-			availableSetups[i].name = (i == 0) ? "Current Setup" : "Setup " + ofToString(i);
-			availableSetups[i].exists = false;
-		}
-	}
 }
 
 void rotoControlConfig::presetRecallAfterSettingParameters(ofJson &json) {
-	// Load knob configs from preset if available
-	if (json.contains("knobConfigs")) {
-		ofJson knobJson = json["knobConfigs"];
-		
-		for (int i = 0; i < TOTAL_KNOBS && i < knobJson.size(); i++) {
-			ofJson configJson = knobJson[i];
-			
-			if (configJson.contains("name")) {
-				knobConfigs[i].name = configJson["name"];
+	// 1) Clear out everything to defaults, in case some setups aren’t present
+	for (int s = 0; s < MAX_SETUPS; ++s) {
+		availableSetups[s].index  = s;
+		availableSetups[s].name   = (s == 0) ? "Current Setup" : "Setup " + ofToString(s);
+		availableSetups[s].exists = false;
+
+		// Reset knobConfigs[s] to default
+		for (int i = 0; i < TOTAL_KNOBS; i++) {
+			auto &kc = allKnobConfigs[s][i];
+			kc.name        = "Knob " + ofToString((i % NUM_KNOBS_PER_PAGE) + 1);
+			kc.color       = 0;
+			kc.midiChannel = 1;
+			kc.midiCC      = i % 128;
+			kc.steps       = 0;
+			kc.configured  = false;
+		}
+		// Reset switchConfigs[s] to default
+		for (int i = 0; i < TOTAL_SWITCHES; i++) {
+			auto &sc = allSwitchConfigs[s][i];
+			sc.name        = "Switch " + ofToString((i % NUM_SWITCHES_PER_PAGE) + 1);
+			sc.color       = 0;
+			sc.midiChannel = 1;
+			sc.midiCC      = (64 + i) % 128;
+			sc.configured  = false;
+		}
+	}
+
+	// 2) Load each saved setup from json["allSetups"]
+	if (json.contains("allSetups")) {
+		ofJson setupsJson = json["allSetups"];
+		for (auto &oneSetupJson : setupsJson) {
+			int idx = oneSetupJson["index"];
+			if (idx < 0 || idx >= MAX_SETUPS) continue;
+
+			availableSetups[idx].exists = oneSetupJson["exists"].get<bool>();
+			availableSetups[idx].name   = oneSetupJson["name"].get<string>();
+
+			// Load knobConfigs for this slot
+			if (oneSetupJson.contains("knobConfigs")) {
+				ofJson knobArray = oneSetupJson["knobConfigs"];
+				for (int i = 0; i < TOTAL_KNOBS && i < knobArray.size(); i++) {
+					ofJson &cfg = knobArray[i];
+					auto &kc = allKnobConfigs[idx][i];
+					if (cfg.contains("name"))        kc.name        = cfg["name"].get<string>();
+					if (cfg.contains("color"))       kc.color       = cfg["color"].get<int>();
+					if (cfg.contains("midiChannel")) kc.midiChannel = cfg["midiChannel"].get<int>();
+					if (cfg.contains("midiCC"))      kc.midiCC      = cfg["midiCC"].get<int>();
+					if (cfg.contains("steps"))       kc.steps       = cfg["steps"].get<int>();
+					if (cfg.contains("configured"))  kc.configured  = cfg["configured"].get<bool>();
+				}
 			}
-			if (configJson.contains("color")) {
-				knobConfigs[i].color = configJson["color"];
-			}
-			if (configJson.contains("midiChannel")) {
-				knobConfigs[i].midiChannel = configJson["midiChannel"];
-			}
-			if (configJson.contains("midiCC")) {
-				knobConfigs[i].midiCC = configJson["midiCC"];
-			}
-			if (configJson.contains("steps")) {
-				knobConfigs[i].steps = configJson["steps"];
-			}
-			if (configJson.contains("configured")) {
-				knobConfigs[i].configured = configJson["configured"];
+
+			// Load switchConfigs for this slot
+			if (oneSetupJson.contains("switchConfigs")) {
+				ofJson switchArray = oneSetupJson["switchConfigs"];
+				for (int i = 0; i < TOTAL_SWITCHES && i < switchArray.size(); i++) {
+					ofJson &cfg = switchArray[i];
+					auto &sc = allSwitchConfigs[idx][i];
+					if (cfg.contains("name"))        sc.name        = cfg["name"].get<string>();
+					if (cfg.contains("color"))       sc.color       = cfg["color"].get<int>();
+					if (cfg.contains("midiChannel")) sc.midiChannel = cfg["midiChannel"].get<int>();
+					if (cfg.contains("midiCC"))      sc.midiCC      = cfg["midiCC"].get<int>();
+					if (cfg.contains("configured"))  sc.configured  = cfg["configured"].get<bool>();
+				}
 			}
 		}
 	}
-	
-	// Load switch configs from preset if available
-	if (json.contains("switchConfigs")) {
-		ofJson switchJson = json["switchConfigs"];
-		
-		for (int i = 0; i < TOTAL_SWITCHES && i < switchJson.size(); i++) {
-			ofJson configJson = switchJson[i];
-			
-			if (configJson.contains("name")) {
-				switchConfigs[i].name = configJson["name"];
-			}
-			if (configJson.contains("color")) {
-				switchConfigs[i].color = configJson["color"];
-			}
-			if (configJson.contains("midiChannel")) {
-				switchConfigs[i].midiChannel = configJson["midiChannel"];
-			}
-			if (configJson.contains("midiCC")) {
-				switchConfigs[i].midiCC = configJson["midiCC"];
-			}
-			if (configJson.contains("configured")) {
-				switchConfigs[i].configured = configJson["configured"];
-			}
-		}
-	}
-	
-	// Load setup management info from preset if available
-	if (json.contains("availableSetups")) {
-		ofJson setupJson = json["availableSetups"];
-		
-		for (int i = 0; i < availableSetups.size() && i < setupJson.size(); i++) {
-			ofJson setupInfoJson = setupJson[i];
-			
-			if (setupInfoJson.contains("index")) {
-				availableSetups[i].index = setupInfoJson["index"];
-			}
-			if (setupInfoJson.contains("name")) {
-				availableSetups[i].name = setupInfoJson["name"];
-			}
-			if (setupInfoJson.contains("exists")) {
-				availableSetups[i].exists = setupInfoJson["exists"];
-			}
-		}
-	}
-	
-	// Load selected setup index
+
+	// 3) Restore which setup slot was active
 	if (json.contains("selectedSetupIndex")) {
 		int loadedIndex = json["selectedSetupIndex"];
-		if (loadedIndex >= 0 && loadedIndex < availableSetups.size()) {
+		if (loadedIndex >= 0 && loadedIndex < MAX_SETUPS) {
 			selectedSetupIndex = loadedIndex;
 			setupName = availableSetups[loadedIndex].name;
 		}
 	}
-	
-	// Update the UI with the current control settings
-	updateSelectedKnobParameters();
-	updateSelectedSwitchParameters();
-	
-	// Set hardware page
-	setHardwarePage(selectedPage);
-	
-	// Apply all configurations to the device
+
+	// 4) Update the UI for the newly loaded “current setup” (knobs & switches on page 0)
+	updateSelectedKnobParameters();   // now reads from allKnobConfigs[selectedSetupIndex][…]
+	updateSelectedSwitchParameters();  // now reads from allSwitchConfigs[selectedSetupIndex][…]
+	setHardwarePage(selectedPage.get());
+
+	// 5) If we have a serial connection, re-send all configured knob/switch configs for the current setup
 	if (serialConnected) {
-		// Apply knob configurations
+		int s = selectedSetupIndex.get();
+		// First, send knobs
 		for (int i = 0; i < TOTAL_KNOBS; i++) {
-			if (knobConfigs[i].configured) {
-				applyKnobConfiguration(i);
-				ofSleepMillis(50); // Small delay between commands
+			if (allKnobConfigs[s][i].configured) {
+				applyKnobConfiguration(i);  // unchanged, except it now pulls from allKnobConfigs[s][i]
+				ofSleepMillis(50);
 			}
 		}
-		
-		// Apply switch configurations
+		// Then, send switches
 		for (int i = 0; i < TOTAL_SWITCHES; i++) {
-			if (switchConfigs[i].configured) {
+			if (allSwitchConfigs[s][i].configured) {
 				applySwitchConfiguration(i);
-				ofSleepMillis(50); // Small delay between commands
+				ofSleepMillis(50);
 			}
 		}
-		
-		// Refresh setup information from device
+		// Finally refresh setup names from hardware (as before)
 		getCurrentSetup();
 		ofSleepMillis(100);
 		refreshAvailableSetups();
 	}
 }
 
+
 void rotoControlConfig::presetSave(ofJson &json) {
-	// Save knob configurations
-	ofJson knobJson = ofJson::array();
-	
-	for (int i = 0; i < knobConfigs.size(); i++) {
-		ofJson configJson;
-		configJson["name"] = knobConfigs[i].name;
-		configJson["color"] = knobConfigs[i].color;
-		configJson["midiChannel"] = knobConfigs[i].midiChannel;
-		configJson["midiCC"] = knobConfigs[i].midiCC;
-		configJson["steps"] = knobConfigs[i].steps;
-		configJson["configured"] = knobConfigs[i].configured;
-		
-		knobJson.push_back(configJson);
+	// ─────────────────────────────────────────────────────────────────────────
+	// 1) Save setup management info
+	ofJson setupListJson = ofJson::array();
+	for (int s = 0; s < MAX_SETUPS; ++s) {
+		if (!availableSetups[s].exists) continue; // skip unused slots
+
+		ofJson oneSetupJson;
+		oneSetupJson["index"]  = availableSetups[s].index;
+		oneSetupJson["name"]   = availableSetups[s].name;
+		oneSetupJson["exists"] = availableSetups[s].exists;
+
+		// 2) Save this setup’s knobConfigs (32 entries)
+		ofJson knobArrayJson = ofJson::array();
+		for (int i = 0; i < TOTAL_KNOBS; i++) {
+			ofJson cfg;
+			KnobConfig &kc = allKnobConfigs[s][i];
+			cfg["name"]        = kc.name;
+			cfg["color"]       = kc.color;
+			cfg["midiChannel"] = kc.midiChannel;
+			cfg["midiCC"]      = kc.midiCC;
+			cfg["steps"]       = kc.steps;
+			cfg["configured"]  = kc.configured;
+			knobArrayJson.push_back(cfg);
+		}
+		oneSetupJson["knobConfigs"] = knobArrayJson;
+
+		// 3) Save this setup’s switchConfigs (32 entries)
+		ofJson switchArrayJson = ofJson::array();
+		for (int i = 0; i < TOTAL_SWITCHES; i++) {
+			ofJson cfg;
+			SwitchConfig &sc = allSwitchConfigs[s][i];
+			cfg["name"]        = sc.name;
+			cfg["color"]       = sc.color;
+			cfg["midiChannel"] = sc.midiChannel;
+			cfg["midiCC"]      = sc.midiCC;
+			cfg["configured"]  = sc.configured;
+			switchArrayJson.push_back(cfg);
+		}
+		oneSetupJson["switchConfigs"] = switchArrayJson;
+
+		setupListJson.push_back(oneSetupJson);
 	}
-	
-	json["knobConfigs"] = knobJson;
-	
-	// Save switch configurations
-	ofJson switchJson = ofJson::array();
-	
-	for (int i = 0; i < switchConfigs.size(); i++) {
-		ofJson configJson;
-		configJson["name"] = switchConfigs[i].name;
-		configJson["color"] = switchConfigs[i].color;
-		configJson["midiChannel"] = switchConfigs[i].midiChannel;
-		configJson["midiCC"] = switchConfigs[i].midiCC;
-		configJson["configured"] = switchConfigs[i].configured;
-		
-		switchJson.push_back(configJson);
-	}
-	
-	json["switchConfigs"] = switchJson;
-	
-	// Save setup management info
-	ofJson setupJson = ofJson::array();
-	for (int i = 0; i < availableSetups.size(); i++) {
-		ofJson setupInfoJson;
-		setupInfoJson["index"] = availableSetups[i].index;
-		setupInfoJson["name"] = availableSetups[i].name;
-		setupInfoJson["exists"] = availableSetups[i].exists;
-		setupJson.push_back(setupInfoJson);
-	}
-	json["availableSetups"] = setupJson;
+	json["allSetups"] = setupListJson;
+
+	// 4) Save which setup is currently selected
 	json["selectedSetupIndex"] = selectedSetupIndex.get();
 }
+
