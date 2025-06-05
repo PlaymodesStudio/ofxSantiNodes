@@ -91,22 +91,26 @@ void rotoControlConfig::setup() {
 	);
 	
 	listeners.push(selectedSetupIndex.newListener([this](int &index){
-			if(ignoreListeners) return;
-			
-			// Update setupName based on what we know about this slot
-			if(index < availableSetups.size()) {
-				ignoreListeners = true;
-				if(availableSetups[index].exists) {
-					setupName = availableSetups[index].name;
-				} else {
-					setupName = (index == 0) ? "Current Setup" : "Setup " + ofToString(index);
-				}
-				ignoreListeners = false;
+		if(ignoreListeners) return;
+		
+		// Update setupName based on what we know about this slot
+		if(index < availableSetups.size()) {
+			ignoreListeners = true;
+			if(availableSetups[index].exists) {
+				setupName = availableSetups[index].name;
+			} else {
+				setupName = (index == 0) ? "Current Setup" : "Setup " + ofToString(index);
 			}
-			
-			// Load the selected setup
-			loadSelectedSetup();
-		}));
+			ignoreListeners = false;
+		}
+		
+		// Load the selected setup
+		loadSelectedSetup();
+		
+		// ADD THESE LINES: Update GUI to show the new setup's knob/switch values
+		updateSelectedKnobParameters();
+		updateSelectedSwitchParameters();
+	}));
 	
 	listeners.push(selectedPage.newListener([this](int &newPage){
 			if (ignoreListeners) return;
@@ -219,7 +223,7 @@ void rotoControlConfig::setup() {
 			if (currColor < 0) currColor = 0;
 			if (currColor >= IM_ARRAYSIZE(colorNames)) currColor = IM_ARRAYSIZE(colorNames) - 1;
 
-			ImGui::Text("K Color:    ");
+			ImGui::Text("K Color    ");
 			ImGui::SameLine();
 			ImGui::ColorButton("##knobColorPreview", palette[currColor], 0, ImVec2(20, 20));
 			ImGui::SameLine();
@@ -336,7 +340,7 @@ void rotoControlConfig::setup() {
 			if (currColor < 0) currColor = 0;
 			if (currColor >= IM_ARRAYSIZE(colorNames)) currColor = IM_ARRAYSIZE(colorNames) - 1;
 
-			ImGui::Text("S Color:    ");
+			ImGui::Text("S Color    ");
 			ImGui::SameLine();
 			ImGui::ColorButton("##switchColorPreview", palette[currColor], 0, ImVec2(20, 20));
 			ImGui::SameLine();
@@ -361,12 +365,15 @@ void rotoControlConfig::setup() {
 		}),
 		switchColorRegion
 	);
+	
+	/*
 
 	// Thicker separator after Switch section
 	addCustomRegion(
 		ofParameter<std::function<void()>>().set("", [](){ drawThickSeparator(); }),
 		ofParameter<std::function<void()>>().set("", [](){ drawThickSeparator(); })
 	);
+	*/
 	
 	// Setup name change listener
 		listeners.push(setupName.newListener([this](string &newName){
@@ -463,35 +470,63 @@ void rotoControlConfig::update(ofEventArgs &args) {
 }
 
 void rotoControlConfig::setupSerialPort() {
+	// If we already had a serial connection, close it first
+	if(serialConnected) {
+		serial.close();
+		serialConnected = false;
+		// give the OS a moment to actually release the port
+		ofSleepMillis(50);
+	}
+
+	// Optionally, try to clear out any stray data by opening the port in a dummy way,
+	// reading anything that’s left, then closing. This can help if the OS still has
+	// some half‐open handle. Adjust “portName” to match your device if you know it.
+	//
+	//    serial.setup(portName, 115200);
+	//    while(serial.available() > 0) {
+	//        unsigned char dummy;
+	//        serial.readByte(dummy);
+	//    }
+	//    serial.close();
+	//    ofSleepMillis(50);
+	//
+	// (uncomment the above block if you need an explicit “drain” pass)
+
+	// Now do a fresh scan and open
 	vector<ofSerialDeviceInfo> devices = serial.getDeviceList();
 	bool connected = false;
-	
-	for (auto& device : devices) {
+
+	for(auto & device : devices) {
 		string devicePath = device.getDevicePath();
 		ofLogNotice("rotoControlConfig") << "Found serial device: " << devicePath;
-		
-		if (devicePath.find(ROTO_CONTROL_DEVICE_PREFIX) != string::npos) {
+
+		if(devicePath.find(ROTO_CONTROL_DEVICE_PREFIX) != string::npos) {
 			ofLogNotice("rotoControlConfig") << "Attempting to connect to ROTO-CONTROL on port: " << devicePath;
-			
-			if (serial.setup(devicePath, 115200)) {
+			if(serial.setup(devicePath, 115200)) {
 				ofLogNotice("rotoControlConfig") << "Connected to ROTO-CONTROL on port: " << devicePath;
 				serialConnected = true;
 				connected = true;
-				ofSleepMillis(100);
+
+				// Drain any junk that may be sitting in the input buffer
+				ofSleepMillis(20);
+				while(serial.available() > 0) {
+					serial.readByte();
+				}
 				break;
 			} else {
 				ofLogError("rotoControlConfig") << "Failed to connect to ROTO-CONTROL on " << devicePath;
 			}
 		}
 	}
-	
-	if (!connected) {
+
+	if(!connected) {
 		ofLogError("rotoControlConfig") << "Could not find any ROTO-CONTROL device. Available devices:";
-		for (auto& device : devices) {
+		for(auto & device : devices) {
 			ofLogError("rotoControlConfig") << "  - " << device.getDevicePath();
 		}
 	}
 }
+
 
 void rotoControlConfig::closeSerialPort() {
 	if (serialConnected) {
@@ -548,6 +583,9 @@ void rotoControlConfig::readSerialResponses() {
 							selectedSetupIndex = setupIndex;
 							setupName = nameFromDevice;
 							ignoreListeners = false;
+							
+							updateSelectedKnobParameters();
+							updateSelectedSwitchParameters();
 
 							ofLogNotice("rotoControlConfig")
 								<< "GET_CURRENT_SETUP reply: slot=" << (int)setupIndex
@@ -596,6 +634,9 @@ void rotoControlConfig::readSerialResponses() {
 							ignoreListeners = true;
 							setupName = nameFromDevice;
 							ignoreListeners = false;
+							
+							updateSelectedKnobParameters();
+							updateSelectedSwitchParameters();
 						}
 
 						ofLogNotice("rotoControlConfig")
@@ -675,6 +716,9 @@ void rotoControlConfig::readSerialResponses() {
 						payload.push_back(newSetup);
 						sendSerialCommand(CMD_MIDI, 0x02 /* GET_SETUP */, payload);
 					}
+					
+					updateSelectedKnobParameters();
+					updateSelectedSwitchParameters();
 
 					// Skip exactly (1+1+1+2+1) = 6 bytes: [5A][02][03][MSB][LSB][SI]
 					i += 5 + 1 - 1;
@@ -1083,6 +1127,9 @@ void rotoControlConfig::loadSelectedSetup() {
 	std::vector<unsigned char> payload;
 	payload.push_back(static_cast<unsigned char>(setupIndex));
 	sendSerialCommand(CMD_MIDI, 0x02 /* GET_SETUP */, payload);
+	
+	updateSelectedKnobParameters();
+	updateSelectedSwitchParameters();
 }
 
 
