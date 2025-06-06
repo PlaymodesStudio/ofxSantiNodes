@@ -4,7 +4,10 @@
 #include "ofxOceanodeNodeModel.h"
 #include "ofSerial.h"
 #include "imgui.h"
-
+#include "ofxOceanodeContainer.h"
+#include "ofxOceanodeMidiBinding.h"
+#include "ofThread.h"
+#include <mutex>
 /**
  * @class rotoControlConfig
  * @brief An Oceanode node for configuring ROTO-CONTROL display and controls
@@ -19,6 +22,10 @@ public:
 	 * @brief Constructor
 	 */
 	rotoControlConfig() : ofxOceanodeNodeModel("ROTO-Control Config") {}
+	
+	//destructor
+	~rotoControlConfig();
+
 
 	/**
 	 * @brief Setup initializes the node parameters
@@ -36,12 +43,16 @@ public:
 	void presetRecallBeforeSettingParameters(ofJson &json) override;
 	void presetRecallAfterSettingParameters(ofJson &json) override;
 	void presetSave(ofJson &json) override;
+	void setContainer(ofxOceanodeContainer* container) override;
 
 private:
+	ofxOceanodeContainer* containerRef = nullptr;
+	
+	
 	// Hardware constants based on API documentation
 	static const int NUM_KNOBS_PER_PAGE = 8;    // 8 knobs per page
 	static const int NUM_SWITCHES_PER_PAGE = 8; // 8 switches per page
-	static const int NUM_PAGES = 4;             // 4 pages total
+	static const int NUM_PAGES = 2;             // 2 pages total
 	static const int TOTAL_KNOBS = 32;          // 32 total knobs
 	static const int TOTAL_SWITCHES = 32;       // 32 total switches
 	static const int MAX_SETUPS = 64;
@@ -85,6 +96,18 @@ private:
 	ofParameter<string> switchName;
 	ofParameter<int> switchMidiChannel;
 	ofParameter<int> switchMidiCC;
+	
+	// Configuration save/load using preset system
+	   ofParameter<void> saveConfigButton;
+	   ofParameter<void> loadConfigButton;
+	
+	// Threading for non-blocking serial operations
+	std::thread configThread;
+	std::atomic<bool> isConfiguring{false};
+	std::mutex configMutex;
+
+	  // Status display
+	  ofParameter<string> configStatus;
 
 	// Setup management
 	struct SetupInfo {
@@ -108,6 +131,8 @@ private:
 	// Event listeners for parameter changes
 	ofEventListeners listeners;
 	bool ignoreListeners = false;
+	
+	
 
 	// Helper functions
 	void setupSerialPort();
@@ -132,6 +157,25 @@ private:
 	void setSetupName(int setupIndex, const string& name);
 	void getCurrentSetup();
 	void setCurrentSetup(int setupIndex);
+	
+	// Sync methods
+	void syncBoundParametersToHardware();
+ shared_ptr<ofxOceanodeAbstractMidiBinding> findBindingForMidiMapping(int channel, int cc);
+ void forceParameterResend(shared_ptr<ofxOceanodeAbstractMidiBinding> binding);
+ void forceParameterResendByName(const string& moduleName, const string& paramName);
+	string getRotoMidiPortName() const;
+	
+	// Helper methods for config save/load
+	   void saveConfigurationFile();
+	   void loadConfigurationFile();
+	string getDefaultConfigDir();
+	
+	// Threaded operations
+	  void threadedConfigurationApply();
+	  void applyConfigurationsToHardware();
+	  bool shouldSendSetupToHardware(int setupIndex);
+
+
 };
 
 #endif /* rotoControlConfig_h */
