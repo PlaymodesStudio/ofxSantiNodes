@@ -166,6 +166,9 @@ void rotoControlConfig::setup() {
 		refreshAvailableSetups();
 	}
 	
+	addInspectorParameter(retriggerMidiBounds.set("Retrigger MIDI Bounds", false));
+
+	
 	// Page selection
 	addParameter(selectedPage.set("Page", 0, 0, NUM_PAGES - 1));
 	
@@ -892,9 +895,12 @@ void rotoControlConfig::setHardwarePage(int page) {
 void rotoControlConfig::onPageChanged() {
 	// Update hardware page when GUI page changes
 	setHardwarePage(selectedPage);
-	//Sync bound parameters to hardware after page change
-		ofSleepMillis(50); // Give page change time to complete
-		syncBoundParametersToHardware();
+	
+	// Only sync bound parameters if retrigger option is enabled
+		if (retriggerMidiBounds.get()) {
+			ofSleepMillis(50); // Give page change time to complete
+			syncBoundParametersToHardware();
+		}
 }
 
 int rotoControlConfig::getAbsoluteKnobIndex() {
@@ -1288,9 +1294,11 @@ void rotoControlConfig::loadSelectedSetup() {
 	updateSelectedKnobParameters();
 	updateSelectedSwitchParameters();
 	
-	// Sync bound parameters to hardware after setup change
-		ofSleepMillis(50); // Give setup change time to complete
-		syncBoundParametersToHardware();
+	// Only sync bound parameters if retrigger option is enabled
+		if (retriggerMidiBounds.get()) {
+			ofSleepMillis(50); // Give setup change time to complete
+			syncBoundParametersToHardware();
+		}
 }
 
 
@@ -1947,8 +1955,10 @@ void rotoControlConfig::applyConfigurationsToHardware() {
 	setHardwarePage(selectedPage.get());
 	ofSleepMillis(30); // Reduced delay
 	
-	// Sync bound parameters for current setup only
-	syncBoundParametersToHardware();
+	// Only sync bound parameters if retrigger option is enabled
+		if (retriggerMidiBounds.get()) {
+			syncBoundParametersToHardware();
+		}
 	
 	ofLogNotice("rotoControlConfig") << "Hardware configuration complete. Applied "
 									<< configurationsApplied << " configurations across "

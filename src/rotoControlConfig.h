@@ -101,6 +101,9 @@ private:
 	   ofParameter<void> saveConfigButton;
 	   ofParameter<void> loadConfigButton;
 	
+	// MIDI retrigger option
+	ofParameter<bool> retriggerMidiBounds;
+	
 	// Threading for non-blocking serial operations
 	std::thread configThread;
 	std::atomic<bool> isConfiguring{false};
