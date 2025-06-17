@@ -138,6 +138,8 @@
 #include "Fold.h"
 #include "trigonometry.h"
 #include "stringComparator.h"
+#include "vectorMatrixSymmetry.h"
+#include "vectorMatrixRadialSymmetry.h"
 
 
 
@@ -277,6 +279,9 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<fold>("Santi/General");
 	o.registerModel<trigonometry>("Santi/General");
 	o.registerModel<stringComparator>("Santi/Strings");
+	o.registerModel<vectorMatrixSymmetry>("Santi/Vectors");
+	o.registerModel<vectorMatrixRadialSymmetry>("Santi/Vectors");
+
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
