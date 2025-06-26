@@ -140,6 +140,8 @@
 #include "stringComparator.h"
 #include "vectorMatrixSymmetry.h"
 #include "vectorMatrixRadialSymmetry.h"
+#include "vectorMatrixOffset.h"
+#include "pathwayGenerator.h"
 
 
 
@@ -279,8 +281,10 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<fold>("Santi/General");
 	o.registerModel<trigonometry>("Santi/General");
 	o.registerModel<stringComparator>("Santi/Strings");
-	o.registerModel<vectorMatrixSymmetry>("Santi/Vectors");
-	o.registerModel<vectorMatrixRadialSymmetry>("Santi/Vectors");
+	o.registerModel<vectorMatrixSymmetry>("Santi/Matrix");
+	o.registerModel<vectorMatrixRadialSymmetry>("Santi/Matrix");
+	o.registerModel<vectorMatrixOffset>("Santi/Matrix");
+	o.registerModel<pathwayGenerator>("Santi/Matrix");
 
 
     
