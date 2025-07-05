@@ -142,6 +142,7 @@
 #include "vectorMatrixRadialSymmetry.h"
 #include "vectorMatrixOffset.h"
 #include "pathwayGenerator.h"
+#include "portalSelector.h"
 
 
 
@@ -273,6 +274,7 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<rotoControlConfig>("Santi/MIDI");
 	o.registerModel<flipflop>("Santi/General");
 	o.registerModel<vectorFold>("Santi/Vectors");
+	o.registerModel<vectorRegion>("Santi/Vectors");
 	o.registerModel<edgeDetector>("Santi/General");
 	o.registerModel<deltaTime>("Santi/General");
 	o.registerModel<rgb2rgbw>("Santi/General");
@@ -286,12 +288,23 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<vectorMatrixOffset>("Santi/Matrix");
 	o.registerModel<pathwayGenerator>("Santi/Matrix");
 
-
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
-    o.registerModel<vectorRegion>("Santi/Thalastasi");
     o.registerModel<geneTable>("Santi/Thalastasi");
     o.registerModel<verticalProfile>("Santi/Thalastasi");
+	
+	
+	o.registerModel<portalSelector<vector<float>>>("Santi/PortalSelectors", "v_f", 0.0f);
+	o.registerModel<portalSelector<float>>("Santi/PortalSelectors", "f", 0.0f);
+	o.registerModel<portalSelector<vector<int>>>("Santi/PortalSelectors", "v_i", 0);
+	o.registerModel<portalSelector<int>>("Santi/PortalSelectors", "i", 0);
+	o.registerModel<portalSelector<string>>("Santi/PortalSelectors", "s", "");
+	o.registerModel<portalSelector<bool>>("Santi/PortalSelectors", "b", false);
+	o.registerModel<portalSelector<void>>("Santi/PortalSelectors", "v");
+	o.registerModel<portalSelector<char>>("Santi/PortalSelectors", "c", ' ');
+	o.registerModel<portalSelector<ofColor>>("Santi/PortalSelectors", "color", ofColor::black);
+	o.registerModel<portalSelector<ofFloatColor>>("Santi/PortalSelectors", "color_f", ofFloatColor::black);
+	o.registerModel<portalSelector<Timestamp>>("Santi/PortalSelectors", "timestamp", Timestamp());
 
 }
 }
