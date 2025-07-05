@@ -24,7 +24,7 @@ const unsigned char CMD_SET_SWITCH_CONTROL_CONFIG = 0x08;
 const unsigned char RESP_SUCCESS = 0x00;
 
 // ROTO-CONTROL device path
-const std::string ROTO_CONTROL_DEVICE_PREFIX = "cu.usbmodem101";
+const std::string ROTO_CONTROL_DEVICE_PREFIX = "cu.usbmodem1101";
 
 static void drawThickSeparator() {
 	// Get the current cursor position in screen coordinates
