@@ -25,6 +25,9 @@ public:
 
 		// Add hidden parameter to store the selected portal name for presets
 		addInspectorParameter(selectedPortalName.set("Selected Portal", ""));
+		
+		// Add inspector parameter for global search (default: false for local scope only)
+		addInspectorParameter(globalSearch.set("Global Search", false));
 
 		// Add output parameter with proper bounds for numeric types
 		if constexpr (std::is_arithmetic<T>::value) {
@@ -42,6 +45,14 @@ public:
 				updateSelectedPortalInstance();
 				updateOutputFromSelectedPortal();
 			}
+		});
+		
+		// Listen for global search changes
+		globalSearchListener = globalSearch.newListener([this](bool &){
+			// When global search setting changes, update the portal list
+			updatePortalList();
+			updateSelectedPortalInstance();
+			updateOutputFromSelectedPortal();
 		});
 
 		// Listen for preset loading completion to restore portal selection
@@ -67,8 +78,10 @@ protected:
 	ofParameter<int> selectedPortalIndex;
 	ofParameter<T> output;
 	ofParameter<string> selectedPortalName; // For preset save/load
+	ofParameter<bool> globalSearch; // Inspector parameter for global search
 	ofEventListener dropdownListener;
 	ofEventListener presetLoadedListener;
+	ofEventListener globalSearchListener;
 	vector<string> portalNames;
 	vector<portal<T>*> compatiblePortals;
 	T defaultValue;
@@ -82,23 +95,53 @@ protected:
 		// Get all portals of this specific type from the shared instance
 		vector<portal<T>*> typedPortals = ofxOceanodeShared::getAllPortals<T>();
 
+		// Get current scope for comparison
+		string currentScope = getParents();
+
 		// Iterate through all portals of this type
 		for (auto* portalPtr : typedPortals) {
 			if (portalPtr != nullptr) {
-				string portalName = portalPtr->getName();
+				// Check scope compatibility
+				bool scopeMatches = false;
 				
-				// Check if we've already added this portal name
-				if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
-					string displayName = portalName;
-
-					// Add asterisk for global portals
-					if (!portalPtr->isLocal()) {
-						displayName += " *";
+				if (globalSearch.get()) {
+					// Global search: include all portals
+					scopeMatches = true;
+				} else {
+					// Local search: only include portals in same scope or global portals
+					if (portalPtr->isLocal()) {
+						// Local portal: must be in same scope
+						scopeMatches = (portalPtr->getParents() == currentScope);
+					} else {
+						// Global portal: always include
+						scopeMatches = true;
 					}
+				}
+				
+				if (scopeMatches) {
+					string portalName = portalPtr->getName();
+					
+					// Check if we've already added this portal name
+					if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
+						string displayName = portalName;
 
-					newPortalNames.push_back(displayName);
-					newCompatiblePortals.push_back(portalPtr);
-					uniquePortalNames.insert(portalName);
+						// Add scope information when doing global search
+						if (globalSearch.get()) {
+							string portalScope = portalPtr->getParents();
+							if (!portalScope.empty() && portalScope != currentScope) {
+								displayName = portalScope + "/" + portalName;
+							}
+						}
+
+						// Add asterisk for global portals
+						if (!portalPtr->isLocal()) {
+							displayName += " *";
+						}
+
+						newPortalNames.push_back(displayName);
+						newCompatiblePortals.push_back(portalPtr);
+						uniquePortalNames.insert(portalName);
+					}
 				}
 			}
 		}
@@ -122,23 +165,53 @@ protected:
 		// Get all portals of this specific type from the shared instance
 		vector<portal<T>*> typedPortals = ofxOceanodeShared::getAllPortals<T>();
 
+		// Get current scope for comparison
+		string currentScope = getParents();
+
 		// Iterate through all portals of this type
 		for (auto* portalPtr : typedPortals) {
 			if (portalPtr != nullptr) {
-				string portalName = portalPtr->getName();
+				// Check scope compatibility
+				bool scopeMatches = false;
 				
-				// Check if we've already added this portal name
-				if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
-					string displayName = portalName;
-
-					// Add asterisk for global portals
-					if (!portalPtr->isLocal()) {
-						displayName += " *";
+				if (globalSearch.get()) {
+					// Global search: include all portals
+					scopeMatches = true;
+				} else {
+					// Local search: only include portals in same scope or global portals
+					if (portalPtr->isLocal()) {
+						// Local portal: must be in same scope
+						scopeMatches = (portalPtr->getParents() == currentScope);
+					} else {
+						// Global portal: always include
+						scopeMatches = true;
 					}
+				}
+				
+				if (scopeMatches) {
+					string portalName = portalPtr->getName();
+					
+					// Check if we've already added this portal name
+					if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
+						string displayName = portalName;
 
-					newPortalNames.push_back(displayName);
-					newCompatiblePortals.push_back(portalPtr);
-					uniquePortalNames.insert(portalName);
+						// Add scope information when doing global search
+						if (globalSearch.get()) {
+							string portalScope = portalPtr->getParents();
+							if (!portalScope.empty() && portalScope != currentScope) {
+								displayName = portalScope + "/" + portalName;
+							}
+						}
+
+						// Add asterisk for global portals
+						if (!portalPtr->isLocal()) {
+							displayName += " *";
+						}
+
+						newPortalNames.push_back(displayName);
+						newCompatiblePortals.push_back(portalPtr);
+						uniquePortalNames.insert(portalName);
+					}
 				}
 			}
 		}
@@ -298,6 +371,9 @@ public:
 
 		// Add hidden parameter to store the selected portal name for presets
 		addInspectorParameter(selectedPortalName.set("Selected Portal", ""));
+		
+		// Add inspector parameter for global search (default: false for local scope only)
+		addInspectorParameter(globalSearch.set("Global Search", false));
 
 		// Add output parameter with appropriate min/max for vectors
 		if constexpr (std::is_arithmetic<T>::value) {
@@ -315,6 +391,14 @@ public:
 				updateSelectedPortalInstance();
 				updateOutputFromSelectedPortal();
 			}
+		});
+		
+		// Listen for global search changes
+		globalSearchListener = globalSearch.newListener([this](bool &){
+			// When global search setting changes, update the portal list
+			updatePortalList();
+			updateSelectedPortalInstance();
+			updateOutputFromSelectedPortal();
 		});
 
 		// Listen for preset loading completion to restore portal selection
@@ -340,8 +424,10 @@ protected:
 	ofParameter<int> selectedPortalIndex;
 	ofParameter<vector<T>> output;
 	ofParameter<string> selectedPortalName; // For preset save/load
+	ofParameter<bool> globalSearch; // Inspector parameter for global search
 	ofEventListener dropdownListener;
 	ofEventListener presetLoadedListener;
+	ofEventListener globalSearchListener;
 	vector<string> portalNames;
 	vector<portal<vector<T>>*> compatiblePortals;
 	vector<T> defaultValue;
@@ -355,18 +441,49 @@ protected:
 		// Get all portals of this specific type
 		vector<portal<vector<T>>*> typedPortals = ofxOceanodeShared::getAllPortals<vector<T>>();
 
+		// Get current scope for comparison
+		string currentScope = getParents();
+
 		for (auto* portalPtr : typedPortals) {
 			if (portalPtr != nullptr) {
-				string portalName = portalPtr->getName();
+				// Check scope compatibility
+				bool scopeMatches = false;
 				
-				if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
-					string displayName = portalName;
-					if (!portalPtr->isLocal()) {
-						displayName += " *";
+				if (globalSearch.get()) {
+					// Global search: include all portals
+					scopeMatches = true;
+				} else {
+					// Local search: only include portals in same scope or global portals
+					if (portalPtr->isLocal()) {
+						// Local portal: must be in same scope
+						scopeMatches = (portalPtr->getParents() == currentScope);
+					} else {
+						// Global portal: always include
+						scopeMatches = true;
 					}
-					newPortalNames.push_back(displayName);
-					newCompatiblePortals.push_back(portalPtr);
-					uniquePortalNames.insert(portalName);
+				}
+				
+				if (scopeMatches) {
+					string portalName = portalPtr->getName();
+					
+					if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
+						string displayName = portalName;
+
+						// Add scope information when doing global search
+						if (globalSearch.get()) {
+							string portalScope = portalPtr->getParents();
+							if (!portalScope.empty() && portalScope != currentScope) {
+								displayName = portalScope + "/" + portalName;
+							}
+						}
+
+						if (!portalPtr->isLocal()) {
+							displayName += " *";
+						}
+						newPortalNames.push_back(displayName);
+						newCompatiblePortals.push_back(portalPtr);
+						uniquePortalNames.insert(portalName);
+					}
 				}
 			}
 		}
@@ -387,18 +504,49 @@ protected:
 
 		vector<portal<vector<T>>*> typedPortals = ofxOceanodeShared::getAllPortals<vector<T>>();
 
+		// Get current scope for comparison
+		string currentScope = getParents();
+
 		for (auto* portalPtr : typedPortals) {
 			if (portalPtr != nullptr) {
-				string portalName = portalPtr->getName();
+				// Check scope compatibility
+				bool scopeMatches = false;
 				
-				if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
-					string displayName = portalName;
-					if (!portalPtr->isLocal()) {
-						displayName += " *";
+				if (globalSearch.get()) {
+					// Global search: include all portals
+					scopeMatches = true;
+				} else {
+					// Local search: only include portals in same scope or global portals
+					if (portalPtr->isLocal()) {
+						// Local portal: must be in same scope
+						scopeMatches = (portalPtr->getParents() == currentScope);
+					} else {
+						// Global portal: always include
+						scopeMatches = true;
 					}
-					newPortalNames.push_back(displayName);
-					newCompatiblePortals.push_back(portalPtr);
-					uniquePortalNames.insert(portalName);
+				}
+				
+				if (scopeMatches) {
+					string portalName = portalPtr->getName();
+					
+					if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
+						string displayName = portalName;
+
+						// Add scope information when doing global search
+						if (globalSearch.get()) {
+							string portalScope = portalPtr->getParents();
+							if (!portalScope.empty() && portalScope != currentScope) {
+								displayName = portalScope + "/" + portalName;
+							}
+						}
+
+						if (!portalPtr->isLocal()) {
+							displayName += " *";
+						}
+						newPortalNames.push_back(displayName);
+						newCompatiblePortals.push_back(portalPtr);
+						uniquePortalNames.insert(portalName);
+					}
 				}
 			}
 		}
@@ -539,6 +687,9 @@ public:
 
 		// Add hidden parameter to store the selected portal name for presets
 		addInspectorParameter(selectedPortalName.set("Selected Portal", ""));
+		
+		// Add inspector parameter for global search (default: false for local scope only)
+		addInspectorParameter(globalSearch.set("Global Search", false));
 
 		// Add output parameter for void (trigger)
 		addOutputParameter(output.set("Output"));
@@ -550,6 +701,14 @@ public:
 				updateSelectedPortalInstance();
 				updateOutputFromSelectedPortal();
 			}
+		});
+		
+		// Listen for global search changes
+		globalSearchListener = globalSearch.newListener([this](bool &){
+			// When global search setting changes, update the portal list
+			updatePortalList();
+			updateSelectedPortalInstance();
+			updateOutputFromSelectedPortal();
 		});
 
 		// Listen for preset loading completion to restore portal selection
@@ -575,8 +734,10 @@ protected:
 	ofParameter<int> selectedPortalIndex;
 	ofParameter<void> output;
 	ofParameter<string> selectedPortalName; // For preset save/load
+	ofParameter<bool> globalSearch; // Inspector parameter for global search
 	ofEventListener dropdownListener;
 	ofEventListener presetLoadedListener;
+	ofEventListener globalSearchListener;
 	vector<string> portalNames;
 	vector<portal<void>*> compatiblePortals;
 	portal<void>* selectedPortalInstance; // Track the actual portal instance
@@ -589,18 +750,49 @@ protected:
 		// Get all void portals
 		vector<portal<void>*> typedPortals = ofxOceanodeShared::getAllPortals<void>();
 
+		// Get current scope for comparison
+		string currentScope = getParents();
+
 		for (auto* portalPtr : typedPortals) {
 			if (portalPtr != nullptr) {
-				string portalName = portalPtr->getName();
+				// Check scope compatibility
+				bool scopeMatches = false;
 				
-				if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
-					string displayName = portalName;
-					if (!portalPtr->isLocal()) {
-						displayName += " *";
+				if (globalSearch.get()) {
+					// Global search: include all portals
+					scopeMatches = true;
+				} else {
+					// Local search: only include portals in same scope or global portals
+					if (portalPtr->isLocal()) {
+						// Local portal: must be in same scope
+						scopeMatches = (portalPtr->getParents() == currentScope);
+					} else {
+						// Global portal: always include
+						scopeMatches = true;
 					}
-					newPortalNames.push_back(displayName);
-					newCompatiblePortals.push_back(portalPtr);
-					uniquePortalNames.insert(portalName);
+				}
+				
+				if (scopeMatches) {
+					string portalName = portalPtr->getName();
+					
+					if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
+						string displayName = portalName;
+
+						// Add scope information when doing global search
+						if (globalSearch.get()) {
+							string portalScope = portalPtr->getParents();
+							if (!portalScope.empty() && portalScope != currentScope) {
+								displayName = portalScope + "/" + portalName;
+							}
+						}
+
+						if (!portalPtr->isLocal()) {
+							displayName += " *";
+						}
+						newPortalNames.push_back(displayName);
+						newCompatiblePortals.push_back(portalPtr);
+						uniquePortalNames.insert(portalName);
+					}
 				}
 			}
 		}
@@ -621,18 +813,49 @@ protected:
 
 		vector<portal<void>*> typedPortals = ofxOceanodeShared::getAllPortals<void>();
 
+		// Get current scope for comparison
+		string currentScope = getParents();
+
 		for (auto* portalPtr : typedPortals) {
 			if (portalPtr != nullptr) {
-				string portalName = portalPtr->getName();
+				// Check scope compatibility
+				bool scopeMatches = false;
 				
-				if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
-					string displayName = portalName;
-					if (!portalPtr->isLocal()) {
-						displayName += " *";
+				if (globalSearch.get()) {
+					// Global search: include all portals
+					scopeMatches = true;
+				} else {
+					// Local search: only include portals in same scope or global portals
+					if (portalPtr->isLocal()) {
+						// Local portal: must be in same scope
+						scopeMatches = (portalPtr->getParents() == currentScope);
+					} else {
+						// Global portal: always include
+						scopeMatches = true;
 					}
-					newPortalNames.push_back(displayName);
-					newCompatiblePortals.push_back(portalPtr);
-					uniquePortalNames.insert(portalName);
+				}
+				
+				if (scopeMatches) {
+					string portalName = portalPtr->getName();
+					
+					if (uniquePortalNames.find(portalName) == uniquePortalNames.end()) {
+						string displayName = portalName;
+
+						// Add scope information when doing global search
+						if (globalSearch.get()) {
+							string portalScope = portalPtr->getParents();
+							if (!portalScope.empty() && portalScope != currentScope) {
+								displayName = portalScope + "/" + portalName;
+							}
+						}
+
+						if (!portalPtr->isLocal()) {
+							displayName += " *";
+						}
+						newPortalNames.push_back(displayName);
+						newCompatiblePortals.push_back(portalPtr);
+						uniquePortalNames.insert(portalName);
+					}
 				}
 			}
 		}
@@ -649,7 +872,7 @@ protected:
 			getOceanodeParameter(selectedPortalIndex).setDropdownOptions(portalNames);
 			selectedPortalIndex.setMin(0);
 			selectedPortalIndex.setMax(std::max(0, (int)portalNames.size() - 1));
-
+			
 			maintainPortalSelectionByInstance();
 		}
 	}
