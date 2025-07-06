@@ -15,6 +15,7 @@ public:
 		addParameter(height.set("Height", 4, 1, 32));
 		addParameter(numPaths.set("Num Paths", 1, 1, 8));
 		addParameter(seed.set("Seed", 0, 0, 9999));
+		addParameter(minLength.set("Min Length", 1, 1, 32));
 		addParameter(parallel.set("Parallel", false));
 		addParameter(overlap.set("Overlap", true));
 		addParameter(diagonalA.set("Diagonal A", true));
@@ -36,6 +37,7 @@ public:
 		listeners.push(height.newListener([this](int &){ generatePathways(); }));
 		listeners.push(numPaths.newListener([this](int &){ generatePathways(); }));
 		listeners.push(seed.newListener([this](int &){ generatePathways(); }));
+		listeners.push(minLength.newListener([this](int &){ generatePathways(); }));
 		listeners.push(parallel.newListener([this](bool &){ generatePathways(); }));
 		listeners.push(overlap.newListener([this](bool &){ generatePathways(); }));
 		listeners.push(diagonalA.newListener([this](bool &){ generatePathways(); }));
@@ -45,7 +47,7 @@ public:
 	}
 
 private:
-	ofParameter<int> width, height, numPaths, seed;
+	ofParameter<int> width, height, numPaths, seed, minLength;
 	ofParameter<bool> parallel, overlap, diagonalA, diagonalB, horizontal, vertical;
 	ofParameter<vector<float>> output, diagA_mask, diagB_mask, hor_mask, vert_mask;
 	ofEventListeners listeners;
@@ -60,11 +62,13 @@ private:
 	struct PathSegment {
 		int x, y;
 		float angle;
+		PathType type;
 	};
 	
 	struct PathInfo {
 		PathType type;
 		vector<PathSegment> segments;
+		int offset; // For parallel paths: 0 = main path, 1 = parallel path
 	};
 	
 	void generatePathways() {
@@ -106,21 +110,20 @@ private:
 			// Randomly select path type
 			PathType pathType = availableTypes[rng() % availableTypes.size()];
 			
-			// Generate path segments
-			vector<PathSegment> pathSegments = generatePath(pathType, w, h, rng, allPaths);
+			// Generate path segments (both main and parallel if enabled)
+			vector<PathInfo> pathPair = generatePath(pathType, w, h, rng, allPaths);
 			
-			// Store path info for mask generation
-			PathInfo pathInfo;
-			pathInfo.type = pathType;
-			pathInfo.segments = pathSegments;
-			allPaths.push_back(pathInfo);
-			
-			// Apply segments to matrix
-			applyPathToMatrix(matrix, pathSegments, w, h, rng);
+			// Add generated paths to our collection
+			for (const auto& path : pathPair) {
+				allPaths.push_back(path);
+			}
 		}
 		
+		// Apply all paths to matrix and validate minimum lengths
+		vector<PathInfo> validPaths = applyPathsAndValidate(allPaths, matrix, w, h);
+		
 		// Generate masks for each path type based on final output
-		generateMasks(allPaths, maskDiagA, maskDiagB, maskHor, maskVert, w, h, matrix);
+		generateMasks(validPaths, maskDiagA, maskDiagB, maskHor, maskVert, w, h, matrix);
 		
 		// Set outputs
 		output = matrix;
@@ -130,8 +133,8 @@ private:
 		vert_mask = maskVert;
 	}
 	
-	vector<PathSegment> generatePath(PathType type, int w, int h, std::mt19937& rng, const vector<PathInfo>& existingPaths) {
-		vector<PathSegment> segments;
+	vector<PathInfo> generatePath(PathType type, int w, int h, std::mt19937& rng, const vector<PathInfo>& existingPaths) {
+		vector<PathInfo> result;
 		std::uniform_real_distribution<float> angleDist(0.0f, 1.0f);
 		
 		switch (type) {
@@ -143,19 +146,43 @@ private:
 				// Left column (excluding bottom-left corner already added)
 				for (int y = 1; y < h; y++) startPositions.push_back({0, y});
 				
-				auto start = getValidDiagonalAPosition(startPositions, w, h, rng, existingPaths);
-				int x = start.first, y = start.second;
+				auto validOffsets = getValidDiagonalAOffsets(startPositions, w, h, rng, existingPaths);
 				
-				float baseAngle = 0.125f; // 45° normalized (bottom-left to top-right movement)
-				
-				while (x < w && y < h) {
-					PathSegment segment;
-					segment.x = x;
-					segment.y = y;
-					segment.angle = baseAngle;
-					segments.push_back(segment);
-					x++;
-					y++;
+				for (const auto& offsetInfo : validOffsets) {
+					PathInfo pathInfo;
+					pathInfo.type = DIAGONAL_A;
+					pathInfo.offset = offsetInfo.second;
+					
+					int x = offsetInfo.first.first;
+					int y = offsetInfo.first.second;
+					
+					// Check if this diagonal meets minimum length requirement
+					int projectedLength = calculateDiagonalLength(x, y, w, h, DIAGONAL_A);
+					if (projectedLength < minLength.get()) {
+						continue; // Skip this diagonal if it's too short
+					}
+					
+					float baseAngle = 0.125f; // 45° normalized
+					if (pathInfo.offset == 1) {
+						baseAngle = fmod(baseAngle + 0.5f, 1.0f); // Inverted for parallel
+					}
+					
+					while (x < w && y < h) {
+						PathSegment segment;
+						segment.x = x;
+						segment.y = y;
+						segment.angle = baseAngle;
+						segment.type = DIAGONAL_A;
+						pathInfo.segments.push_back(segment);
+						x++;
+						y++;
+					}
+					
+					if (!pathInfo.segments.empty()) {
+						result.push_back(pathInfo);
+					}
+					
+					if (!parallel.get()) break; // Only generate main path if not parallel
 				}
 				break;
 			}
@@ -168,362 +195,517 @@ private:
 				// Left column (excluding top-left corner already added)
 				for (int y = 0; y < h-1; y++) startPositions.push_back({0, y});
 				
-				auto start = getValidDiagonalBPosition(startPositions, w, h, rng, existingPaths);
-				int x = start.first, y = start.second;
+				auto validOffsets = getValidDiagonalBOffsets(startPositions, w, h, rng, existingPaths);
 				
-				float baseAngle = 0.375f; // 135° normalized (315° + 180° = 135°, shifted 180 degrees)
-				
-				while (x < w && y >= 0) {
-					PathSegment segment;
-					segment.x = x;
-					segment.y = y;
-					segment.angle = baseAngle;
-					segments.push_back(segment);
-					x++;
-					y--;
+				for (const auto& offsetInfo : validOffsets) {
+					PathInfo pathInfo;
+					pathInfo.type = DIAGONAL_B;
+					pathInfo.offset = offsetInfo.second;
+					
+					int x = offsetInfo.first.first;
+					int y = offsetInfo.first.second;
+					
+					// Check if this diagonal meets minimum length requirement
+					int projectedLength = calculateDiagonalLength(x, y, w, h, DIAGONAL_B);
+					if (projectedLength < minLength.get()) {
+						continue; // Skip this diagonal if it's too short
+					}
+					
+					float baseAngle = 0.375f; // 135° normalized
+					if (pathInfo.offset == 1) {
+						baseAngle = fmod(baseAngle + 0.5f, 1.0f); // Inverted for parallel
+					}
+					
+					while (x < w && y >= 0) {
+						PathSegment segment;
+						segment.x = x;
+						segment.y = y;
+						segment.angle = baseAngle;
+						segment.type = DIAGONAL_B;
+						pathInfo.segments.push_back(segment);
+						x++;
+						y--;
+					}
+					
+					if (!pathInfo.segments.empty()) {
+						result.push_back(pathInfo);
+					}
+					
+					if (!parallel.get()) break; // Only generate main path if not parallel
 				}
 				break;
 			}
 			
 			case HORIZONTAL: {
 				// Horizontal path
-				int y = getValidHorizontalPosition(h, rng, existingPaths, w);
-				if (y == -1) y = rng() % h; // Fallback if no valid position found
+				auto validOffsets = getValidHorizontalOffsets(h, rng, existingPaths, w);
 				
-				float baseAngle = 0.5f; // 180° normalized (horizontal)
-				
-				for (int x = 0; x < w; x++) {
-					PathSegment segment;
-					segment.x = x;
-					segment.y = y;
-					segment.angle = baseAngle;
-					segments.push_back(segment);
+				for (const auto& offsetInfo : validOffsets) {
+					PathInfo pathInfo;
+					pathInfo.type = HORIZONTAL;
+					pathInfo.offset = offsetInfo.second;
+					
+					int y = offsetInfo.first;
+					
+					float baseAngle = 0.5f; // 180° normalized
+					if (pathInfo.offset == 1) {
+						baseAngle = fmod(baseAngle + 0.5f, 1.0f); // Inverted for parallel
+					}
+					
+					for (int x = 0; x < w; x++) {
+						PathSegment segment;
+						segment.x = x;
+						segment.y = y;
+						segment.angle = baseAngle;
+						segment.type = HORIZONTAL;
+						pathInfo.segments.push_back(segment);
+					}
+					
+					if (!pathInfo.segments.empty()) {
+						result.push_back(pathInfo);
+					}
+					
+					if (!parallel.get()) break; // Only generate main path if not parallel
 				}
 				break;
 			}
 			
 			case VERTICAL: {
 				// Vertical path
-				int x = getValidVerticalPosition(w, rng, existingPaths, h);
-				if (x == -1) x = rng() % w; // Fallback if no valid position found
+				auto validOffsets = getValidVerticalOffsets(w, rng, existingPaths, h);
 				
-				float baseAngle = 0.25f; // 90° normalized (vertical)
-				
-				for (int y = 0; y < h; y++) {
-					PathSegment segment;
-					segment.x = x;
-					segment.y = y;
-					segment.angle = baseAngle;
-					segments.push_back(segment);
+				for (const auto& offsetInfo : validOffsets) {
+					PathInfo pathInfo;
+					pathInfo.type = VERTICAL;
+					pathInfo.offset = offsetInfo.second;
+					
+					int x = offsetInfo.first;
+					
+					float baseAngle = 0.25f; // 90° normalized
+					if (pathInfo.offset == 1) {
+						baseAngle = fmod(baseAngle + 0.5f, 1.0f); // Inverted for parallel
+					}
+					
+					for (int y = 0; y < h; y++) {
+						PathSegment segment;
+						segment.x = x;
+						segment.y = y;
+						segment.angle = baseAngle;
+						segment.type = VERTICAL;
+						pathInfo.segments.push_back(segment);
+					}
+					
+					if (!pathInfo.segments.empty()) {
+						result.push_back(pathInfo);
+					}
+					
+					if (!parallel.get()) break; // Only generate main path if not parallel
 				}
 				break;
 			}
 		}
 		
-		return segments;
+		return result;
 	}
 	
-	void applyPathToMatrix(vector<float>& matrix, const vector<PathSegment>& segments, int w, int h, std::mt19937& rng) {
-		if (parallel.get()) {
-			applyParallelPathToMatrix(matrix, segments, w, h);
-		} else {
-			// Normal mode - just place the segments
-			for (const PathSegment& segment : segments) {
-				int index = segment.y * w + segment.x;
-				
-				if (index >= 0 && index < matrix.size()) {
-					// Check for overlap
-					if (!overlap.get() && matrix[index] != -1.0f) {
-						continue; // Skip this segment if overlap is disabled and position is occupied
-					}
-					
-					matrix[index] = segment.angle;
-				}
-			}
+	int calculateDiagonalLength(int startX, int startY, int w, int h, PathType type) {
+		switch (type) {
+			case DIAGONAL_A:
+				// Bottom-left to top-right: limited by remaining width or height
+				return std::min(w - startX, h - startY);
+			case DIAGONAL_B:
+				// Top-left to bottom-right: limited by remaining width or remaining downward movement
+				return std::min(w - startX, startY + 1);
+			default:
+				return 0; // Horizontal and vertical paths always span full matrix
 		}
 	}
 	
-	int getValidHorizontalPosition(int h, std::mt19937& rng, const vector<PathInfo>& existingPaths, int w) {
-		if (!parallel.get()) return rng() % h; // No separation needed in non-parallel mode
+	vector<PathInfo> applyPathsAndValidate(const vector<PathInfo>& allPaths, vector<float>& matrix, int w, int h) {
+		vector<PathInfo> validPaths;
 		
-		vector<int> usedRows;
-		for (const PathInfo& pathInfo : existingPaths) {
-			if (pathInfo.type == HORIZONTAL) {
-				for (const PathSegment& segment : pathInfo.segments) {
-					usedRows.push_back(segment.y);
-					usedRows.push_back(segment.y + 1); // Adjacent row used in parallel mode
-					usedRows.push_back(segment.y - 1); // Adjacent row used in parallel mode
-					break; // Only need to check first segment for horizontal paths
-				}
-			}
+		// Apply all paths to matrix (overlap handled by "top wins" rule)
+		for (const auto& path : allPaths) {
+			applyPathToMatrix(matrix, path.segments, w, h);
 		}
 		
-		// Find valid positions with at least 1 row separation from existing path pairs
-		// and ensure the whole path (pair) fits inside the matrix
-		vector<int> validPositions;
-		for (int y = 0; y < h; y++) {
-			bool valid = true;
-			for (int usedRow : usedRows) {
-				if (abs(y - usedRow) <= 1) { // Too close to existing path pair
-					valid = false;
-					break;
-				}
-			}
-			// Check if both the main path and parallel path fit inside matrix
-			if (valid && y + 1 < h) { // Ensure both y and y+1 are inside matrix
-				validPositions.push_back(y);
-			} else if (valid && y - 1 >= 0) { // Or both y-1 and y are inside matrix
-				validPositions.push_back(y - 1); // Shift the whole pair to fit
-			}
-		}
-		
-		if (validPositions.empty()) return -1;
-		return validPositions[rng() % validPositions.size()];
-	}
-	
-	int getValidVerticalPosition(int w, std::mt19937& rng, const vector<PathInfo>& existingPaths, int h) {
-		if (!parallel.get()) return rng() % w; // No separation needed in non-parallel mode
-		
-		vector<int> usedCols;
-		for (const PathInfo& pathInfo : existingPaths) {
-			if (pathInfo.type == VERTICAL) {
-				for (const PathSegment& segment : pathInfo.segments) {
-					usedCols.push_back(segment.x);
-					usedCols.push_back(segment.x + 1); // Adjacent column used in parallel mode
-					usedCols.push_back(segment.x - 1); // Adjacent column used in parallel mode
-					break; // Only need to check first segment for vertical paths
-				}
-			}
-		}
-		
-		// Find valid positions with at least 1 column separation from existing path pairs
-		// and ensure the whole path (pair) fits inside the matrix
-		vector<int> validPositions;
-		for (int x = 0; x < w; x++) {
-			bool valid = true;
-			for (int usedCol : usedCols) {
-				if (abs(x - usedCol) <= 1) { // Too close to existing path pair
-					valid = false;
-					break;
-				}
-			}
-			// Check if both the main path and parallel path fit inside matrix
-			if (valid && x + 1 < w) { // Ensure both x and x+1 are inside matrix
-				validPositions.push_back(x);
-			} else if (valid && x - 1 >= 0) { // Or both x-1 and x are inside matrix
-				validPositions.push_back(x - 1); // Shift the whole pair to fit
-			}
-		}
-		
-		if (validPositions.empty()) return -1;
-		return validPositions[rng() % validPositions.size()];
-	}
-	
-	pair<int, int> getValidDiagonalAPosition(const vector<pair<int, int>>& startPositions, int w, int h,
-										   std::mt19937& rng, const vector<PathInfo>& existingPaths) {
-		if (!parallel.get()) return startPositions[rng() % startPositions.size()];
-		
-		vector<pair<int, int>> usedPositions;
-		for (const PathInfo& pathInfo : existingPaths) {
-			if (pathInfo.type == DIAGONAL_A) {
-				for (const PathSegment& segment : pathInfo.segments) {
-					usedPositions.push_back({segment.x, segment.y});
-					usedPositions.push_back({segment.x + 1, segment.y}); // Adjacent diagonal used in parallel mode
-					usedPositions.push_back({segment.x - 1, segment.y}); // Adjacent diagonal used in parallel mode
-				}
-			}
-		}
-		
-		vector<pair<int, int>> validPositions;
-		for (const auto& pos : startPositions) {
-			bool valid = true;
-			for (const auto& usedPos : usedPositions) {
-				if (abs(pos.first - usedPos.first) <= 1 && pos.second == usedPos.second) {
-					valid = false;
-					break;
-				}
-			}
+		// Now validate each path based on visible segments in final matrix
+		for (const auto& path : allPaths) {
+			int visibleSegments = countVisibleSegments(path, matrix, w, h);
 			
-			// Check if the whole diagonal pair fits inside matrix
-			if (valid) {
-				bool canFitRight = true, canFitLeft = true;
-				int x = pos.first, y = pos.second;
-				// Check if main diagonal + right parallel fits
-				while (x < w && y < h) {
-					if (x + 1 >= w) { canFitRight = false; break; }
-					x++; y++;
+			// For diagonal paths, check minimum length requirement
+			if (path.type == DIAGONAL_A || path.type == DIAGONAL_B) {
+				if (visibleSegments >= minLength.get()) {
+					validPaths.push_back(path);
 				}
-				// Check if main diagonal + left parallel fits
-				x = pos.first; y = pos.second;
-				while (x < w && y < h) {
-					if (x - 1 < 0) { canFitLeft = false; break; }
-					x++; y++;
-				}
-				
-				if (canFitRight || canFitLeft) {
-					validPositions.push_back(pos);
-				}
+			} else {
+				// Horizontal and vertical paths are always valid (they span full matrix)
+				validPaths.push_back(path);
 			}
 		}
 		
-		if (validPositions.empty()) return startPositions[rng() % startPositions.size()];
-		return validPositions[rng() % validPositions.size()];
+		return validPaths;
 	}
 	
-	pair<int, int> getValidDiagonalBPosition(const vector<pair<int, int>>& startPositions, int w, int h,
-										   std::mt19937& rng, const vector<PathInfo>& existingPaths) {
-		if (!parallel.get()) return startPositions[rng() % startPositions.size()];
+	int countVisibleSegments(const PathInfo& path, const vector<float>& matrix, int w, int h) {
+		int count = 0;
 		
-		vector<pair<int, int>> usedPositions;
-		for (const PathInfo& pathInfo : existingPaths) {
-			if (pathInfo.type == DIAGONAL_B) {
-				for (const PathSegment& segment : pathInfo.segments) {
-					usedPositions.push_back({segment.x, segment.y});
-					usedPositions.push_back({segment.x + 1, segment.y}); // Adjacent diagonal used in parallel mode
-					usedPositions.push_back({segment.x - 1, segment.y}); // Adjacent diagonal used in parallel mode
+		for (const auto& segment : path.segments) {
+			int index = segment.y * w + segment.x;
+			if (index >= 0 && index < matrix.size()) {
+				// Check if this segment is visible in the final matrix
+				if (abs(matrix[index] - segment.angle) < 0.01f) {
+					count++;
 				}
 			}
 		}
 		
-		vector<pair<int, int>> validPositions;
-		for (const auto& pos : startPositions) {
-			bool valid = true;
-			for (const auto& usedPos : usedPositions) {
-				if (abs(pos.first - usedPos.first) <= 1 && pos.second == usedPos.second) {
-					valid = false;
-					break;
-				}
-			}
-			
-			// Check if the whole diagonal pair fits inside matrix
-			if (valid) {
-				bool canFitRight = true, canFitLeft = true;
-				int x = pos.first, y = pos.second;
-				// Check if main diagonal + right parallel fits
-				while (x < w && y >= 0) {
-					if (x + 1 >= w) { canFitRight = false; break; }
-					x++; y--;
-				}
-				// Check if main diagonal + left parallel fits
-				x = pos.first; y = pos.second;
-				while (x < w && y >= 0) {
-					if (x - 1 < 0) { canFitLeft = false; break; }
-					x++; y--;
-				}
-				
-				if (canFitRight || canFitLeft) {
-					validPositions.push_back(pos);
-				}
-			}
-		}
-		
-		if (validPositions.empty()) return startPositions[rng() % startPositions.size()];
-		return validPositions[rng() % validPositions.size()];
+		return count;
 	}
 	
-	void applyParallelPathToMatrix(vector<float>& matrix, const vector<PathSegment>& segments, int w, int h) {
-		// In parallel mode, we create alternating parallel segments
-		// For each segment in the path, we place both the original angle and inverted angle
-		
+	void applyPathToMatrix(vector<float>& matrix, const vector<PathSegment>& segments, int w, int h) {
 		for (const PathSegment& segment : segments) {
 			int index = segment.y * w + segment.x;
 			
 			if (index >= 0 && index < matrix.size()) {
 				// Check for overlap
 				if (!overlap.get() && matrix[index] != -1.0f) {
-					continue;
+					continue; // Skip this segment if overlap is disabled and position is occupied
 				}
 				
-				// Place original angle
 				matrix[index] = segment.angle;
-				
-				// Place inverted angle in adjacent position
-				int adjacentIndex = getAdjacentIndex(segment, w, h);
-				if (adjacentIndex >= 0 && adjacentIndex < matrix.size()) {
-					if (overlap.get() || matrix[adjacentIndex] == -1.0f) {
-						float invertedAngle = fmod(segment.angle + 0.5f, 1.0f);
-						matrix[adjacentIndex] = invertedAngle;
-					}
-				}
 			}
 		}
 	}
 	
-	int getAdjacentIndex(const PathSegment& segment, int w, int h) {
-		// Find adjacent position based on the path direction
-		// This creates the parallel pattern with adjacent segments
+	vector<pair<int, int>> getValidHorizontalOffsets(int h, std::mt19937& rng, const vector<PathInfo>& existingPaths, int w) {
+		vector<pair<int, int>> result;
 		
-		float angle = segment.angle;
+		if (!parallel.get()) {
+			// Non-parallel mode: just return a random row
+			int y = rng() % h;
+			result.push_back({y, 0});
+			return result;
+		}
 		
-		// Determine which direction to place the parallel segment
-		if (abs(angle - 0.125f) < 0.01f) {
-			// Diagonal A path - place parallel segment offset
-			if (segment.x + 1 < w) {
-				return segment.y * w + (segment.x + 1);
-			}
-		} else if (abs(angle - 0.375f) < 0.01f) {
-			// Diagonal B path - place parallel segment offset
-			if (segment.x + 1 < w) {
-				return segment.y * w + (segment.x + 1);
-			}
-		} else if (abs(angle - 0.5f) < 0.01f) {
-			// Horizontal path - place parallel segment in adjacent row
-			if (segment.y + 1 < h) {
-				return (segment.y + 1) * w + segment.x;
-			} else if (segment.y - 1 >= 0) {
-				return (segment.y - 1) * w + segment.x;
-			}
-		} else if (abs(angle - 0.25f) < 0.01f) {
-			// Vertical path - place parallel segment in adjacent column
-			if (segment.x + 1 < w) {
-				return segment.y * w + (segment.x + 1);
-			} else if (segment.x - 1 >= 0) {
-				return segment.y * w + (segment.x - 1);
+		// Get all used rows by existing horizontal paths
+		vector<int> usedRows;
+		for (const PathInfo& pathInfo : existingPaths) {
+			if (pathInfo.type == HORIZONTAL) {
+				for (const PathSegment& segment : pathInfo.segments) {
+					usedRows.push_back(segment.y);
+					break; // Only need first segment for horizontal paths
+				}
 			}
 		}
 		
-		return -1; // No valid adjacent position
+		// Find valid positions for parallel pairs
+		vector<int> validMainRows;
+		for (int y = 0; y < h - 1; y++) { // Ensure we have space for parallel row
+			bool valid = true;
+			
+			// Check if this row or the next row conflicts with existing paths
+			for (int usedRow : usedRows) {
+				if (abs(y - usedRow) <= 1 || abs((y + 1) - usedRow) <= 1) {
+					valid = false;
+					break;
+				}
+			}
+			
+			if (valid) {
+				validMainRows.push_back(y);
+			}
+		}
+		
+		if (validMainRows.empty()) {
+			// Fallback: use any available row
+			int y = rng() % h;
+			result.push_back({y, 0});
+			return result;
+		}
+		
+		// Select a random valid main row
+		int selectedRow = validMainRows[rng() % validMainRows.size()];
+		
+		// Return both main and parallel rows
+		result.push_back({selectedRow, 0});     // Main path
+		result.push_back({selectedRow + 1, 1}); // Parallel path
+		
+		return result;
+	}
+	
+	vector<pair<int, int>> getValidVerticalOffsets(int w, std::mt19937& rng, const vector<PathInfo>& existingPaths, int h) {
+		vector<pair<int, int>> result;
+		
+		if (!parallel.get()) {
+			// Non-parallel mode: just return a random column
+			int x = rng() % w;
+			result.push_back({x, 0});
+			return result;
+		}
+		
+		// Get all used columns by existing vertical paths
+		vector<int> usedCols;
+		for (const PathInfo& pathInfo : existingPaths) {
+			if (pathInfo.type == VERTICAL) {
+				for (const PathSegment& segment : pathInfo.segments) {
+					usedCols.push_back(segment.x);
+					break; // Only need first segment for vertical paths
+				}
+			}
+		}
+		
+		// Find valid positions for parallel pairs
+		vector<int> validMainCols;
+		for (int x = 0; x < w - 1; x++) { // Ensure we have space for parallel column
+			bool valid = true;
+			
+			// Check if this column or the next column conflicts with existing paths
+			for (int usedCol : usedCols) {
+				if (abs(x - usedCol) <= 1 || abs((x + 1) - usedCol) <= 1) {
+					valid = false;
+					break;
+				}
+			}
+			
+			if (valid) {
+				validMainCols.push_back(x);
+			}
+		}
+		
+		if (validMainCols.empty()) {
+			// Fallback: use any available column
+			int x = rng() % w;
+			result.push_back({x, 0});
+			return result;
+		}
+		
+		// Select a random valid main column
+		int selectedCol = validMainCols[rng() % validMainCols.size()];
+		
+		// Return both main and parallel columns
+		result.push_back({selectedCol, 0});     // Main path
+		result.push_back({selectedCol + 1, 1}); // Parallel path
+		
+		return result;
+	}
+	
+	vector<pair<pair<int, int>, int>> getValidDiagonalAOffsets(const vector<pair<int, int>>& startPositions, int w, int h,
+														   std::mt19937& rng, const vector<PathInfo>& existingPaths) {
+		vector<pair<pair<int, int>, int>> result;
+		
+		if (!parallel.get()) {
+			// Non-parallel mode: just return a random start position
+			auto pos = startPositions[rng() % startPositions.size()];
+			result.push_back({{pos.first, pos.second}, 0});
+			return result;
+		}
+		
+		// Get all used diagonal positions by existing diagonal A paths
+		vector<pair<int, int>> usedPositions;
+		for (const PathInfo& pathInfo : existingPaths) {
+			if (pathInfo.type == DIAGONAL_A) {
+				for (const PathSegment& segment : pathInfo.segments) {
+					usedPositions.push_back({segment.x, segment.y});
+				}
+			}
+		}
+		
+		// Find valid start positions for parallel pairs
+		vector<pair<int, int>> validMainStarts;
+		for (const auto& pos : startPositions) {
+			// Pre-filter by minimum length requirement
+			int mainLength = calculateDiagonalLength(pos.first, pos.second, w, h, DIAGONAL_A);
+			int parallelLength = calculateDiagonalLength(pos.first + 1, pos.second, w, h, DIAGONAL_A);
+			
+			if (mainLength < minLength.get() || parallelLength < minLength.get()) {
+				continue; // Skip if either path would be too short
+			}
+			
+			bool valid = true;
+			
+			// Check if this diagonal path would conflict with existing paths
+			// We need to check the entire diagonal path, not just the start
+			int x = pos.first, y = pos.second;
+			bool mainPathValid = true, parallelPathValid = true;
+			
+			// Check main diagonal path
+			int tempX = x, tempY = y;
+			while (tempX < w && tempY < h) {
+				for (const auto& usedPos : usedPositions) {
+					if (abs(tempX - usedPos.first) <= 1 && abs(tempY - usedPos.second) <= 1) {
+						mainPathValid = false;
+						break;
+					}
+				}
+				if (!mainPathValid) break;
+				tempX++;
+				tempY++;
+			}
+			
+			// Check parallel diagonal path (offset by +1 in x direction)
+			if (mainPathValid && x + 1 < w) {
+				tempX = x + 1;
+				tempY = y;
+				while (tempX < w && tempY < h) {
+					for (const auto& usedPos : usedPositions) {
+						if (abs(tempX - usedPos.first) <= 1 && abs(tempY - usedPos.second) <= 1) {
+							parallelPathValid = false;
+							break;
+						}
+					}
+					if (!parallelPathValid) break;
+					tempX++;
+					tempY++;
+				}
+			} else {
+				parallelPathValid = false;
+			}
+			
+			if (mainPathValid && parallelPathValid) {
+				validMainStarts.push_back(pos);
+			}
+		}
+		
+		if (validMainStarts.empty()) {
+			// Fallback: use any available start position
+			auto pos = startPositions[rng() % startPositions.size()];
+			result.push_back({{pos.first, pos.second}, 0});
+			return result;
+		}
+		
+		// Select a random valid main start position
+		auto selectedStart = validMainStarts[rng() % validMainStarts.size()];
+		
+		// Return both main and parallel start positions
+		result.push_back({{selectedStart.first, selectedStart.second}, 0});     // Main path
+		result.push_back({{selectedStart.first + 1, selectedStart.second}, 1}); // Parallel path
+		
+		return result;
+	}
+	
+	vector<pair<pair<int, int>, int>> getValidDiagonalBOffsets(const vector<pair<int, int>>& startPositions, int w, int h,
+														   std::mt19937& rng, const vector<PathInfo>& existingPaths) {
+		vector<pair<pair<int, int>, int>> result;
+		
+		if (!parallel.get()) {
+			// Non-parallel mode: just return a random start position
+			auto pos = startPositions[rng() % startPositions.size()];
+			result.push_back({{pos.first, pos.second}, 0});
+			return result;
+		}
+		
+		// Get all used diagonal positions by existing diagonal B paths
+		vector<pair<int, int>> usedPositions;
+		for (const PathInfo& pathInfo : existingPaths) {
+			if (pathInfo.type == DIAGONAL_B) {
+				for (const PathSegment& segment : pathInfo.segments) {
+					usedPositions.push_back({segment.x, segment.y});
+				}
+			}
+		}
+		
+		// Find valid start positions for parallel pairs
+		vector<pair<int, int>> validMainStarts;
+		for (const auto& pos : startPositions) {
+			// Pre-filter by minimum length requirement
+			int mainLength = calculateDiagonalLength(pos.first, pos.second, w, h, DIAGONAL_B);
+			int parallelLength = calculateDiagonalLength(pos.first + 1, pos.second, w, h, DIAGONAL_B);
+			
+			if (mainLength < minLength.get() || parallelLength < minLength.get()) {
+				continue; // Skip if either path would be too short
+			}
+			
+			bool valid = true;
+			
+			// Check if this diagonal path would conflict with existing paths
+			int x = pos.first, y = pos.second;
+			bool mainPathValid = true, parallelPathValid = true;
+			
+			// Check main diagonal path
+			int tempX = x, tempY = y;
+			while (tempX < w && tempY >= 0) {
+				for (const auto& usedPos : usedPositions) {
+					if (abs(tempX - usedPos.first) <= 1 && abs(tempY - usedPos.second) <= 1) {
+						mainPathValid = false;
+						break;
+					}
+				}
+				if (!mainPathValid) break;
+				tempX++;
+				tempY--;
+			}
+			
+			// Check parallel diagonal path (offset by +1 in x direction)
+			if (mainPathValid && x + 1 < w) {
+				tempX = x + 1;
+				tempY = y;
+				while (tempX < w && tempY >= 0) {
+					for (const auto& usedPos : usedPositions) {
+						if (abs(tempX - usedPos.first) <= 1 && abs(tempY - usedPos.second) <= 1) {
+							parallelPathValid = false;
+							break;
+						}
+					}
+					if (!parallelPathValid) break;
+					tempX++;
+					tempY--;
+				}
+			} else {
+				parallelPathValid = false;
+			}
+			
+			if (mainPathValid && parallelPathValid) {
+				validMainStarts.push_back(pos);
+			}
+		}
+		
+		if (validMainStarts.empty()) {
+			// Fallback: use any available start position
+			auto pos = startPositions[rng() % startPositions.size()];
+			result.push_back({{pos.first, pos.second}, 0});
+			return result;
+		}
+		
+		// Select a random valid main start position
+		auto selectedStart = validMainStarts[rng() % validMainStarts.size()];
+		
+		// Return both main and parallel start positions
+		result.push_back({{selectedStart.first, selectedStart.second}, 0});     // Main path
+		result.push_back({{selectedStart.first + 1, selectedStart.second}, 1}); // Parallel path
+		
+		return result;
 	}
 	
 	void generateMasks(const vector<PathInfo>& allPaths, vector<float>& maskDiagA, vector<float>& maskDiagB,
 					  vector<float>& maskHor, vector<float>& maskVert, int w, int h, const vector<float>& finalMatrix) {
 		
-		// For each position in the matrix, determine which path type "won" (is present in final output)
+		// For each position in the matrix, determine which path type is present
 		for (int i = 0; i < finalMatrix.size(); i++) {
 			if (finalMatrix[i] == -1.0f) continue; // Skip empty positions
 			
 			float finalAngle = finalMatrix[i];
 			
-			// Determine which path type this angle belongs to
+			// Check against all possible angles for each path type
+			// Main angles
 			if (abs(finalAngle - 0.125f) < 0.01f) {
-				// Diagonal A angle
 				maskDiagA[i] = 1.0f;
 			} else if (abs(finalAngle - 0.375f) < 0.01f) {
-				// Diagonal B angle
 				maskDiagB[i] = 1.0f;
 			} else if (abs(finalAngle - 0.5f) < 0.01f) {
-				// Horizontal angle
 				maskHor[i] = 1.0f;
 			} else if (abs(finalAngle - 0.25f) < 0.01f) {
-				// Vertical angle
 				maskVert[i] = 1.0f;
-			} else {
-				// Handle parallel mode inverted angles
-				float invertedAngle = fmod(finalAngle + 0.5f, 1.0f);
-				
-				if (abs(invertedAngle - 0.125f) < 0.01f) {
-					// Inverted Diagonal A angle
-					maskDiagA[i] = 1.0f;
-				} else if (abs(invertedAngle - 0.375f) < 0.01f) {
-					// Inverted Diagonal B angle
-					maskDiagB[i] = 1.0f;
-				} else if (abs(invertedAngle - 0.5f) < 0.01f) {
-					// Inverted Horizontal angle
-					maskHor[i] = 1.0f;
-				} else if (abs(invertedAngle - 0.25f) < 0.01f) {
-					// Inverted Vertical angle
-					maskVert[i] = 1.0f;
-				}
+			}
+			// Inverted angles (for parallel paths)
+			else if (abs(finalAngle - 0.625f) < 0.01f) { // 0.125 + 0.5
+				maskDiagA[i] = 1.0f;
+			} else if (abs(finalAngle - 0.875f) < 0.01f) { // 0.375 + 0.5
+				maskDiagB[i] = 1.0f;
+			} else if (abs(finalAngle - 0.0f) < 0.01f) { // 0.5 + 0.5 = 1.0 -> 0.0
+				maskHor[i] = 1.0f;
+			} else if (abs(finalAngle - 0.75f) < 0.01f) { // 0.25 + 0.5
+				maskVert[i] = 1.0f;
 			}
 		}
 	}
