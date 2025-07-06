@@ -143,6 +143,8 @@
 #include "vectorMatrixOffset.h"
 #include "pathwayGenerator.h"
 #include "portalSelector.h"
+#include "harmonyDetector.h"
+#include "fitNotesInRange.h"
 
 
 
@@ -287,6 +289,8 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<vectorMatrixRadialSymmetry>("Santi/Matrix");
 	o.registerModel<vectorMatrixOffset>("Santi/Matrix");
 	o.registerModel<pathwayGenerator>("Santi/Matrix");
+	o.registerModel<harmonyDetector>("Santi/Pitch");
+	o.registerModel<fitNotesInRange>("Santi/Pitch");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
