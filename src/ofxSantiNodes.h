@@ -145,6 +145,8 @@
 #include "portalSelector.h"
 #include "harmonyDetector.h"
 #include "fitNotesInRange.h"
+#include "globalSnapshots.h"
+#include "vectorMatrixQuadrants.h"
 
 
 
@@ -291,6 +293,8 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<pathwayGenerator>("Santi/Matrix");
 	o.registerModel<harmonyDetector>("Santi/Pitch");
 	o.registerModel<fitNotesInRange>("Santi/Pitch");
+	o.registerModel<globalSnapshots>("Santi/General");
+	o.registerModel<vectorMatrixQuadrants>("Santi/Matrix");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
@@ -309,6 +313,10 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<portalSelector<ofColor>>("Santi/PortalSelectors", "color", ofColor::black);
 	o.registerModel<portalSelector<ofFloatColor>>("Santi/PortalSelectors", "color_f", ofFloatColor::black);
 	o.registerModel<portalSelector<Timestamp>>("Santi/PortalSelectors", "timestamp", Timestamp());
+	o.registerModel<portalSelector<ofTexture*>>("Santi/PortalSelectors", "texture", nullptr);
+	//o.registerModel<portalSelector<nodePort>>("Santi/PortalSelectors", "scbus", nodePort());
+
+
 
 }
 }
