@@ -167,6 +167,7 @@ private:
 						baseAngle = fmod(baseAngle + 0.5f, 1.0f); // Inverted for parallel
 					}
 					
+					// Generate the full diagonal path to its maximum extent
 					while (x < w && y < h) {
 						PathSegment segment;
 						segment.x = x;
@@ -216,6 +217,7 @@ private:
 						baseAngle = fmod(baseAngle + 0.5f, 1.0f); // Inverted for parallel
 					}
 					
+					// Generate the full diagonal path to its maximum extent
 					while (x < w && y >= 0) {
 						PathSegment segment;
 						segment.x = x;
@@ -514,63 +516,74 @@ private:
 		// Find valid start positions for parallel pairs
 		vector<pair<int, int>> validMainStarts;
 		for (const auto& pos : startPositions) {
-			// Pre-filter by minimum length requirement
+			// Calculate lengths for both main and parallel paths independently
 			int mainLength = calculateDiagonalLength(pos.first, pos.second, w, h, DIAGONAL_A);
 			int parallelLength = calculateDiagonalLength(pos.first + 1, pos.second, w, h, DIAGONAL_A);
 			
+			// Check if BOTH paths meet minimum length requirement
 			if (mainLength < minLength.get() || parallelLength < minLength.get()) {
 				continue; // Skip if either path would be too short
 			}
 			
-			bool valid = true;
+			// Check if parallel path start position is valid
+			if (pos.first + 1 >= w) {
+				continue; // Skip if parallel path would start outside matrix
+			}
 			
-			// Check if this diagonal path would conflict with existing paths
-			// We need to check the entire diagonal path, not just the start
-			int x = pos.first, y = pos.second;
-			bool mainPathValid = true, parallelPathValid = true;
+			// Only check for conflicts at the start positions, not along the entire path
+			// This allows parallel paths to extend beyond the original paths
+			bool mainStartValid = true, parallelStartValid = true;
 			
-			// Check main diagonal path
-			int tempX = x, tempY = y;
-			while (tempX < w && tempY < h) {
+			// Check if start positions conflict with existing path start positions only
+			for (const auto& usedPos : usedPositions) {
+				// Check main path start
+				if (abs(pos.first - usedPos.first) <= 1 && abs(pos.second - usedPos.second) <= 1) {
+					mainStartValid = false;
+					break;
+				}
+			}
+			
+			// Check parallel path start position
+			if (mainStartValid) {
 				for (const auto& usedPos : usedPositions) {
-					if (abs(tempX - usedPos.first) <= 1 && abs(tempY - usedPos.second) <= 1) {
-						mainPathValid = false;
+					if (abs((pos.first + 1) - usedPos.first) <= 1 && abs(pos.second - usedPos.second) <= 1) {
+						parallelStartValid = false;
 						break;
 					}
 				}
-				if (!mainPathValid) break;
-				tempX++;
-				tempY++;
 			}
 			
-			// Check parallel diagonal path (offset by +1 in x direction)
-			if (mainPathValid && x + 1 < w) {
-				tempX = x + 1;
-				tempY = y;
-				while (tempX < w && tempY < h) {
-					for (const auto& usedPos : usedPositions) {
-						if (abs(tempX - usedPos.first) <= 1 && abs(tempY - usedPos.second) <= 1) {
-							parallelPathValid = false;
-							break;
-						}
-					}
-					if (!parallelPathValid) break;
-					tempX++;
-					tempY++;
-				}
-			} else {
-				parallelPathValid = false;
-			}
-			
-			if (mainPathValid && parallelPathValid) {
+			if (mainStartValid && parallelStartValid) {
 				validMainStarts.push_back(pos);
 			}
 		}
 		
 		if (validMainStarts.empty()) {
-			// Fallback: use any available start position
-			auto pos = startPositions[rng() % startPositions.size()];
-			result.push_back({{pos.first, pos.second}, 0});
+			// More permissive fallback: try to generate parallel paths even with potential conflicts
+			// This ensures parallel paths can extend beyond original paths
+			for (const auto& pos : startPositions) {
+				int mainLength = calculateDiagonalLength(pos.first, pos.second, w, h, DIAGONAL_A);
+				int parallelLength = calculateDiagonalLength(pos.first + 1, pos.second, w, h, DIAGONAL_A);
+				
+				// Only check minimum length and boundary conditions
+				if (mainLength >= minLength.get() &&
+					parallelLength >= minLength.get() &&
+					pos.first + 1 < w) {
+					validMainStarts.push_back(pos);
+				}
+			}
+		}
+		
+		if (validMainStarts.empty()) {
+			// Final fallback: use any available start position that meets minimum length
+			for (const auto& pos : startPositions) {
+				int mainLength = calculateDiagonalLength(pos.first, pos.second, w, h, DIAGONAL_A);
+				if (mainLength >= minLength.get()) {
+					result.push_back({{pos.first, pos.second}, 0});
+					return result;
+				}
+			}
+			// If no valid positions found, return empty
 			return result;
 		}
 		
@@ -608,62 +621,74 @@ private:
 		// Find valid start positions for parallel pairs
 		vector<pair<int, int>> validMainStarts;
 		for (const auto& pos : startPositions) {
-			// Pre-filter by minimum length requirement
+			// Calculate lengths for both main and parallel paths independently
 			int mainLength = calculateDiagonalLength(pos.first, pos.second, w, h, DIAGONAL_B);
 			int parallelLength = calculateDiagonalLength(pos.first + 1, pos.second, w, h, DIAGONAL_B);
 			
+			// Check if BOTH paths meet minimum length requirement
 			if (mainLength < minLength.get() || parallelLength < minLength.get()) {
 				continue; // Skip if either path would be too short
 			}
 			
-			bool valid = true;
+			// Check if parallel path start position is valid
+			if (pos.first + 1 >= w) {
+				continue; // Skip if parallel path would start outside matrix
+			}
 			
-			// Check if this diagonal path would conflict with existing paths
-			int x = pos.first, y = pos.second;
-			bool mainPathValid = true, parallelPathValid = true;
+			// Only check for conflicts at the start positions, not along the entire path
+			// This allows parallel paths to extend beyond the original paths
+			bool mainStartValid = true, parallelStartValid = true;
 			
-			// Check main diagonal path
-			int tempX = x, tempY = y;
-			while (tempX < w && tempY >= 0) {
+			// Check if start positions conflict with existing path start positions only
+			for (const auto& usedPos : usedPositions) {
+				// Check main path start
+				if (abs(pos.first - usedPos.first) <= 1 && abs(pos.second - usedPos.second) <= 1) {
+					mainStartValid = false;
+					break;
+				}
+			}
+			
+			// Check parallel path start position
+			if (mainStartValid) {
 				for (const auto& usedPos : usedPositions) {
-					if (abs(tempX - usedPos.first) <= 1 && abs(tempY - usedPos.second) <= 1) {
-						mainPathValid = false;
+					if (abs((pos.first + 1) - usedPos.first) <= 1 && abs(pos.second - usedPos.second) <= 1) {
+						parallelStartValid = false;
 						break;
 					}
 				}
-				if (!mainPathValid) break;
-				tempX++;
-				tempY--;
 			}
 			
-			// Check parallel diagonal path (offset by +1 in x direction)
-			if (mainPathValid && x + 1 < w) {
-				tempX = x + 1;
-				tempY = y;
-				while (tempX < w && tempY >= 0) {
-					for (const auto& usedPos : usedPositions) {
-						if (abs(tempX - usedPos.first) <= 1 && abs(tempY - usedPos.second) <= 1) {
-							parallelPathValid = false;
-							break;
-						}
-					}
-					if (!parallelPathValid) break;
-					tempX++;
-					tempY--;
-				}
-			} else {
-				parallelPathValid = false;
-			}
-			
-			if (mainPathValid && parallelPathValid) {
+			if (mainStartValid && parallelStartValid) {
 				validMainStarts.push_back(pos);
 			}
 		}
 		
 		if (validMainStarts.empty()) {
-			// Fallback: use any available start position
-			auto pos = startPositions[rng() % startPositions.size()];
-			result.push_back({{pos.first, pos.second}, 0});
+			// More permissive fallback: try to generate parallel paths even with potential conflicts
+			// This ensures parallel paths can extend beyond original paths
+			for (const auto& pos : startPositions) {
+				int mainLength = calculateDiagonalLength(pos.first, pos.second, w, h, DIAGONAL_B);
+				int parallelLength = calculateDiagonalLength(pos.first + 1, pos.second, w, h, DIAGONAL_B);
+				
+				// Only check minimum length and boundary conditions
+				if (mainLength >= minLength.get() &&
+					parallelLength >= minLength.get() &&
+					pos.first + 1 < w) {
+					validMainStarts.push_back(pos);
+				}
+			}
+		}
+		
+		if (validMainStarts.empty()) {
+			// Final fallback: use any available start position that meets minimum length
+			for (const auto& pos : startPositions) {
+				int mainLength = calculateDiagonalLength(pos.first, pos.second, w, h, DIAGONAL_B);
+				if (mainLength >= minLength.get()) {
+					result.push_back({{pos.first, pos.second}, 0});
+					return result;
+				}
+			}
+			// If no valid positions found, return empty
 			return result;
 		}
 		
