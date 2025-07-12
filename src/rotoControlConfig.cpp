@@ -76,8 +76,9 @@ void rotoControlConfig::setup() {
 			int pageOffset = page * 16;                  // Page 0=0, Page 1=16
 			int midiCC = baseCCForSetup + pageOffset + knobOnPage;
 			
-			allKnobConfigs[s][i].name = "Knob " + ofToString(knobOnPage + 1);
-			allKnobConfigs[s][i].color = 0;
+			//allKnobConfigs[s][i].name = "Knob " + ofToString(knobOnPage + 1);
+			allKnobConfigs[s][i].name = "";
+			allKnobConfigs[s][i].color = 70;
 			allKnobConfigs[s][i].midiChannel = midiChannel;
 			allKnobConfigs[s][i].midiCC = midiCC;
 			allKnobConfigs[s][i].steps = 0;
@@ -93,8 +94,9 @@ void rotoControlConfig::setup() {
 			int pageOffset = page * 16;                  // Page 0=0, Page 1=16
 			int midiCC = baseCCForSetup + pageOffset + 8 + switchOnPage;
 			
-			allSwitchConfigs[s][i].name = "Switch " + ofToString(switchOnPage + 1);
-			allSwitchConfigs[s][i].color = 0;
+			//allSwitchConfigs[s][i].name = "Switch " + ofToString(switchOnPage + 1);
+			allSwitchConfigs[s][i].name = "";
+			allSwitchConfigs[s][i].color = 70;
 			allSwitchConfigs[s][i].midiChannel = midiChannel;
 			allSwitchConfigs[s][i].midiCC = midiCC;
 			allSwitchConfigs[s][i].configured = false;
@@ -1351,8 +1353,9 @@ void rotoControlConfig::presetRecallAfterSettingParameters(ofJson &json) {
 			int midiCC = baseCCForSetup + pageOffset + knobOnPage;
 			
 			auto &kc = allKnobConfigs[s][i];
-			kc.name        = "Knob " + ofToString(knobOnPage + 1);
-			kc.color       = 0;
+			//kc.name        = "Knob " + ofToString(knobOnPage + 1);
+			kc.name        = "";
+			kc.color       = 70;
 			kc.midiChannel = midiChannel;
 			kc.midiCC      = midiCC;
 			kc.steps       = 0;
@@ -1368,8 +1371,9 @@ void rotoControlConfig::presetRecallAfterSettingParameters(ofJson &json) {
 			int midiCC = baseCCForSetup + pageOffset + 8 + switchOnPage;
 			
 			auto &sc = allSwitchConfigs[s][i];
-			sc.name        = "Switch " + ofToString(switchOnPage + 1);
-			sc.color       = 0;
+			//sc.name        = "Switch " + ofToString(switchOnPage + 1);
+			sc.name        = "";
+			sc.color       = 70;
 			sc.midiChannel = midiChannel;
 			sc.midiCC      = midiCC;
 			sc.configured  = false;
