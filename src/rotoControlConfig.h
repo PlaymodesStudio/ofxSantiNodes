@@ -72,6 +72,7 @@ private:
 		int color = 0;  // LED ON color
 		int midiChannel = 1;
 		int midiCC = 0;
+		bool momentary = true;  // true = PUSH (momentary), false = TOGGLE
 		bool configured = false;
 		// LED OFF color is always black (70) per requirements
 	};
@@ -96,6 +97,8 @@ private:
 	ofParameter<string> switchName;
 	ofParameter<int> switchMidiChannel;
 	ofParameter<int> switchMidiCC;
+	ofParameter<bool> switchMomentary;
+
 	
 	// Configuration save/load using preset system
 	   ofParameter<void> saveConfigButton;

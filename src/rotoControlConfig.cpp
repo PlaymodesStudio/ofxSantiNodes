@@ -24,7 +24,7 @@ const unsigned char CMD_SET_SWITCH_CONTROL_CONFIG = 0x08;
 const unsigned char RESP_SUCCESS = 0x00;
 
 // ROTO-CONTROL device path
-const std::string ROTO_CONTROL_DEVICE_PREFIX = "cu.usbmodem1101";
+// ROTO-CONTROL device patterns: cu.usbmodem101, cu.usbmodem1101, cu.usbmodem2101
 
 static void drawThickSeparator() {
 	// Get the current cursor position in screen coordinates
@@ -96,6 +96,7 @@ void rotoControlConfig::setup() {
 			
 			//allSwitchConfigs[s][i].name = "Switch " + ofToString(switchOnPage + 1);
 			allSwitchConfigs[s][i].name = "";
+			allSwitchConfigs[s][i].momentary = true;
 			allSwitchConfigs[s][i].color = 70;
 			allSwitchConfigs[s][i].midiChannel = midiChannel;
 			allSwitchConfigs[s][i].midiCC = midiCC;
@@ -314,6 +315,7 @@ void rotoControlConfig::setup() {
 	// Switch parameters
 	addParameter(selectedSwitch.set("Switch", 0, 0, NUM_SWITCHES_PER_PAGE - 1));
 	addParameter(switchName.set("S Name", "Switch 1"));
+	addParameter(switchMomentary.set("Push", true));
 	addParameter(switchMidiChannel.set("S MIDI Ch", 1, 1, 16));
 	addParameter(switchMidiCC.set("S MIDI CC", 64, 0, 127));
 	
@@ -521,6 +523,12 @@ void rotoControlConfig::setup() {
 		applySwitchConfiguration(getAbsoluteSwitchIndex());
 	}));
 	
+	listeners.push(switchMomentary.newListener([this](bool &){
+		if (ignoreListeners) return;
+		storeCurrentSwitchSettings();
+		applySwitchConfiguration(getAbsoluteSwitchIndex());
+	}));
+	
 	listeners.push(switchMidiChannel.newListener([this](int &){
 		if (ignoreListeners) return;
 		storeCurrentSwitchSettings();
@@ -566,29 +574,20 @@ void rotoControlConfig::setupSerialPort() {
 		ofSleepMillis(50);
 	}
 	
-	// Optionally, try to clear out any stray data by opening the port in a dummy way,
-	// reading anything that’s left, then closing. This can help if the OS still has
-	// some half‐open handle. Adjust “portName” to match your device if you know it.
-	//
-	//    serial.setup(portName, 115200);
-	//    while(serial.available() > 0) {
-	//        unsigned char dummy;
-	//        serial.readByte(dummy);
-	//    }
-	//    serial.close();
-	//    ofSleepMillis(50);
-	//
-	// (uncomment the above block if you need an explicit “drain” pass)
-	
 	// Now do a fresh scan and open
 	vector<ofSerialDeviceInfo> devices = serial.getDeviceList();
 	bool connected = false;
+	
+	ofLogNotice("rotoControlConfig") << "Scanning for ROTO-CONTROL devices...";
 	
 	for(auto & device : devices) {
 		string devicePath = device.getDevicePath();
 		ofLogNotice("rotoControlConfig") << "Found serial device: " << devicePath;
 		
-		if(devicePath.find(ROTO_CONTROL_DEVICE_PREFIX) != string::npos) {
+		// Look for specific ROTO-CONTROL device patterns
+		if(devicePath.find("cu.usbmodem101") != string::npos ||
+		   devicePath.find("cu.usbmodem1101") != string::npos ||
+		   devicePath.find("cu.usbmodem2101") != string::npos) {
 			ofLogNotice("rotoControlConfig") << "Attempting to connect to ROTO-CONTROL on port: " << devicePath;
 			if(serial.setup(devicePath, 115200)) {
 				ofLogNotice("rotoControlConfig") << "Connected to ROTO-CONTROL on port: " << devicePath;
@@ -959,6 +958,7 @@ void rotoControlConfig::updateSelectedSwitchParameters() {
 	switchName = sc.name;
 	switchMidiChannel = sc.midiChannel;
 	switchMidiCC = sc.midiCC;
+	switchMomentary = sc.momentary;
 	
 	ignoreListeners = false;
 }
@@ -1003,6 +1003,7 @@ void rotoControlConfig::storeCurrentSwitchSettings() {
 	
 	auto &sc = allSwitchConfigs[selectedSetupIndex.get()][index];
 	sc.name = switchName;
+	sc.momentary = switchMomentary;
 	sc.midiChannel = switchMidiChannel;
 	sc.midiCC = switchMidiCC;
 	sc.configured = true;
@@ -1127,7 +1128,7 @@ void rotoControlConfig::applySwitchConfiguration(int switchIndex) {
 	// According to API: switch control index is 0-31 directly
 	vector<unsigned char> configPayload;
 	
-	// ← Ara usem el setup seleccionat
+	// Use the setup selected
 	unsigned char si = static_cast<unsigned char>(selectedSetupIndex.get());
 	configPayload.push_back(si);           // Setup index (00–3F)
 	
@@ -1173,8 +1174,9 @@ void rotoControlConfig::applySwitchConfiguration(int switchIndex) {
 	// LED OFF colour (black - color index 70)
 	configPayload.push_back(70);
 	
-	// Haptic mode (0 = PUSH, 1 = TOGGLE) - Use PUSH so LED only lights when pressed
-	configPayload.push_back(0);
+	// Haptic mode - UPDATED TO USE THE MOMENTARY SETTING
+	// 0 = PUSH (momentary), 1 = TOGGLE
+	configPayload.push_back(config.momentary ? 0 : 1);
 	
 	// Haptic steps (0 for normal two position switch)
 	configPayload.push_back(0);
@@ -1185,7 +1187,8 @@ void rotoControlConfig::applySwitchConfiguration(int switchIndex) {
 	sendSerialCommand(CMD_GENERAL, CMD_END_CONFIG_UPDATE);
 	
 	ofLogNotice("rotoControlConfig") << "Applied switch config for index " << switchIndex
-	<< " on setup " << static_cast<int>(si);
+	<< " on setup " << static_cast<int>(si)
+	<< " (mode: " << (config.momentary ? "push" : "toggle") << ")";
 }
 
 
@@ -1373,6 +1376,7 @@ void rotoControlConfig::presetRecallAfterSettingParameters(ofJson &json) {
 			auto &sc = allSwitchConfigs[s][i];
 			//sc.name        = "Switch " + ofToString(switchOnPage + 1);
 			sc.name        = "";
+			sc.momentary   = true;
 			sc.color       = 70;
 			sc.midiChannel = midiChannel;
 			sc.midiCC      = midiCC;
@@ -1412,6 +1416,7 @@ void rotoControlConfig::presetRecallAfterSettingParameters(ofJson &json) {
 					ofJson &cfg = switchArray[i];
 					auto &sc = allSwitchConfigs[idx][i];
 					if (cfg.contains("name"))        sc.name        = cfg["name"].get<string>();
+					if (cfg.contains("momentary"))   sc.momentary   = cfg["momentary"].get<bool>();
 					if (cfg.contains("color"))       sc.color       = cfg["color"].get<int>();
 					if (cfg.contains("midiChannel")) sc.midiChannel = cfg["midiChannel"].get<int>();
 					if (cfg.contains("midiCC"))      sc.midiCC      = cfg["midiCC"].get<int>();
@@ -1478,6 +1483,7 @@ void rotoControlConfig::presetSave(ofJson &json) {
 			ofJson cfg;
 			SwitchConfig &sc = allSwitchConfigs[s][i];
 			cfg["name"]        = sc.name;
+			cfg["momentary"]   = sc.momentary;
 			cfg["color"]       = sc.color;
 			cfg["midiChannel"] = sc.midiChannel;
 			cfg["midiCC"]      = sc.midiCC;
