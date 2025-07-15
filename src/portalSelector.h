@@ -69,10 +69,30 @@ public:
 	}
 
 	void update(ofEventArgs &args) override {
-		// Check if we need to update the portal list
-		updatePortalList();
-		updateOutputFromSelectedPortal();
-	}
+			// Check if we need to update the portal list
+			updatePortalList();
+			
+			// Handle delayed restoration from preset loading
+			if (needsDelayedRestore) {
+				// Force a fresh portal list update
+				updatePortalListOnly();
+				updatePortalList();
+				
+				// Try to restore the saved connection
+				maintainPortalSelectionByInstance();
+				updateOutputFromSelectedPortal();
+				
+				// Clear the flag
+				needsDelayedRestore = false;
+			}
+			
+			updateOutputFromSelectedPortal();
+		}
+		
+		void presetRecallAfterSettingParameters(ofJson &json) override {
+			// Don't restore immediately - defer to next update cycle when all portals are loaded
+			needsDelayedRestore = true;
+		}
 
 protected:
 	ofParameter<int> selectedPortalIndex;
@@ -86,6 +106,8 @@ protected:
 	vector<portal<T>*> compatiblePortals;
 	T defaultValue;
 	portal<T>* selectedPortalInstance; // Track the actual portal instance
+	bool needsDelayedRestore = false; // Flag for delayed restoration
+
 	
 	void updatePortalListOnly() {
 		vector<string> newPortalNames;
@@ -415,10 +437,30 @@ public:
 	}
 
 	void update(ofEventArgs &args) override {
-		// Check if we need to update the portal list
-		updatePortalList();
-		updateOutputFromSelectedPortal();
-	}
+			// Check if we need to update the portal list
+			updatePortalList();
+			
+			// Handle delayed restoration from preset loading
+			if (needsDelayedRestore) {
+				// Force a fresh portal list update
+				updatePortalListOnly();
+				updatePortalList();
+				
+				// Try to restore the saved connection
+				maintainPortalSelectionByInstance();
+				updateOutputFromSelectedPortal();
+				
+				// Clear the flag
+				needsDelayedRestore = false;
+			}
+			
+			updateOutputFromSelectedPortal();
+		}
+		
+		void presetRecallAfterSettingParameters(ofJson &json) override {
+			// Don't restore immediately - defer to next update cycle when all portals are loaded
+			needsDelayedRestore = true;
+		}
 
 protected:
 	ofParameter<int> selectedPortalIndex;
@@ -432,7 +474,8 @@ protected:
 	vector<portal<vector<T>>*> compatiblePortals;
 	vector<T> defaultValue;
 	portal<vector<T>>* selectedPortalInstance; // Track the actual portal instance
-	
+	bool needsDelayedRestore = false; // Flag for delayed restoration
+
 	void updatePortalListOnly() {
 		vector<string> newPortalNames;
 		vector<portal<vector<T>>*> newCompatiblePortals;
@@ -725,10 +768,30 @@ public:
 	}
 
 	void update(ofEventArgs &args) override {
-		// Check if we need to update the portal list
-		updatePortalList();
-		updateOutputFromSelectedPortal();
-	}
+			// Check if we need to update the portal list
+			updatePortalList();
+			
+			// Handle delayed restoration from preset loading
+			if (needsDelayedRestore) {
+				// Force a fresh portal list update
+				updatePortalListOnly();
+				updatePortalList();
+				
+				// Try to restore the saved connection
+				maintainPortalSelectionByInstance();
+				updateOutputFromSelectedPortal();
+				
+				// Clear the flag
+				needsDelayedRestore = false;
+			}
+			
+			updateOutputFromSelectedPortal();
+		}
+		
+		void presetRecallAfterSettingParameters(ofJson &json) override {
+			// Don't restore immediately - defer to next update cycle when all portals are loaded
+			needsDelayedRestore = true;
+		}
 
 protected:
 	ofParameter<int> selectedPortalIndex;
@@ -741,7 +804,8 @@ protected:
 	vector<string> portalNames;
 	vector<portal<void>*> compatiblePortals;
 	portal<void>* selectedPortalInstance; // Track the actual portal instance
-	
+	bool needsDelayedRestore = false; // Flag for delayed restoration
+
 	void updatePortalListOnly() {
 		vector<string> newPortalNames;
 		vector<portal<void>*> newCompatiblePortals;
