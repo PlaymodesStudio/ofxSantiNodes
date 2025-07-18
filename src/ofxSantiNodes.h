@@ -147,6 +147,7 @@
 #include "fitNotesInRange.h"
 #include "globalSnapshots.h"
 #include "vectorMatrixQuadrants.h"
+#include "vectorMatrixReflect.h"
 
 
 
@@ -295,6 +296,7 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<fitNotesInRange>("Santi/Pitch");
 	o.registerModel<globalSnapshots>("Santi/General");
 	o.registerModel<vectorMatrixQuadrants>("Santi/Matrix");
+	o.registerModel<vectorMatrixReflect>("Santi/Matrix");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
