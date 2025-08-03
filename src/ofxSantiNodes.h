@@ -148,6 +148,9 @@
 #include "globalSnapshots.h"
 #include "vectorMatrixQuadrants.h"
 #include "vectorMatrixReflect.h"
+#include "pathMaker.h"
+#include "trimPathSequential.h"
+#include "barMaker.h"
 
 
 
@@ -297,6 +300,9 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<globalSnapshots>("Santi/General");
 	o.registerModel<vectorMatrixQuadrants>("Santi/Matrix");
 	o.registerModel<vectorMatrixReflect>("Santi/Matrix");
+	o.registerModel<pathMaker>("Santi/VectorGraphics");
+	o.registerModel<trimPathSequential>("Santi/VectorGraphics");
+	o.registerModel<barMaker>("Santi/VectorGraphics");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
