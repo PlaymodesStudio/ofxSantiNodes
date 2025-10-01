@@ -151,6 +151,19 @@
 #include "pathMaker.h"
 #include "trimPathSequential.h"
 #include "barMaker.h"
+#include "generativeGrid.h"
+#include "radialIndexer.h"
+#include "spectrogramShift.h"
+#include "toggle.h"
+#include "button.h"
+#include "slider.h"
+#include "multislider.h"
+#include "multitoggle.h"
+#include "value.h"
+#include "rangedSlider.h"
+#include "stringSwitch.h"
+#include "increment.h"
+//#include "imageManager.h"
 
 
 
@@ -303,6 +316,19 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<pathMaker>("Santi/VectorGraphics");
 	o.registerModel<trimPathSequential>("Santi/VectorGraphics");
 	o.registerModel<barMaker>("Santi/VectorGraphics");
+	o.registerModel<generativeGrid>("Santi/VectorGraphics");
+	o.registerModel<radialIndexer>("Santi/Vectors");
+	o.registerModel<spectrogramShift>("Santi/Forms");
+	o.registerModel<toggle>("Santi/GUI");
+	o.registerModel<slider>("Santi/GUI");
+	o.registerModel<button>("Santi/GUI");
+	o.registerModel<multislider>("Santi/GUI");
+	o.registerModel<multitoggle>("Santi/GUI");
+	o.registerModel<value>("Santi/GUI");
+	o.registerModel<rangedSlider>("Santi/GUI");
+	o.registerModel<stringSwitch>("Santi/Strings");
+	o.registerModel<increment>("Santi/General");
+	//o.registerModel<imageManager>("Santi/Forms");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
