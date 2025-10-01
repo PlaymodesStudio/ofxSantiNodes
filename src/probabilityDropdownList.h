@@ -21,13 +21,14 @@ struct DropdownListSnapshot {
 	vector<pair<string, string>> cellContents;
 	vector<int> probabilities;
 	vector<int> groups;
+	vector<bool> soloStates;  // Add solo states to snapshots
+	bool anySoloed;           // Add solo flag to snapshots
 };
 
 class probabilityDropdownList : public ofxOceanodeNodeModel {
 public:
 	probabilityDropdownList() : ofxOceanodeNodeModel("FORMS P5 PNG Director") {
-		description = "Defines the properties to be sent to Processing for PNG generation";
-		
+		description = "Advanced probabilistic element sequencer with three-tier probability control and solo isolation. Global % gates all output, Group % controls category activation (rhythm/texture/harmony/fx), individual % selects elements within active groups. Solo button (S column) bypasses all probabilities to isolate single elements for testing. Load custom element files via Path/Open - elements auto-categorize by prefix (r/t/h/fx). Weight sliders generate biased random transpose/degree sequences. Move buttons (^) reorder elements while preserving all settings. Snapshots capture complete state including solo states, group assignments, and GUI configuration. Two-stage workflow: assign elements via dropdown menus, set probabilities, configure groups, then trigger GO for weighted string output.";
 		// Initialize options
 		initializeOptions();
 		
@@ -65,7 +66,7 @@ public:
 		addParameter(elementsPath.set("Path", ""));
 		addParameter(browseButton.set("Open"));
 		addParameter(widgetWidth.set("Width", 360, 100, 500));
-		addParameter(numRows.set("Rows", 8, 1, 64));
+		addParameter(numRows.set("Rows", 8, 1, 96));
 		addParameter(globalProb.set("Global %", 100, 0, 100));
 		
 		// Initialize groupProb with proper bounds
@@ -77,6 +78,7 @@ public:
 		// Add snapshot-related parameters
 		vector<string> initialOptions = {"None"};
 		addParameter(activeSnapshotSlot.set("Snapshot", 0, 0, 63));
+		addParameter(saveSnapParam.set("SaveSnap"));
 		addInspectorParameter(showSnapshotNames.set("Show Names", true));
 		addInspectorParameter(addSnapshotButton.set("Add Snapshot"));
 		addInspectorParameter(snapshotInspector.set("Snapshot Names", [this]() {
@@ -87,12 +89,17 @@ public:
 		addOutputParameter(output.set("Output", ""));
 
 		// Initialize internal vectors with safe sizes
-		cellContents.resize(64);
-		probabilities.resize(64, 0);
-		groups.resize(64, 0);
-		lastResults.resize(64, false);
+		cellContents.resize(96);
+		probabilities.resize(96, 0);
+		groups.resize(96, 0);
+		lastResults.resize(96, false);
 		
-		vectorValues.resize(64);
+		// Initialize solo system in constructor
+		soloStates.resize(96, false);
+		anySoloed = false;
+
+		
+		vectorValues.resize(96);
 		for(auto &slot : vectorValues) {
 			slot.resize(numSliders);
 			for(auto &sliderValues : slot) {
@@ -114,6 +121,11 @@ public:
 		// Initialize snapshot system
 		initializeSnapshotSystem();
 	}
+	
+	void initializeSoloSystem() {
+		   soloStates.resize(96, false);  // Initialize with same size as other vectors
+		   anySoloed = false;
+	   }
 
 	void initializeOptions() {
 		rhythmOptions = {"none"};
@@ -125,7 +137,7 @@ public:
 			"red yellow", "blue yellow", "brown blue", "pink brown", "white",
 			"green blue", "orange violet", "warm", "whitered", "whiteredcyan",
 			"whiteyellow", "whiteblue", "whittegreen", "whitepink", "whiteorange",
-			"whiteviolet", "whitevioletcyan", "bauhaus"
+			"whiteviolet", "whitevioletcyan", "bauhaus", "temperatures"
 		};
 		
 		scaleOptions = {
@@ -168,6 +180,15 @@ public:
 		snapshotListeners.push(addSnapshotButton.newListener([this](){
 			int newSlot = snapshots.empty() ? 0 : (--snapshots.end())->first + 1;
 			storeSnapshot(newSlot);
+		}));
+		
+		listeners.push(saveSnapParam.newListener([this](){
+			int s = activeSnapshotSlot.get();
+			if(s < 0) {
+				s = snapshots.empty() ? 0 : std::prev(snapshots.end())->first + 1;
+				activeSnapshotSlot = s;
+			}
+			storeSnapshot(s);
 		}));
 	}
 
@@ -216,20 +237,27 @@ public:
 			probabilities.resize(numRows);
 			groups.resize(numRows);
 			lastResults.resize(numRows);
+			
+			// INITIALIZE SOLO STATES FOR OLD PRESETS
+			soloStates.resize(numRows, false);
+			anySoloed = false;
 		}
 		
 		if(json.contains("Snapshots")) {
-				snapshots.clear();
-				for(auto& [key, value] : json["Snapshots"].items()) {
-					int slot = ofToInt(key);
-					DropdownListSnapshot snapshot;
-					loadSnapshotFromJson(snapshot, value);
-					snapshots[slot] = snapshot;
-				}
+			snapshots.clear();
+			for(auto& [key, value] : json["Snapshots"].items()) {
+				int slot = ofToInt(key);
+				DropdownListSnapshot snapshot;
+				loadSnapshotFromJson(snapshot, value);
+				snapshots[slot] = snapshot;
 			}
+		}
 	}
 
 private:
+	
+	vector<bool> soloStates;  // Track which elements are soloed
+	bool anySoloed;           // Quick check if any element is currently soloed
 	
 	void initializeSnapshotSystem() {
 			currentSnapshotSlot = -1;
@@ -238,34 +266,35 @@ private:
 	
 		
 	void storeSnapshot(int slot) {
-			DropdownListSnapshot snapshot;
+		DropdownListSnapshot snapshot;
 		// Preserve existing name if updating
-		   auto existingSnapshot = snapshots.find(slot);
-		   if(existingSnapshot != snapshots.end()) {
-			   snapshot.name = existingSnapshot->second.name;
-		   } else {
-			   snapshot.name = "Snapshot " + ofToString(slot);
-		   }
-			
-			// Capture all parameter values
-			snapshot.bars = bars;
-			snapshot.notegrid = notegrid;
-			snapshot.bpm = bpm;
-			snapshot.everyN = everyN;
-			snapshot.root = root;
-			snapshot.palette = palette;
-			snapshot.scale = scale;
-			snapshot.transposeWeights = transposeWeights;
-			snapshot.degreeWeights = degreeWeights;
-			snapshot.vectorValues = vectorValues;
-			snapshot.cellContents = cellContents;
-			snapshot.probabilities = probabilities;
-			snapshot.groups = groups;
-			
-			snapshots[slot] = snapshot;
-			currentSnapshotSlot = slot;
-
+		auto existingSnapshot = snapshots.find(slot);
+		if(existingSnapshot != snapshots.end()) {
+			snapshot.name = existingSnapshot->second.name;
+		} else {
+			snapshot.name = "Snapshot " + ofToString(slot);
 		}
+		
+		// Capture all parameter values
+		snapshot.bars = bars;
+		snapshot.notegrid = notegrid;
+		snapshot.bpm = bpm;
+		snapshot.everyN = everyN;
+		snapshot.root = root;
+		snapshot.palette = palette;
+		snapshot.scale = scale;
+		snapshot.transposeWeights = transposeWeights;
+		snapshot.degreeWeights = degreeWeights;
+		snapshot.vectorValues = vectorValues;
+		snapshot.cellContents = cellContents;
+		snapshot.probabilities = probabilities;
+		snapshot.groups = groups;
+		snapshot.soloStates = soloStates;  // Include solo states
+		snapshot.anySoloed = anySoloed;    // Include solo flag
+		
+		snapshots[slot] = snapshot;
+		currentSnapshotSlot = slot;
+	}
 		
 	void loadSnapshot(int slot) {
 		ofLogNotice("SnapshotDropdown") << "Loading snapshot slot " << slot;
@@ -292,6 +321,15 @@ private:
 		cellContents = snapshot.cellContents;
 		probabilities = snapshot.probabilities;
 		groups = snapshot.groups;
+		soloStates = snapshot.soloStates;  // Restore solo states
+		anySoloed = snapshot.anySoloed;    // Restore solo flag
+		
+		// ENSURE VECTORS MAINTAIN FULL CAPACITY
+			cellContents.resize(96);
+			probabilities.resize(96, 0);
+			groups.resize(96, 0);
+			lastResults.resize(96, false);
+			soloStates.resize(96, false);
 		
 		currentSnapshotSlot = slot;
 		
@@ -369,54 +407,69 @@ private:
 			}
 		}
 	   
-	   void saveSnapshotToJson(const DropdownListSnapshot& snapshot, ofJson& json) {
-		   json["name"] = snapshot.name;
-		   json["bars"] = snapshot.bars;
-		   json["notegrid"] = snapshot.notegrid;
-		   json["bpm"] = snapshot.bpm;
-		   json["everyN"] = snapshot.everyN;
-		   json["root"] = snapshot.root;
-		   json["palette"] = snapshot.palette;
-		   json["scale"] = snapshot.scale;
-		   json["transposeWeights"] = snapshot.transposeWeights;
-		   json["degreeWeights"] = snapshot.degreeWeights;
-		   
-		   ofJson cellContentsJson;
-		   for(const auto& cell : snapshot.cellContents) {
-			   cellContentsJson.push_back({
-				   {"type", cell.first},
-				   {"value", cell.second}
-			   });
-		   }
-		   json["cellContents"] = cellContentsJson;
-		   
-		   json["probabilities"] = snapshot.probabilities;
-		   json["groups"] = snapshot.groups;
-	   }
+	void saveSnapshotToJson(const DropdownListSnapshot& snapshot, ofJson& json) {
+		json["name"] = snapshot.name;
+		json["bars"] = snapshot.bars;
+		json["notegrid"] = snapshot.notegrid;
+		json["bpm"] = snapshot.bpm;
+		json["everyN"] = snapshot.everyN;
+		json["root"] = snapshot.root;
+		json["palette"] = snapshot.palette;
+		json["scale"] = snapshot.scale;
+		json["transposeWeights"] = snapshot.transposeWeights;
+		json["degreeWeights"] = snapshot.degreeWeights;
+		json["soloStates"] = snapshot.soloStates;    // Save solo states
+		json["anySoloed"] = snapshot.anySoloed;      // Save solo flag
+		
+		ofJson cellContentsJson;
+		for(const auto& cell : snapshot.cellContents) {
+			cellContentsJson.push_back({
+				{"type", cell.first},
+				{"value", cell.second}
+			});
+		}
+		json["cellContents"] = cellContentsJson;
+		
+		json["probabilities"] = snapshot.probabilities;
+		json["groups"] = snapshot.groups;
+	}
 	   
-	   void loadSnapshotFromJson(DropdownListSnapshot& snapshot, const ofJson& json) {
-		   snapshot.name = json["name"];
-		   snapshot.bars = json["bars"];
-		   snapshot.notegrid = json["notegrid"];
-		   snapshot.bpm = json["bpm"];
-		   snapshot.everyN = json["everyN"];
-		   snapshot.root = json["root"];
-		   snapshot.palette = json["palette"];
-		   snapshot.scale = json["scale"];
-		   snapshot.transposeWeights = json["transposeWeights"].get<vector<float>>();
-		   snapshot.degreeWeights = json["degreeWeights"].get<vector<float>>();
-		   
-		   snapshot.cellContents.clear();
-		   for(const auto& cell : json["cellContents"]) {
-			   snapshot.cellContents.push_back({
-				   cell["type"],
-				   cell["value"]
-			   });
-		   }
-		   
-		   snapshot.probabilities = json["probabilities"].get<vector<int>>();
-		   snapshot.groups = json["groups"].get<vector<int>>();
-	   }
+	void loadSnapshotFromJson(DropdownListSnapshot& snapshot, const ofJson& json) {
+		snapshot.name = json["name"];
+		snapshot.bars = json["bars"];
+		snapshot.notegrid = json["notegrid"];
+		snapshot.bpm = json["bpm"];
+		snapshot.everyN = json["everyN"];
+		snapshot.root = json["root"];
+		snapshot.palette = json["palette"];
+		snapshot.scale = json["scale"];
+		snapshot.transposeWeights = json["transposeWeights"].get<vector<float>>();
+		snapshot.degreeWeights = json["degreeWeights"].get<vector<float>>();
+		
+		// Load cell contents first (needed for sizing solo vectors)
+		snapshot.cellContents.clear();
+		for(const auto& cell : json["cellContents"]) {
+			snapshot.cellContents.push_back({
+				cell["type"],
+				cell["value"]
+			});
+		}
+		
+		snapshot.probabilities = json["probabilities"].get<vector<int>>();
+		snapshot.groups = json["groups"].get<vector<int>>();
+		
+		// BACKWARDS COMPATIBILITY: Handle solo states for old presets
+		if(json.contains("soloStates") && json.contains("anySoloed")) {
+			// New format with solo data
+			snapshot.soloStates = json["soloStates"].get<vector<bool>>();
+			snapshot.anySoloed = json["anySoloed"];
+		} else {
+			// Old format without solo data - initialize with defaults
+			snapshot.soloStates.clear();
+			snapshot.soloStates.resize(snapshot.cellContents.size(), false);
+			snapshot.anySoloed = false;
+		}
+	}
 	
 	void drawGui() {
 			if(!ImGui::GetCurrentContext()) return;
@@ -445,11 +498,14 @@ private:
 	
 	
 	void drawProbabilityTable(float width) {
-			if(ImGui::BeginTable("##ProbabilityTable", 6, ImGuiTableFlags_Borders, ImVec2(width, 0))) {
+	
+			
+			if(ImGui::BeginTable("##ProbabilityTable", 7, ImGuiTableFlags_Borders, ImVec2(width, 0))) {  // Changed from 6 to 7 columns
 				ImGui::TableSetupColumn("Element", ImGuiTableColumnFlags_WidthStretch);
 				ImGui::TableSetupColumn("%", ImGuiTableColumnFlags_WidthFixed, 35.0f);
 				ImGui::TableSetupColumn("G", ImGuiTableColumnFlags_WidthFixed, 35.0f);
 				ImGui::TableSetupColumn("O", ImGuiTableColumnFlags_WidthFixed, 16);
+				ImGui::TableSetupColumn("S", ImGuiTableColumnFlags_WidthFixed, 16);  // Solo column
 				ImGui::TableSetupColumn("X", ImGuiTableColumnFlags_WidthFixed, 16);
 				ImGui::TableSetupColumn("^", ImGuiTableColumnFlags_WidthFixed, 32.0f);
 				ImGui::TableHeadersRow();
@@ -467,7 +523,8 @@ private:
 	
 	void drawTableRow(int row) {
 			if(row >= cellContents.size() || row >= probabilities.size() ||
-			   row >= groups.size() || row >= lastResults.size()) {
+			   row >= groups.size() || row >= lastResults.size() ||
+			   row >= soloStates.size()) {
 				return;
 			}
 			
@@ -540,16 +597,29 @@ private:
 			ImGui::Button(("##result" + ofToString(row)).c_str(), ImVec2(16, 16));
 			ImGui::PopStyleColor();
 
+		ImGui::TableSetColumnIndex(4);
+		bool isSoloed = soloStates[row];
+		ImGui::PushStyleColor(ImGuiCol_Button, isSoloed ?
+			ImVec4(1.0f, 0.8f, 0.0f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+		if (ImGui::Button(("S##solo" + ofToString(row)).c_str(), ImVec2(16, 16))) {
+			toggleSolo(row);
+			// Force GUI refresh - add this line:
+			ofLogNotice("Solo") << "Row " << row << " solo state: " << soloStates[row] << ", anySoloed: " << anySoloed;
+		}
+		ImGui::PopStyleColor();
+
 			// Clear button
-			ImGui::TableSetColumnIndex(4);
+			ImGui::TableSetColumnIndex(5);
 			if (ImGui::Button(("X##" + ofToString(row)).c_str())) {
 				cellContents[row] = std::make_pair("", "");
 				probabilities[row] = 0;
 				groups[row] = 0;
+				soloStates[row] = false;  // Clear solo state too
+				updateSoloState();
 			}
 
 			// Move buttons
-			ImGui::TableSetColumnIndex(5);
+			ImGui::TableSetColumnIndex(6);
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
 			float arrowSize = 10.0f;
 			ImGui::BeginGroup();
@@ -716,7 +786,9 @@ private:
 			   fromIdx >= groups.size() ||
 			   toIdx >= groups.size() ||
 			   fromIdx >= lastResults.size() ||
-			   toIdx >= lastResults.size()) {
+			   toIdx >= lastResults.size() ||
+			   fromIdx >= soloStates.size() ||
+			   toIdx >= soloStates.size()) {
 				return;
 			}
 			
@@ -724,77 +796,84 @@ private:
 			std::swap(probabilities[fromIdx], probabilities[toIdx]);
 			std::swap(groups[fromIdx], groups[toIdx]);
 			std::swap(lastResults[fromIdx], lastResults[toIdx]);
+			std::swap(soloStates[fromIdx], soloStates[toIdx]);  // Swap solo states too
 		}
 	
 	void generateOutput() {
-		// Create a completely new, empty result string
-		string result = "";
-		
-		// Reset ALL visual indicators
-		for(int i = 0; i < lastResults.size(); i++) {
-			lastResults[i] = false;
-		}
-		
-		// Check global probability
-		float globalRandom = ofRandom(100);
-		bool globalPass = (globalRandom < globalProb);
-		
-		// If global probability fails, explicitly set an empty string and return
-		if (!globalPass) {
-			output.set(""); // Use set() method to ensure proper event notification
-			return;
-		}
+			// Create a completely new, empty result string
+			string result = "";
+			
+			// Reset ALL visual indicators
+			for(int i = 0; i < lastResults.size(); i++) {
+				lastResults[i] = false;
+			}
+			
+			// Check global probability
+			float globalRandom = ofRandom(100);
+			bool globalPass = (globalRandom < globalProb);
+			
+			// If global probability fails, explicitly set an empty string and return
+			if (!globalPass) {
+				output.set("");
+				return;
+			}
 
-		// Create a vector to collect all selected elements
-		vector<string> selectedElements;
-		
-		// First determine which groups are active this round
-		vector<bool> activeGroups(groupProb->size(), false);
-		for(int i = 0; i < groupProb->size(); i++) {
-			float random = ofRandom(1.0f);
-			activeGroups[i] = (random < groupProb.get()[i]);
-		}
-		
-		// Process each cell within bounds
-		for(int i = 0; i < numRows && i < cellContents.size() && i < probabilities.size() && i < groups.size(); i++) {
-			// Skip empty cells or cells with "none"
-			if(cellContents[i].second.empty() || cellContents[i].second == "none") {
-				continue;
+			// Create a vector to collect all selected elements
+			vector<string> selectedElements;
+			
+			// First determine which groups are active this round
+			vector<bool> activeGroups(groupProb->size(), false);
+			for(int i = 0; i < groupProb->size(); i++) {
+				float random = ofRandom(1.0f);
+				activeGroups[i] = (random < groupProb.get()[i]);
 			}
 			
-			// Check if element's group is active
-			int elementGroup = groups[i];
-			bool groupActive = (elementGroup >= groupProb->size()) || activeGroups[elementGroup];
-			
-			if(groupActive) {
-				// Only check individual probability if group is active
-				float random = ofRandom(100);
-				bool succeeded = (random < probabilities[i]);
-				
-				// Set the visual indicator if within bounds
-				if(i < lastResults.size()) {
-					lastResults[i] = succeeded;
+			// Process each cell within bounds
+			for(int i = 0; i < numRows && i < cellContents.size() && i < probabilities.size() && i < groups.size(); i++) {
+				// Skip empty cells or cells with "none"
+				if(cellContents[i].second.empty() || cellContents[i].second == "none") {
+					continue;
 				}
 				
-				// Add to selected elements only if succeeded
-				if(succeeded) {
-					selectedElements.push_back(cellContents[i].second);
+				// SOLO CHECK: If any element is soloed, only process soloed elements
+				if(anySoloed && i < soloStates.size() && !soloStates[i]) {
+					continue;  // Skip non-soloed elements when solo mode is active
+				}
+				
+				// Check if element's group is active
+				int elementGroup = groups[i];
+				bool groupActive = (elementGroup >= groupProb->size()) || activeGroups[elementGroup];
+				
+				if(groupActive) {
+					// Only check individual probability if group is active
+					float random = ofRandom(100);
+					bool succeeded = (random < probabilities[i]);
+					
+					// Set the visual indicator if within bounds
+					if(i < lastResults.size()) {
+						lastResults[i] = succeeded;
+					}
+					
+					// Add to selected elements only if succeeded
+					if(succeeded) {
+						selectedElements.push_back(cellContents[i].second);
+					}
 				}
 			}
+			
+			// Build the result string from selected elements
+			for(size_t i = 0; i < selectedElements.size(); i++) {
+				if(i > 0) result += " ";
+				result += selectedElements[i];
+			}
+			
+			// Explicitly set the output with the set() method to ensure proper event notification
+			output.set(result);
 		}
-		
-		// Build the result string from selected elements
-		for(size_t i = 0; i < selectedElements.size(); i++) {
-			if(i > 0) result += " ";
-			result += selectedElements[i];
-		}
-		
-		// Explicitly set the output with the set() method to ensure proper event notification
-		output.set(result);
-	}
 
 private:
 	ofEventListeners listeners;
+		ofParameter<void> saveSnapParam;
 		ofParameter<int> numSliders;
 		vector<string> paletteOptions;
 		vector<string> scaleOptions;
@@ -809,6 +888,7 @@ private:
 		vector<vector<vector<float>>> vectorValues;
 		vector<ofParameter<vector<float>>> vectorValueParams;
 		vector<int> currentToEditValues;
+		
 		
 		// Parameters
 		ofParameter<int> bars;
@@ -878,6 +958,35 @@ private:
 			}
 		}
 	}
+	
+	void toggleSolo(int row) {
+		if(row >= soloStates.size()) return;
+		
+		// Simply toggle the solo state for this row
+		soloStates[row] = !soloStates[row];
+		
+		// Update the global solo state
+		updateSoloState();
+	}
+
+	void updateSoloState() {
+		anySoloed = false;
+		for(bool state : soloStates) {
+			if(state) {
+				anySoloed = true;
+				break;
+			}
+		}
+	}
+
+	void clearAllSolos() {
+		for(int i = 0; i < soloStates.size(); i++) {
+			soloStates[i] = false;
+		}
+		anySoloed = false;
+	}
+
 };
+
 
 #endif /* probabilityDropdownList_h */
