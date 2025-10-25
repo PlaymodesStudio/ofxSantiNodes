@@ -27,6 +27,15 @@ public:
 
 		// Inspector-only params
 		addInspectorParameter(numInputs.set("Num Inputs", 2, 1, 16));
+		numInputsListener = numInputs.newListener([this](int &i){
+			int current = (int)inputParameters.size();
+			if(i > current){
+				for(int k = current; k < i; ++k) addInputParameter(k);
+			}else if(i < current){
+				for(int k = current - 1; k >= i; --k) removeInputParameter(k);
+			}
+			previousNumInputs = i; // keep your tracker in sync
+		});
 
 		// Show the formula text field on the NODE GUI
 		addInspectorParameter(formulaString.set("Formula", "($1 + $2) / 2"));
@@ -123,12 +132,15 @@ public:
 		rebuildEvaluator();
 	}
 
-	void update(ofEventArgs &args) override {
-		if(numInputs.get() != previousNumInputs) {
-			updateInputs();
-			previousNumInputs = numInputs.get();
-		}
+	// Override loadBeforeConnections to ensure inputs are created before connections are loaded
+	void loadBeforeConnections(ofJson &json) override {
+		// Load the numInputs parameter from the preset
+		deserializeParameter(json, numInputs);
+		// Force update inputs immediately to ensure they exist before connections are loaded
+		updateInputs();
+	}
 
+	void update(ofEventArgs &args) override {
 		if(formulaString.get() != previousFormula) {
 			previousFormula = formulaString.get();
 			rebuildEvaluator();
@@ -147,6 +159,8 @@ private:
 	ofEventListener formulaStrListener;
 	ofParameter<int>   editorLines;
 	ofParameter<float> editorFontSize;
+
+	ofEventListener numInputsListener;
 
 	// Change tracking
 	int    previousNumInputs = -1;
@@ -219,207 +233,187 @@ private:
 			return;
 		}
 
-		// Determine broadcasting size
-		size_t outputSize = 1;
-		std::vector<bool> isScalar;
-		isScalar.reserve(numInputs.get());
-
-		for(int i = 0; i < numInputs.get(); i++) {
-			auto it = inputParamRefs.find(i);
-			if(it == inputParamRefs.end()) continue;
-			size_t sz = it->second->get().size();
-			bool scalar = (sz <= 1);
-			isScalar.push_back(scalar);
-			if(!scalar && sz > outputSize) outputSize = sz;
+		// Find maximum vector size
+		size_t maxSize = 0;
+		for(const auto& kv : inputParamRefs) {
+			maxSize = std::max(maxSize, kv.second->get().size());
 		}
+		if(maxSize == 0) { output = {0}; return; }
 
-		bool allScalars = true;
-		for(bool s : isScalar) if(!s) { allScalars = false; break; }
-		if(allScalars) outputSize = 1;
+		// Evaluate for each array index
+		vector<float> result(maxSize);
+		std::map<std::string,float> vars;
 
-		std::vector<float> result;
-		result.reserve(outputSize);
+		for(size_t i = 0; i < maxSize; i++) {
+			vars.clear();
 
-		for(size_t idx = 0; idx < outputSize; idx++) {
-			float v = evaluateOnce(idx, isScalar);
-			result.push_back(v);
+			// Assign inputs as scalars ($1, $2, etc.)
+			for(const auto& kv : inputParamRefs) {
+				int idx = kv.first;
+				const auto& vec = kv.second->get();
+				std::string key = "$" + ofToString(idx + 1);
+				if(vec.size() == 1) {
+					vars[key] = vec[0];  // broadcast scalar
+				} else if(i < vec.size()) {
+					vars[key] = vec[i];
+				} else {
+					vars[key] = 0.0f;    // pad with 0
+				}
+			}
+
+			// Constants
+			vars["pi"] = M_PI;
+			vars["PI"] = M_PI;
+			vars["e"]  = M_E;
+			vars["E"]  = M_E;
+
+			// Evaluate
+			try {
+				result[i] = evalRPN(rpn, vars);
+			}
+			catch(std::exception& e) {
+				lastError = e.what();
+				result[i] = 0.0f;
+			}
 		}
 
 		output = result;
 	}
 
-	float evaluateOnce(size_t index, const std::vector<bool>& isScalar) {
-		// Build a small environment for this index: variables & constants & functions
-		std::map<std::string, float> vars = {
-			{"pi", float(M_PI)}, {"e", float(M_E)}
-		};
-
-		// Inject $1..$N by value for this index
-		for(int i = 0; i < numInputs.get(); i++) {
-			auto it = inputParamRefs.find(i);
-			if(it == inputParamRefs.end()) continue;
-
-			const auto& vec = it->second->get();
-			float val = 0.0f;
-			if(vec.empty()) val = 0.0f;
-			else if(i < (int)isScalar.size() && isScalar[i]) val = vec.front();
-			else {
-				if(index < vec.size()) val = vec[index];
-				else val = vec.back();
-			}
-			vars["$" + ofToString(i+1)] = val;
-		}
-
-		try {
-			return evalRPN(rpn, vars);
-		} catch(const std::exception& e) {
-			ofLogError("Formula") << "Eval error: " << e.what();
-			return 0.0f;
-		}
-	}
-
-	// ---------- Compilation pipeline ----------
+	// ---------- Formula compiler ----------
 	void rebuildEvaluator() {
-		lastError.clear();
 		formulaValid = false;
-		rpn.clear();
-
-		std::string src = formulaString.get();
-		if(src.empty()) {
-			lastError = "Empty formula";
-			ofLogError("Formula") << lastError;
-			return;
-		}
-
 		try {
-			auto tokens = tokenize(src);
+			auto tokens = tokenize(formulaString.get());
 			rpn = shuntingYard(tokens);
 			formulaValid = true;
-		} catch(const std::exception& e) {
+		}
+		catch(std::exception& e) {
 			lastError = e.what();
-			ofLogError("Formula") << "Parse error: " << lastError;
 		}
 	}
 
-	// ---------- Tokenizer ----------
-	static bool isIdentStart(char c){ return std::isalpha((unsigned char)c) || c=='_' || c=='$'; }
-	static bool isIdentChar (char c){ return std::isalnum((unsigned char)c) || c=='_' || c=='$'; }
-
-	std::vector<Token> tokenize(const std::string& s) {
-		std::vector<Token> out;
+	// Tokenizer
+	std::vector<Token> tokenize(const std::string& str) {
+		std::vector<Token> tokens;
 		size_t i = 0;
 
-		auto pushOp = [&](const std::string& op, bool unary)->void{
-			Token t; t.type = Token::Operator; t.text = op; t.unary = unary;
+		auto skipSpace = [&](){ while(i<str.size() && std::isspace(str[i])) i++; };
+		auto peek = [&](size_t offset=0)->char{ return (i+offset<str.size()) ? str[i+offset] : '\0'; };
+		auto consume = [&](){ return str[i++]; };
 
-			// Highest: unary !, unary -
-			if(unary && (op=="-" || op=="!")) { t.precedence = 6; t.rightAssoc = true; }
-			else if(op=="^")                 { t.precedence = 5; t.rightAssoc = true; }
-			else if(op=="*"||op=="/"||op=="%"){ t.precedence = 4; }
-			else if(op=="+"||op=="-")        { t.precedence = 3; }
-			else if(op=="<"||op==">"||op=="<="||op==">="){ t.precedence = 2; }
-			else if(op=="=="||op=="!=")      { t.precedence = 2; } // same as relational
-			else if(op=="&&")                { t.precedence = 1; }
-			else if(op=="||")                { t.precedence = 0; }
-			else throw std::runtime_error("Unknown operator: " + op);
+		while(i < str.size()) {
+			skipSpace();
+			if(i >= str.size()) break;
 
-			out.push_back(t);
-		};
+			char c = peek();
 
-
-		Token::Type prev = Token::LParen; // pretend lparen so leading '-' becomes unary
-
-		while(i < s.size()){
-			char c = s[i];
-
-			if(std::isspace((unsigned char)c)){ i++; continue; }
-
-			// numbers
-			if(std::isdigit((unsigned char)c) || (c=='.' && i+1<s.size() && std::isdigit((unsigned char)s[i+1]))){
-				size_t start = i;
-				while(i<s.size() && (std::isdigit((unsigned char)s[i]) || s[i]=='.' || s[i]=='e' || s[i]=='E' || s[i]=='+' || s[i]=='-')){
-					// rudimentary float scan; stop at first illegal sequence
-					if((s[i]=='+'||s[i]=='-') && i>start){
-						char prevc = s[i-1];
-						if(prevc!='e' && prevc!='E') break;
-					}
-					i++;
-				}
-				Token t; t.type=Token::Number; t.text=s.substr(start, i-start); t.value = std::stof(t.text);
-				out.push_back(t);
-				prev = Token::Number;
+			// Number
+			if(std::isdigit(c) || (c=='.' && std::isdigit(peek(1)))) {
+				std::string num;
+				while(std::isdigit(peek()) || peek()=='.') num += consume();
+				Token t; t.type = Token::Number; t.text = num; t.value = std::stof(num);
+				tokens.push_back(t);
 				continue;
 			}
 
-			// identifiers / variables ($1, $foo, sin, clamp)
-			if(isIdentStart(c)){
-				size_t start = i++;
-				while(i<s.size() && isIdentChar(s[i])) i++;
-				Token t; t.type=Token::Identifier; t.text=s.substr(start, i-start);
-				out.push_back(t);
-				prev = Token::Identifier;
+			// Identifier (variables, functions)
+			if(std::isalpha(c) || c=='_' || c=='$') {
+				std::string id;
+				while(std::isalnum(peek()) || peek()=='_' || peek()=='$') id += consume();
+				Token t; t.type = Token::Identifier; t.text = id;
+				tokens.push_back(t);
 				continue;
 			}
 
-			// parentheses / comma
-			if(c=='('){ out.push_back(Token{Token::LParen,"(",0}); i++; prev = Token::LParen; continue; }
-			if(c==')'){ out.push_back(Token{Token::RParen,")",0}); i++; prev = Token::RParen; continue; }
-			if(c==','){ out.push_back(Token{Token::Comma, ",",0}); i++; prev = Token::Comma;  continue; }
-
-			// two-char operators: <= >= == != && ||
-			if(i+1 < s.size()){
-				std::string two = s.substr(i,2);
-				static const std::set<std::string> twoOps = {"<=", ">=", "==", "!=", "&&", "||"};
-				if(twoOps.count(two)){
-					pushOp(two, /*unary=*/false);
-					i += 2; prev = Token::Operator; continue;
-				}
+			// Operators and punctuation
+			if(c=='(' || c==')' || c==',') {
+				Token t;
+				t.text = std::string(1, consume());
+				if(c=='(') t.type = Token::LParen;
+				else if(c==')') t.type = Token::RParen;
+				else t.type = Token::Comma;
+				tokens.push_back(t);
+				continue;
 			}
 
-			// single-char operators (including '!' and comparisons)
-			if(c=='+' || c=='-' || c=='*' || c=='/' || c=='^' || c=='%' ||
-			   c=='<' || c=='>' || c=='!' )
+			// Check two-character operators first
+			std::string op;
+			if((c=='<' && peek(1)=='=') || (c=='>' && peek(1)=='=') ||
+			   (c=='=' && peek(1)=='=') || (c=='!' && peek(1)=='=') ||
+			   (c=='&' && peek(1)=='&') || (c=='|' && peek(1)=='|'))
 			{
-				bool unary = false;
-				if(c=='-'){
-					unary = (prev==Token::Operator || prev==Token::LParen || prev==Token::Comma);
-				} else if(c=='!'){
-					// logical NOT is unary when not followed by '='
-					unary = !(i+1 < s.size() && s[i+1]=='=');
-				}
-				pushOp(std::string(1,c), unary);
-				i++; prev = Token::Operator; continue;
+				op = std::string(1,consume()) + std::string(1,consume());
+			}
+			else if(c=='+' || c=='-' || c=='*' || c=='/' || c=='%' || c=='^' ||
+					c=='<' || c=='>' || c=='!')
+			{
+				op = std::string(1, consume());
+			}
+			else {
+				throw std::runtime_error("Unknown character: " + std::string(1,c));
 			}
 
+			Token t; t.type = Token::Operator; t.text = op;
 
-			throw std::runtime_error(std::string("Unexpected character: '") + c + "'");
+			// Set operator properties
+			auto setOp = [&](int prec, bool rAssoc=false){
+				t.precedence = prec; t.rightAssoc = rAssoc;
+			};
+
+			if(op=="+") setOp(20);
+			else if(op=="-") setOp(20);
+			else if(op=="*") setOp(30);
+			else if(op=="/") setOp(30);
+			else if(op=="%") setOp(30);
+			else if(op=="^") setOp(40, true);
+			else if(op=="<" || op==">" || op=="<=" || op==">=") setOp(15);
+			else if(op=="==" || op=="!=") setOp(14);
+			else if(op=="&&") setOp(12);
+			else if(op=="||") setOp(11);
+			else if(op=="!") { setOp(35, true); t.unary = true; }
+
+			// Check for unary - or +
+			if((op=="-" || op=="+") && (tokens.empty() ||
+			   tokens.back().type == Token::Operator ||
+			   tokens.back().type == Token::LParen ||
+			   tokens.back().type == Token::Comma))
+			{
+				t.unary = true;
+				t.precedence = 35;
+				t.rightAssoc = true;
+			}
+
+			tokens.push_back(t);
 		}
 
-		return out;
+		return tokens;
 	}
 
-	// ---------- Shunting-yard to RPN ----------
+	// Helper function
+	bool isFunction(const std::string& name) {
+		static const std::set<std::string> funcs = {
+			"sin","cos","tan","asin","acos","atan","atan2",
+			"sinh","cosh","tanh",
+			"exp","log","log10","sqrt","abs",
+			"floor","ceil","round",
+			"min","max","clamp","step","smoothstep","pow","if"
+		};
+		return funcs.count(name) > 0;
+	}
+
+	// Shunting-yard algorithm
 	RPN shuntingYard(const std::vector<Token>& tokens) {
 		RPN out;
 		std::vector<Token> opStack;
-		std::vector<std::string> funcStack;   // function names
-		std::vector<int> argCountStack;       // arg counts for current function
 
-		// NEW: track whether each '(' corresponds to a function call
+		// Function call tracking
+		std::vector<std::string> funcStack;
+		std::vector<int> argCountStack;
+
+		// Tracking whether '(' belongs to a function call vs regular grouping
 		std::vector<bool> lparenIsFunc;
 		bool nextLParenIsFunc = false;
-
-		auto isFunction = [&](const std::string& id)->bool{
-			static const std::map<std::string,int> known = {
-				{"sin",1},{"cos",1},{"tan",1},{"asin",1},{"acos",1},{"atan",1},
-				{"atan2",2},{"sinh",1},{"cosh",1},{"tanh",1},
-				{"exp",1},{"log",1},{"log10",1},{"sqrt",1},{"abs",1},
-				{"floor",1},{"ceil",1},{"round",1},
-				{"min",-1},{"max",-1},{"clamp",3},{"step",2},{"smoothstep",3},
-				{"pow",2},{"if",3}
-			};
-			return known.count(id) > 0;
-		};
 
 		for(size_t i=0;i<tokens.size();++i){
 			const Token& t = tokens[i];
