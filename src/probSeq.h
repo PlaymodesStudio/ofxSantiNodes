@@ -3,88 +3,104 @@
 
 #include "ofxOceanodeNodeModel.h"
 #include <random>
+#include <climits>    // INT_MAX
+#include <algorithm>  // std::clamp
 
 class probSeq : public ofxOceanodeNodeModel {
 public:
-    probSeq() : ofxOceanodeNodeModel("Probabilistic Step Sequencer"), gen(rd()), dist(0, 1) {
-        // Initialize the seed to zero, which means no seed by default
-        seed = 0;
-    }
-    ~probSeq() {}
+	probSeq()
+	: ofxOceanodeNodeModel("Probabilistic Step Sequencer")
+	, gen(rd())
+	, dist(0.0, 1.0) {}
 
-    void setup() override {
-        // Parameter setup
-        addParameter(index.set("Index", 0, 0, 1));
-        addParameter(stepsVec.set("Steps[]", {0}, {0}, {1}));
-        addParameter(seed.set("Seed", 0, 0, INT_MAX));
-        addOutputParameter(output.set("Output", 0, 0, 1));
+	~probSeq() {}
 
-        // Register update listener
-        listener = index.newListener([this](int &){ updateOutput(); });
-        
-        // Register seed listener
-        seedListener = seed.newListener([this](int &) { resetGenerator(); });
+	void setup() override {
+		// Parameters
+		addParameter(index.set("Index", 0, 0, 1));
+		addParameter(stepsVec.set("Steps[]", {0.0f}, {0.0f}, {1.0f}));
+		addParameter(seed.set("Seed", 0, 0, INT_MAX));
+		addOutputParameter(output.set("Output", 0, 0, 1));
 
-        // Set index maximum based on stepsVec size
-        stepsVecListener = stepsVec.newListener([this](vector<float> &steps) {
-            index.setMax(steps.size() - 1);
-        });
+		// Recompute output whenever index changes (pulse lasts exactly the step duration)
+		indexListener = index.newListener([this](int &) { updateOutput(); });
 
-        // Initialize index
-        index = 0;
-    }
+		// Reseed RNG when seed changes
+		seedListener = seed.newListener([this](int &) { resetGenerator(); });
+
+		// Keep index within bounds when step vector changes; recompute output
+		stepsVecListener = stepsVec.newListener([this](std::vector<float> &steps) {
+			const int maxIdx = std::max(0, static_cast<int>(steps.size()) - 1);
+			index.setMax(maxIdx);
+			index = std::clamp(index.get(), 0, maxIdx);
+			updateOutput();
+		});
+
+		// Initialize RNG policy and state
+		resetGenerator();
+
+		// Initialize index bounds from initial steps
+		const int maxIdx = std::max(0, static_cast<int>(stepsVec.get().size()) - 1);
+		index.setMax(maxIdx);
+		index = std::clamp(index.get(), 0, maxIdx);
+
+		lastIndex = -1;
+		updateOutput(); // produce initial output
+	}
 
 private:
-    ofParameter<int> index;
-    ofParameter<vector<float>> stepsVec;
-    ofParameter<int> seed;
-    ofParameter<int> output;
-    ofEventListener listener;
-    ofEventListener stepsVecListener;
-    ofEventListener seedListener;
-    int lastIndex = -1; // Track the last index processed
-    bool gateOpen = false; // Track if the last output was a gate
+	// Parameters
+	ofParameter<int> index;
+	ofParameter<std::vector<float>> stepsVec;
+	ofParameter<int> seed;
+	ofParameter<int> output;
 
-    std::random_device rd; // Obtain a random number from hardware
-    std::mt19937 gen; // Standard mersenne_twister_engine seeded with rd()
-    std::uniform_real_distribution<> dist; // Uniform distribution
+	// Listeners
+	ofEventListener indexListener;
+	ofEventListener stepsVecListener;
+	ofEventListener seedListener;
 
-    void updateOutput() {
-        int currentIndex = index.get();
-        int stepsSize = stepsVec->size();
+	// State
+	int lastIndex = -1;
 
-        if (stepsSize > 0) {
-            int modIndex = currentIndex % stepsSize; // Ensure index wraps around
+	// RNG
+	std::random_device rd;
+	std::mt19937 gen;
+	std::uniform_real_distribution<double> dist;
 
-            if (currentIndex != lastIndex) { // Check if the index has changed
-                lastIndex = currentIndex; // Update lastIndex for the next frame
-                float probability = stepsVec.get()[modIndex]; // Get probability from current step
+	void updateOutput() {
+		const auto &steps = stepsVec.get();
+		if (steps.empty()) {
+			output.set(0);
+			lastIndex = -1;
+			return;
+		}
 
-                if (!gateOpen || probability == 1) { // Ensure we generate a gate for each step if probability is 1
-                    generateGate(probability);
-                }
-            } else if (gateOpen) {
-                // Ensure a gate is followed by a 0 in the next frame
-                output.set(0);
-                gateOpen = false;
-            }
-            // If index hasn't changed and gate wasn't open, do nothing
-        }
-    }
+		const int currentIndex = index.get();
+		if (currentIndex == lastIndex) {
+			// No step change → hold current output value for the remainder of the step
+			return;
+		}
+		lastIndex = currentIndex;
 
-    void generateGate(float probability) {
-        bool gate = dist(gen) < probability; // Determine if the gate should be triggered
-        output.set(gate ? 1 : 0); // Update the output based on the gate value
-        gateOpen = gate; // Update gateOpen to track if we need to close the gate in the next frame
-    }
+		const int stepsSize = static_cast<int>(steps.size());
+		const int modIndex = (stepsSize > 0) ? (currentIndex % stepsSize) : 0;
 
-    void resetGenerator() {
-        if (seed != 0) {
-            gen.seed(seed); // Set the generator with the specified seed
-        } else {
-            gen.seed(rd()); // Use a random seed from hardware if seed is 0
-        }
-    }
+		// Clamp probability to [0,1] to be safe
+		const float p = std::clamp(steps[modIndex], 0.0f, 1.0f);
+
+		// Decide gate for THIS step and set it immediately
+		const bool gate = (dist(gen) < static_cast<double>(p));
+		output.set(gate ? 1 : 0);
+	}
+
+	void resetGenerator() {
+		if (seed.get() != 0) {
+			gen.seed(static_cast<uint32_t>(seed.get()));
+		} else {
+			gen.seed(rd()); // non-deterministic seed
+		}
+	}
 };
 
 #endif /* probSeq_h */
