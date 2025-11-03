@@ -163,8 +163,11 @@
 #include "rangedSlider.h"
 #include "stringSwitch.h"
 #include "increment.h"
-#include "imageManager.h"
+//#include "imageManager.h"
 #include "formula.h"
+#include "cameraInput.h"
+#include "textureSnapshot.h"
+#include "randomValues.h"
 
 
 
@@ -329,8 +332,11 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<rangedSlider>("Santi/GUI");
 	o.registerModel<stringSwitch>("Santi/Strings");
 	o.registerModel<increment>("Santi/General");
-	o.registerModel<imageManager>("Santi/Forms");
+	//o.registerModel<imageManager>("Santi/Forms");
 	o.registerModel<formula>("Santi/Math");
+	o.registerModel<cameraInput>("Santi/Textures");
+	o.registerModel<textureSnapshot>("Santi/Textures");
+	o.registerModel<randomValues>("Santi/General");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
