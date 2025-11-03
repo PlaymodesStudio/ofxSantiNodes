@@ -438,7 +438,7 @@ private:
 			"min","max","clamp","step","smoothstep","pow","if",
 			// Vector-aware
 			"len","indices","at","sum","mean","median","rms","std","var","idxmin","idxmax",
-			"vec","repeat","concat"
+			"vec","repeat","concat","pairdist"
 		};
 		return funcs.count(name) > 0;
 	}
@@ -673,6 +673,11 @@ private:
 				int argc=(int)t.value;
 				auto is=[&](const char* s){ return id==s; };
 
+				// small helpers for vector extraction
+				auto toVec = [&](const Value& v)->std::vector<float> {
+					return v.isVec ? v.v : std::vector<float>{ v.f };
+				};
+
 				// introspection / gather
 				if(is("len")){ if(argc!=1) throw std::runtime_error("len(v) expects 1 arg"); st.push_back(Value::scalar((float)pop1().size())); continue; }
 				if(is("indices")){
@@ -780,6 +785,32 @@ private:
 					st.push_back(Value::vector(std::move(out)));
 					continue;
 				}
+
+				// -------- NEW: pairwise distances --------
+				if (is("pairdist")) {
+					if (argc != 2) throw std::runtime_error("pairdist(x, y) expects 2 args");
+					Value vy = pop1();
+					Value vx = pop1();
+					std::vector<float> x = toVec(vx);
+					std::vector<float> y = toVec(vy);
+
+					size_t n = std::min(x.size(), y.size());
+					if (n < 2) { st.push_back(Value::vector({})); continue; }
+
+					std::vector<float> out;
+					out.reserve(n * (n - 1) / 2);
+					for (size_t i = 0; i + 1 < n; ++i) {
+						float xi = x[i], yi = y[i];
+						for (size_t j = i + 1; j < n; ++j) {
+							float dx = xi - x[j];
+							float dy = yi - y[j];
+							out.push_back(std::sqrt(dx*dx + dy*dy));
+						}
+					}
+					st.push_back(Value::vector(std::move(out)));
+					continue;
+				}
+
 				throw std::runtime_error("Unknown identifier: "+id);
 			}
 
@@ -809,6 +840,7 @@ private:
 		if(st.size()!=1) throw std::runtime_error("Evaluation ended with bad stack size");
 		return st.back();
 	}
+
 };
 
 #endif /* formula_h */
