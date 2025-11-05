@@ -4,15 +4,19 @@
 #include "ofxOceanodeNodeModel.h"
 #include "ofxOceanodeContainer.h"
 #include "ofxOceanodeShared.h"
+#include "ofxOceanodeParameter.h"
 #include <map>
 #include <string>
 #include <functional>
+#include <unordered_set>
+#include <set>
+#include <vector>
 
 class globalSnapshots : public ofxOceanodeNodeModel {
 public:
 	globalSnapshots();
 	void setup() override;
-	void setup(string additionalInfo) override;
+	void setup(std::string additionalInfo) override;
 	void update(ofEventArgs &e) override;
 	void setContainer(ofxOceanodeContainer* c) override;
 
@@ -21,18 +25,18 @@ private:
 	ofxOceanodeContainer* globalContainer = nullptr;
 
 	// Node GUI and inspector parameters
-	ofParameter<int>                            activeSnapshotSlot;
-	ofParameter<void>                           addSnapshotButton;
-	ofParameter<float>                          interpolationMs;
+	ofParameter<int>    activeSnapshotSlot;
+	ofParameter<void>   addSnapshotButton;
+	ofParameter<float>  interpolationMs;
 	
 	// Custom GUI regions
-	customGuiRegion                             snapshotControlGui;
-	customGuiRegion                             snapshotInspector;
+	customGuiRegion     snapshotControlGui;
+	customGuiRegion     snapshotInspector;
 
-	ofParameter<bool>                           includeMacroParams;
-	ofParameter<int>                            matrixRows, matrixCols;
-	ofParameter<float>                          buttonSize;
-	ofParameter<bool>                           showSnapshotNames;
+	ofParameter<bool>   includeMacroParams;
+	ofParameter<int>    matrixRows, matrixCols;
+	ofParameter<float>  buttonSize;
+	ofParameter<bool>   showSnapshotNames;
 
 	// In‐memory snapshot storage
 	struct ParameterSnapshot {
@@ -40,8 +44,8 @@ private:
 		ofJson      value;
 	};
 	struct SnapshotData {
-		std::string                              name;
-		std::map<std::string,ParameterSnapshot>  paramValues;
+		std::string                                       name;
+		std::map<std::string,ParameterSnapshot>           paramValues;
 	};
 	std::map<int,SnapshotData>  snapshots;
 	int                          currentSnapshotSlot;
@@ -52,6 +56,12 @@ private:
 	int                         interpolationTargetSlot;
 	std::map<std::string, ParameterSnapshot> interpolationStartValues;
 
+	// Only these keys will be interpolated (i.e. values that actually differ)
+	std::unordered_set<std::string> interpolationActiveKeys;
+
+	// Manual blacklist of parameters (Group/Param strings)
+	std::set<std::string> manualExcludes;
+
 	// Event listeners
 	ofEventListener              addSnapshotListener;
 	ofEventListener              activeSnapshotSlotListener;
@@ -61,16 +71,20 @@ private:
 	void loadSnapshot(int slot);
 	void startInterpolation(int targetSlot);
 	void updateInterpolation();
-	float getCurrentParameterValue(const std::string& key, const ParameterSnapshot& startValue, const ParameterSnapshot& targetValue, float progress);
 	
 	// Persistence
 	void saveSnapshotsToFile();
 	void loadSnapshotsFromFile();
-	string getSnapshotsFilePath();
+	std::string getSnapshotsFilePath();
 
 	// GUI rendering
 	void renderSnapshotMatrix();
 	void renderInspectorInterface();
+
+	// Helpers
+	bool isParameterModulated(const std::string& key) const;
+	// full check: manual blacklist + modulated + flagged-as-output (DisableInConnection)
+	bool isParameterExcluded(const std::string& key, ofxOceanodeAbstractParameter* param) const;
 };
 
 #endif // GLOBAL_SNAPSHOTS_H
