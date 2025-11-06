@@ -19,6 +19,9 @@ public:
 		addOutputParameter(out7.set("Out7", {0.0f}, {0.0f}, {1.0f}));
 		addOutputParameter(out8.set("Out8", {0.0f}, {0.0f}, {1.0f}));
 
+		// nou output: el vector més gran trobat
+		addOutputParameter(largest.set("Largest", {0.0f}, {0.0f}, {1.0f}));
+
 		addOutputParameter(numSets.set("NumSets", 0, 0, 8));
 
 		listener = input.newListener([this](vector<float> &v){
@@ -29,6 +32,7 @@ public:
 private:
 	ofParameter<vector<float>> input;
 	ofParameter<vector<float>> out1, out2, out3, out4, out5, out6, out7, out8;
+	ofParameter<vector<float>> largest;
 	ofParameter<int> numSets;
 	ofEventListener listener;
 
@@ -67,7 +71,25 @@ private:
 		setOut(out7, chunks, 6);
 		setOut(out8, chunks, 7);
 
-		numSets = (int)chunks.size();
+		// nombre de grups trobats
+		numSets = static_cast<int>(chunks.size());
+
+		// calcular el més gran
+		if(!chunks.empty()){
+			// busquem el de més mida; si hi ha empat, es queda el primer
+			size_t bestIdx = 0;
+			size_t bestSize = chunks[0].size();
+			for(size_t i = 1; i < chunks.size(); ++i){
+				if(chunks[i].size() > bestSize){
+					bestSize = chunks[i].size();
+					bestIdx = i;
+				}
+			}
+			largest = chunks[bestIdx];
+		}else{
+			// si no hi ha chunks, posem un vector curt perquè el GUI no peti
+			largest = {0.0f};
+		}
 	}
 
 	void setOut(ofParameter<vector<float>> &dest,
