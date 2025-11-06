@@ -168,6 +168,11 @@
 #include "cameraInput.h"
 #include "textureSnapshot.h"
 #include "randomValues.h"
+#include "derivative.h"
+#include "polygonArea.h"
+#include "polygonPerimeter.h"
+#include "metaballAnalyzer.h"
+#include "vectorSplitOnMinusOne.h"
 
 
 
@@ -337,6 +342,11 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<cameraInput>("Santi/Textures");
 	o.registerModel<textureSnapshot>("Santi/Textures");
 	o.registerModel<randomValues>("Santi/General");
+	o.registerModel<derivative>("Santi/Math");
+	o.registerModel<polygonArea>("Santi/Math");
+	o.registerModel<polygonPerimeter>("Santi/Math");
+	o.registerModel<metaballAnalyzer>("Santi/Math");
+	o.registerModel<vectorSplitOnMinusOne>("Santi/Math");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");

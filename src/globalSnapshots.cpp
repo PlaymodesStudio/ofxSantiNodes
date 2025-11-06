@@ -4,6 +4,7 @@
 #include <vector>
 #include <cmath>
 #include <unordered_set>
+#include "ofMain.h" // for ofGetElapsedTimef / ofGetElapsedTimeMillis
 
 // --- small helpers ---
 static bool floatsEqual(float a, float b, float eps = 1e-6f) {
@@ -124,11 +125,8 @@ bool globalSnapshots::isParameterModulated(const std::string& key) const {
 // 3) flagged as output → DisableInConnection
 // ----------------------------------------------------------
 bool globalSnapshots::isParameterExcluded(const std::string& key, ofxOceanodeAbstractParameter* param) const {
-	// 1) manual
 	if(manualExcludes.find(key) != manualExcludes.end()) return true;
-	// 2) modulated
 	if(isParameterModulated(key)) return true;
-	// 3) flagged as output (cannot have IN connections)
 	if(param) {
 		auto flags = param->getFlags();
 		if(flags & ofxOceanodeParameterFlags_DisableInConnection) {
@@ -322,6 +320,10 @@ void globalSnapshots::renderSnapshotMatrix() {
 	int rows = matrixRows.get();
 	int cols = matrixCols.get();
 
+	// for blinking
+	float t = ofGetElapsedTimef();
+	float blink = 0.5f + 0.5f * std::sin(t * 6.0f); // fast-ish blink
+
 	for(int r = 0; r < rows; r++) {
 		for(int c = 0; c < cols; c++) {
 			if(c > 0) ImGui::SameLine();
@@ -330,8 +332,22 @@ void globalSnapshots::renderSnapshotMatrix() {
 
 			bool has = snapshots.count(slot) > 0;
 			bool act = (slot == currentSnapshotSlot);
+			bool isBlinkingTarget = (isInterpolating && slot == interpolationTargetSlot);
 
-			if(act) {
+			// choose colors
+			if(isBlinkingTarget) {
+				// orange-ish, blinking
+				float baseR = 1.0f;
+				float baseG = 0.5f;
+				float baseB = 0.0f;
+				ImVec4 col     (baseR * (0.7f + 0.3f*blink), baseG * (0.5f + 0.5f*blink), baseB, 1.0f);
+				ImVec4 colHover(baseR, baseG, 0.0f, 1.0f);
+				ImVec4 colActive(baseR, baseG, 0.0f, 1.0f);
+				ImGui::PushStyleColor(ImGuiCol_Button,       col);
+				ImGui::PushStyleColor(ImGuiCol_ButtonHovered,colHover);
+				ImGui::PushStyleColor(ImGuiCol_ButtonActive, colActive);
+			}
+			else if(act) {
 				ImGui::PushStyleColor(ImGuiCol_Button,       ImVec4(0.4f,0,0,1));
 				ImGui::PushStyleColor(ImGuiCol_ButtonHovered,ImVec4(0.7f,0,0,1));
 				ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1,0,0,1));
@@ -418,7 +434,6 @@ void globalSnapshots::renderInspectorInterface() {
 		}
 	}
 
-	// manual blacklist UI
 	ImGui::Separator();
 	ImGui::Text("Parameter Excludes");
 	ImGui::TextDisabled("These won't be stored / recalled / interpolated.");
@@ -495,7 +510,6 @@ void globalSnapshots::saveSnapshotsToFile() {
 	}
 	
 	ofJson json;
-	// snapshots
 	for(const auto& pair : snapshots) {
 		ofJson snapshotJson;
 		snapshotJson["name"] = pair.second.name;
@@ -512,7 +526,6 @@ void globalSnapshots::saveSnapshotsToFile() {
 		json[ofToString(pair.first)] = snapshotJson;
 	}
 
-	// manual excludes
 	ofJson excludedJson = ofJson::array();
 	for(const auto &k : manualExcludes) {
 		excludedJson.push_back(k);

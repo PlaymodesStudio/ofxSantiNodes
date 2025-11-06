@@ -55,9 +55,7 @@ private:
 	float                       interpolationStartTime;
 	int                         interpolationTargetSlot;
 	std::map<std::string, ParameterSnapshot> interpolationStartValues;
-
-	// Only these keys will be interpolated (i.e. values that actually differ)
-	std::unordered_set<std::string> interpolationActiveKeys;
+	std::unordered_set<std::string>          interpolationActiveKeys;
 
 	// Manual blacklist of parameters (Group/Param strings)
 	std::set<std::string> manualExcludes;
@@ -83,7 +81,7 @@ private:
 
 	// Helpers
 	bool isParameterModulated(const std::string& key) const;
-	// full check: manual blacklist + modulated + flagged-as-output (DisableInConnection)
+	// manual blacklist + modulated + flagged-as-output (DisableInConnection)
 	bool isParameterExcluded(const std::string& key, ofxOceanodeAbstractParameter* param) const;
 };
 
