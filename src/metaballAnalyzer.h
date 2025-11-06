@@ -1,5 +1,6 @@
 #pragma once
 #include "ofxOceanodeNodeModel.h"
+#include "imgui.h"
 #include <numeric>
 #include <cmath>
 #include <limits>
@@ -9,34 +10,56 @@ public:
 	metaballAnalyzer() : ofxOceanodeNodeModel("metaballAnalyzer") {}
 
 	void setup() override {
-		// inputs (ja deglitxats)
+		// prepare section headers
+		inputSep.set("INPUT", [](){ drawSectionHeader("INPUT"); });
+		paramsSep.set("PARAMS", [](){ drawSectionHeader("PARAMS"); });
+		geomSep.set("GEOMETRY", [](){ drawSectionHeader("GEOMETRY"); });
+		shapeSep.set("SHAPE / RADIAL", [](){ drawSectionHeader("SHAPE / RADIAL"); });
+		derivSep.set("DERIVATIVES", [](){ drawSectionHeader("DERIVATIVES"); });
+		hiSep.set("HIGH-LEVEL / SONIFICATION", [](){ drawSectionHeader("HIGH-LEVEL / SONIFICATION"); });
+
+		// ─────────────────────────────────────────
+		// INPUT
+		// ─────────────────────────────────────────
+		addCustomRegion(inputSep, inputSep);
 		addParameter(xs.set("X", {0.0f}, {0.0f}, {1.0f}));
 		addParameter(ys.set("Y", {0.0f}, {0.0f}, {1.0f}));
 
-		// params
+		// ─────────────────────────────────────────
+		// PARAMS
+		// ─────────────────────────────────────────
+		addCustomRegion(paramsSep, paramsSep);
 		addParameter(protThresh.set("ProtThresh", 1.1f, 1.0f, 2.0f));
 		addParameter(derivScale.set("DerivScale", 1.0f, 0.0f, 1000.0f));
 
-		// outputs base
+		// ─────────────────────────────────────────
+		// GEOMETRY
+		// ─────────────────────────────────────────
+		addCustomRegion(geomSep, geomSep);
 		addOutputParameter(centX.set("CentX", 0.0f, -FLT_MAX, FLT_MAX));
 		addOutputParameter(centY.set("CentY", 0.0f, -FLT_MAX, FLT_MAX));
 		addOutputParameter(width.set("Width", 0.0f, 0.0f, FLT_MAX));
 		addOutputParameter(height.set("Height", 0.0f, 0.0f, FLT_MAX));
 		addOutputParameter(aspect.set("Aspect", 0.0f, 0.0f, FLT_MAX));
-
 		addOutputParameter(area.set("Area", 0.0f, 0.0f, FLT_MAX));
 		addOutputParameter(perimeter.set("Perimeter", 0.0f, 0.0f, FLT_MAX));
 		addOutputParameter(req.set("Req", 0.0f, 0.0f, FLT_MAX));
+
+		// ─────────────────────────────────────────
+		// SHAPE / RADIAL
+		// ─────────────────────────────────────────
+		addCustomRegion(shapeSep, shapeSep);
 		addOutputParameter(circularity.set("Circularity", 0.0f, 0.0f, FLT_MAX));
 		addOutputParameter(roughness.set("Roughness", 0.0f, 0.0f, FLT_MAX));
-
 		addOutputParameter(radMean.set("RadMean", 0.0f, 0.0f, FLT_MAX));
 		addOutputParameter(radStdNorm.set("RadStdNorm", 0.0f, 0.0f, FLT_MAX));
 		addOutputParameter(numProt.set("NumProtrusions", 0.0f, 0.0f, FLT_MAX));
-
 		addOutputParameter(valid.set("Valid", 0.0f, 0.0f, 1.0f));
 
-		// derivades bàsiques
+		// ─────────────────────────────────────────
+		// DERIVATIVES
+		// ─────────────────────────────────────────
+		addCustomRegion(derivSep, derivSep);
 		addOutputParameter(dCentX.set("dCentX", 0.0f, -FLT_MAX, FLT_MAX));
 		addOutputParameter(dCentY.set("dCentY", 0.0f, -FLT_MAX, FLT_MAX));
 		addOutputParameter(dArea.set("dArea", 0.0f, -FLT_MAX, FLT_MAX));
@@ -46,7 +69,10 @@ public:
 		addOutputParameter(dRadStdNorm.set("dRadStdNorm", 0.0f, -FLT_MAX, FLT_MAX));
 		addOutputParameter(dNumProt.set("dNumProtrusions", 0.0f, -FLT_MAX, FLT_MAX));
 
-		// features derivats / musicals
+		// ─────────────────────────────────────────
+		// HIGH-LEVEL / SONIFICATION
+		// ─────────────────────────────────────────
+		addCustomRegion(hiSep, hiSep);
 		addOutputParameter(centroidSpeed.set("CentroidSpeed", 0.0f, 0.0f, FLT_MAX));
 		addOutputParameter(blobiness.set("Blobiness", 0.0f, 0.0f, FLT_MAX));
 		addOutputParameter(deformationSpeed.set("DeformationSpeed", 0.0f, 0.0f, FLT_MAX));
@@ -60,23 +86,31 @@ public:
 	}
 
 private:
+	// we keep these as members so they stay alive
+	ofParameter<std::function<void()>> inputSep, paramsSep, geomSep, shapeSep, derivSep, hiSep;
+
 	// inputs
 	ofParameter<std::vector<float>> xs, ys;
+	// params
 	ofParameter<float> protThresh, derivScale;
 
-	// base outputs
+	// geometry
 	ofParameter<float> centX, centY;
 	ofParameter<float> width, height, aspect;
-	ofParameter<float> area, perimeter, req, circularity, roughness;
-	ofParameter<float> radMean, radStdNorm, numProt;
+	ofParameter<float> area, perimeter, req;
+
+	// shape / radial
+	ofParameter<float> circularity, roughness;
+	ofParameter<float> radMean, radStdNorm;
+	ofParameter<float> numProt;
 	ofParameter<float> valid;
 
-	// derivs
+	// derivatives
 	ofParameter<float> dCentX, dCentY;
 	ofParameter<float> dArea, dPerimeter, dCircularity, dRoughness;
 	ofParameter<float> dRadStdNorm, dNumProt;
 
-	// derived
+	// high level
 	ofParameter<float> centroidSpeed, blobiness, deformationSpeed, sizeChange, activity;
 
 	bool firstFrame;
@@ -85,6 +119,23 @@ private:
 	float pRadStdNorm=0, pNumProt=0;
 
 	ofEventListener listenerX, listenerY;
+
+	// helper like your rotoControl but with label
+	static void drawSectionHeader(const char* label) {
+		ImVec2 p = ImGui::GetCursorScreenPos();
+		float w = 220.0f;               // width inside node
+		ImU32 col = IM_COL32(200,200,200,255);
+		// line
+		ImGui::GetWindowDrawList()->AddLine(
+			ImVec2(p.x,     p.y),
+			ImVec2(p.x+w,   p.y),
+			col,
+			1.4f
+		);
+		ImGui::Dummy(ImVec2(0, 4));
+		ImGui::TextUnformatted(label);
+		ImGui::Dummy(ImVec2(0, 2));
+	}
 
 	static inline float safe(float v){ return (std::isnan(v) || std::isinf(v)) ? 0.f : v; }
 	static inline float absf(float v){ return v < 0 ? -v : v; }
@@ -110,73 +161,80 @@ private:
 			if(xx<minx)minx=xx; if(xx>maxx)maxx=xx;
 			if(yy<miny)miny=yy; if(yy>maxy)maxy=yy;
 		}
-		float wF=safe(maxx-minx), hF=safe(maxy-miny);
-		float aspectF = (hF>0)?safe(wF/hF):0;
+		float wF = safe(maxx-minx);
+		float hF = safe(maxy-miny);
+		float aspectF = (hF>0)? safe(wF/hF) : 0;
 
-		// area (shoelace)
+		// area
 		double accA=0;
 		for(size_t i=0;i<n;++i){
 			size_t j=(i+1)%n;
-			accA+=vx[i]*vy[j]-vx[j]*vy[i];
+			accA += vx[i]*vy[j] - vx[j]*vy[i];
 		}
-		double A=fabs(accA)*0.5;
-		float AF=safe((float)A);
+		double A = std::abs(accA)*0.5;
+		float AF = safe((float)A);
 
 		// perimeter
 		double accP=0;
 		for(size_t i=0;i<n;++i){
 			size_t j=(i+1)%n;
 			double dx=vx[j]-vx[i], dy=vy[j]-vy[i];
-			accP+=sqrt(dx*dx+dy*dy);
+			accP += std::sqrt(dx*dx + dy*dy);
 		}
-		float PF=safe((float)accP);
+		float PF = safe((float)accP);
 
-		// equivalent radius
-		double r_eq=(A>0)?sqrt(A/M_PI):0;
-		float rEqF=safe((float)r_eq);
+		// eq radius
+		double r_eq = (A>0)? std::sqrt(A/M_PI) : 0;
+		float rEqF = safe((float)r_eq);
 
-		// circularity
-		float circF=(PF>0)?safe((float)((4*M_PI*A)/(accP*accP))):0;
-		// roughness
-		float roughF=(r_eq>0)?safe((float)(accP/(2*M_PI*r_eq))):0;
+		// shape
+		float circF = (PF>0)? safe((float)((4*M_PI*A)/(accP*accP))) : 0;
+		float roughF = (r_eq>0)? safe((float)(accP/(2*M_PI*r_eq))) : 0;
 
 		// radial
 		std::vector<double> rad(n);
 		for(size_t i=0;i<n;++i){
 			double dx=vx[i]-cx, dy=vy[i]-cy;
-			rad[i]=sqrt(dx*dx+dy*dy);
+			rad[i] = std::sqrt(dx*dx + dy*dy);
 		}
-		double rSum=std::accumulate(rad.begin(),rad.end(),0.0);
-		double rMean=rSum/n;
-		float rMeanF=safe((float)rMean);
-		double var=0; for(auto r:rad){ double d=r-rMean; var+=d*d; }
+		double rSum = std::accumulate(rad.begin(), rad.end(), 0.0);
+		double rMeanD = rSum / (double)n;
+		float rMeanF = safe((float)rMeanD);
+		double var=0; for(auto r:rad){ double d=r-rMeanD; var+=d*d; }
 		var/=n;
-		double rStd=sqrt(var);
-		float rStdNormF=safe((rMean>0)?(rStd/rMean):0);
-		// protrusions
-		double th=rMean*protThresh.get();
-		int countProt=0; for(auto r:rad) if(r>=th) countProt++;
-		float nProtF=(float)countProt;
+		double rStd = std::sqrt(var);
+		float rStdNormF = safe((rMeanD>0)?(rStd/rMeanD):0);
 
-		// derivades
-		float s=derivScale.get();
+		// protrusions
+		double th = rMeanD * (double)protThresh.get();
+		int countProt=0;
+		for(auto r:rad) if(r >= th) countProt++;
+		float nProtF = (float)countProt;
+
+		// derivatives
+		float s = derivScale.get();
 		if(firstFrame){
 			dCentX=dCentY=dArea=dPerimeter=dCircularity=dRoughness=dRadStdNorm=dNumProt=0;
 			firstFrame=false;
 		}else{
-			dCentX=(cxF-pCentX)*s; dCentY=(cyF-pCentY)*s;
-			dArea=(AF-pArea)*s; dPerimeter=(PF-pPerimeter)*s;
-			dCircularity=(circF-pCircularity)*s; dRoughness=(roughF-pRoughness)*s;
-			dRadStdNorm=(rStdNormF-pRadStdNorm)*s; dNumProt=(nProtF-pNumProt)*s;
+			dCentX = (cxF - pCentX) * s;
+			dCentY = (cyF - pCentY) * s;
+			dArea = (AF - pArea) * s;
+			dPerimeter = (PF - pPerimeter) * s;
+			dCircularity = (circF - pCircularity) * s;
+			dRoughness = (roughF - pRoughness) * s;
+			dRadStdNorm = (rStdNormF - pRadStdNorm) * s;
+			dNumProt = (nProtF - pNumProt) * s;
 		}
 
 		// store prev
 		pCentX=cxF; pCentY=cyF;
-		pArea=AF; pPerimeter=PF; pCircularity=circF; pRoughness=roughF;
+		pArea=AF; pPerimeter=PF;
+		pCircularity=circF; pRoughness=roughF;
 		pRadStdNorm=rStdNormF; pNumProt=nProtF;
 
-		// derived
-		float centSpd = sqrt(dCentX.get()*dCentX.get() + dCentY.get()*dCentY.get());
+		// high-level
+		float centSpd = std::sqrt(dCentX.get()*dCentX.get() + dCentY.get()*dCentY.get());
 		float blobF = std::max(0.f, 1.f - circF);
 		float deform = absf(dCircularity.get()) + absf(dRoughness.get());
 		float szCh = absf(dArea.get());
@@ -186,7 +244,7 @@ private:
 				  + absf(dRadStdNorm.get())
 				  + centSpd * 0.5f;
 
-		// assign outputs
+		// assign
 		centX=cxF; centY=cyF;
 		width=wF; height=hF; aspect=aspectF;
 		area=AF; perimeter=PF; req=rEqF;
