@@ -57,6 +57,7 @@ private:
 	bool                        isInterpolating;
 	float                       interpolationStartTime;
 	int                         interpolationTargetSlot;
+	float                       interpolationBiPowValue; // BiPow value to use for current interpolation
 	std::map<std::string, ParameterSnapshot> interpolationStartValues;
 	std::unordered_set<std::string>          interpolationActiveKeys;
 
@@ -86,6 +87,8 @@ private:
 	bool isParameterModulated(const std::string& key) const;
 	// manual blacklist + modulated + flagged-as-output (DisableInConnection)
 	bool isParameterExcluded(const std::string& key, ofxOceanodeAbstractParameter* param) const;
+	// Check if parameter should skip interpolation (instant change)
+	bool shouldSkipInterpolation(const std::string& key) const;
 };
 
 #endif // GLOBAL_SNAPSHOTS_H

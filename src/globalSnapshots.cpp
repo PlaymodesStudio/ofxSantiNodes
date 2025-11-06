@@ -35,6 +35,7 @@ globalSnapshots::globalSnapshots()
 , isInterpolating(false)
 , interpolationStartTime(0)
 , interpolationTargetSlot(-1)
+, interpolationBiPowValue(0.0f)
 {
 }
 
@@ -55,7 +56,7 @@ void globalSnapshots::setup(std::string additionalInfo) {
 	buttonSize.set("Button Size", 28.0f, 15.0f, 600.0f);
 	showSnapshotNames.set("Show Names", true);
 	includeMacroParams.set("Include Macro Params", false);
-	interpolationMs.set("Interpolation Ms", 0.0f, 0.0f, 5000.0f);
+	interpolationMs.set("Interpolation Ms", 0.0f, 0.0f, 60000.0f);
 	biPow.set("BiPow", 0.0f, -1.0f, 1.0f);
 	transition.set("Transition", 0.0f, 0.0f, 1.0f);
 	done.set("Done");
@@ -149,6 +150,13 @@ bool globalSnapshots::isParameterExcluded(const std::string& key, ofxOceanodeAbs
 	return false;
 }
 
+bool globalSnapshots::shouldSkipInterpolation(const std::string& key) const {
+	// Parameters that should be stored but NOT interpolated
+	// They will be applied instantly when recalling a snapshot
+	return (key.find("/Interpolation Ms") != std::string::npos ||
+	        key.find("/BiPow") != std::string::npos);
+}
+
 void globalSnapshots::storeSnapshot(int slot) {
 	if (!globalContainer) {
 		ofLogError("globalSnapshots") << "No global container set";
@@ -174,6 +182,9 @@ void globalSnapshots::storeSnapshot(int slot) {
 		
 		auto &grp = node->getParameters();
 		std::string grpName = grp.getEscapedName();
+		
+		// Check if this is a globalSnapshots module (we'll store BiPow for all globalSnapshots instances)
+		bool isOwnNode = (grpName.find("Global_Snapshots") == 0);
 
 		for(int i = 0; i < grp.size(); i++) {
 			auto &p = grp.get(i);
@@ -181,8 +192,9 @@ void globalSnapshots::storeSnapshot(int slot) {
 			if(!oParam) continue;
 
 			std::string key = grpName + "/" + p.getName();
-
-			if(isParameterExcluded(key, oParam)) {
+			
+			// Allow this node's own input parameters to be stored, even if normally excluded
+			if(!isOwnNode && isParameterExcluded(key, oParam)) {
 				continue;
 			}
 
@@ -347,41 +359,75 @@ void globalSnapshots::renderSnapshotMatrix() {
 			bool act = (slot == currentSnapshotSlot);
 			bool isBlinkingTarget = (isInterpolating && slot == interpolationTargetSlot);
 
-			// choose colors
+			// Prepare label and replace /n with newlines
+			std::string label = (has && showSnapshotNames.get())
+								? snapshots[slot].name
+								: ofToString(slot);
+			
+			std::string displayLabel = label;
+			size_t pos = 0;
+			while ((pos = displayLabel.find("/n", pos)) != std::string::npos) {
+				displayLabel.replace(pos, 2, "\n");
+				pos += 1;
+			}
+
+			// Determine button colors based on state
+			ImVec4 buttonCol, buttonHoverCol, buttonActiveCol;
 			if(isBlinkingTarget) {
 				// orange-ish, blinking
 				float baseR = 1.0f;
 				float baseG = 0.5f;
 				float baseB = 0.0f;
-				ImVec4 col     (baseR * (0.7f + 0.3f*blink), baseG * (0.5f + 0.5f*blink), baseB, 1.0f);
-				ImVec4 colHover(baseR, baseG, 0.0f, 1.0f);
-				ImVec4 colActive(baseR, baseG, 0.0f, 1.0f);
-				ImGui::PushStyleColor(ImGuiCol_Button,       col);
-				ImGui::PushStyleColor(ImGuiCol_ButtonHovered,colHover);
-				ImGui::PushStyleColor(ImGuiCol_ButtonActive, colActive);
+				buttonCol = ImVec4(baseR * (0.7f + 0.3f*blink), baseG * (0.5f + 0.5f*blink), baseB, 1.0f);
+				buttonHoverCol = ImVec4(baseR, baseG, 0.0f, 1.0f);
+				buttonActiveCol = ImVec4(baseR, baseG, 0.0f, 1.0f);
 			}
 			else if(act) {
-				ImGui::PushStyleColor(ImGuiCol_Button,       ImVec4(0.4f,0,0,1));
-				ImGui::PushStyleColor(ImGuiCol_ButtonHovered,ImVec4(0.7f,0,0,1));
-				ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1,0,0,1));
+				// Active snapshot - GREEN
+				buttonCol = ImVec4(0,0.4f,0,1);
+				buttonHoverCol = ImVec4(0,0.7f,0,1);
+				buttonActiveCol = ImVec4(0,1,0,1);
 			}
 			else if(has) {
-				ImGui::PushStyleColor(ImGuiCol_Button,       ImVec4(0.2f,0.4f,0,1));
-				ImGui::PushStyleColor(ImGuiCol_ButtonHovered,ImVec4(0.25f,0.5f,0,1));
-				ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.3f,0.6f,0,1));
+				// Stored snapshot - RED
+				buttonCol = ImVec4(0.4f,0,0,1);
+				buttonHoverCol = ImVec4(0.7f,0,0,1);
+				buttonActiveCol = ImVec4(1,0,0,1);
 			}
 			else {
-				ImGui::PushStyleColor(ImGuiCol_Button,       ImVec4(0.2f,0.2f,0.2f,1));
-				ImGui::PushStyleColor(ImGuiCol_ButtonHovered,ImVec4(0.3f,0.3f,0.3f,1));
-				ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.4f,0.4f,0.4f,1));
+				buttonCol = ImVec4(0.2f,0.2f,0.2f,1);
+				buttonHoverCol = ImVec4(0.3f,0.3f,0.3f,1);
+				buttonActiveCol = ImVec4(0.4f,0.4f,0.4f,1);
 			}
-			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f,0.8f,0.8f,1));
 
-			std::string label = (has && showSnapshotNames.get())
-								? snapshots[slot].name
-								: ofToString(slot);
-
-			if(ImGui::Button(label.c_str(), ImVec2(buttonSize.get(), buttonSize.get()/1.5f))) {
+			// Use invisible button for interaction and custom rendering
+			ImVec2 buttonSize_vec(buttonSize.get(), buttonSize.get()/1.5f);
+			ImVec2 p0 = ImGui::GetCursorScreenPos();
+			
+			bool clicked = ImGui::InvisibleButton(("##btn" + ofToString(slot)).c_str(), buttonSize_vec);
+			
+			// Draw button background with appropriate color
+			ImDrawList* draw_list = ImGui::GetWindowDrawList();
+			ImVec2 p1(p0.x + buttonSize_vec.x, p0.y + buttonSize_vec.y);
+			
+			ImVec4 currentCol = buttonCol;
+			if(ImGui::IsItemActive()) {
+				currentCol = buttonActiveCol;
+			} else if(ImGui::IsItemHovered()) {
+				currentCol = buttonHoverCol;
+			}
+			
+			draw_list->AddRectFilled(p0, p1, ImGui::GetColorU32(currentCol), 3.0f);
+			
+			// Draw centered multi-line text
+			ImVec2 textSize = ImGui::CalcTextSize(displayLabel.c_str());
+			ImVec2 textPos(
+				p0.x + (buttonSize_vec.x - textSize.x) * 0.5f,
+				p0.y + (buttonSize_vec.y - textSize.y) * 0.5f
+			);
+			draw_list->AddText(textPos, ImGui::GetColorU32(ImVec4(0.8f,0.8f,0.8f,1)), displayLabel.c_str());
+			
+			if(clicked) {
 				if(ImGui::GetIO().KeyShift) {
 					storeSnapshot(slot);
 				} else {
@@ -392,8 +438,6 @@ void globalSnapshots::renderSnapshotMatrix() {
 					}
 				}
 			}
-
-			ImGui::PopStyleColor(4);
 			ImGui::PopID();
 		}
 	}
@@ -622,6 +666,25 @@ void globalSnapshots::startInterpolation(int targetSlot) {
 
 	auto &targetSnap = it->second.paramValues;
 	
+	// Extract BiPow value from target snapshot to use for this interpolation
+	interpolationBiPowValue = 0.0f; // default
+	
+	// BiPow is stored with the module's instance name (e.g., "Global_Snapshots_1/BiPow")
+	// The slot number is at the JSON top level, not in the parameter key
+	std::string expectedKey = "Global_Snapshots_1/BiPow";
+	
+	auto tgtIt = targetSnap.find(expectedKey);
+	
+	if(tgtIt != targetSnap.end()) {
+		try {
+			if(tgtIt->second.value.is_number()) {
+				interpolationBiPowValue = tgtIt->second.value.get<float>();
+			}
+		} catch(...) {
+			interpolationBiPowValue = 0.0f;
+		}
+	}
+	
 	for(auto *node : globalContainer->getAllModules()) {
 		if (!node) continue;
 		
@@ -645,6 +708,22 @@ void globalSnapshots::startInterpolation(int targetSlot) {
 
 			if(isParameterExcluded(key, oParam)) {
 				continue;
+			}
+
+			// If this parameter should not be interpolated, apply it instantly
+			if(shouldSkipInterpolation(key)) {
+				try {
+					auto &ps = tgtIt->second;
+					if(ps.type == typeid(float).name()) {
+						oParam->cast<float>().getParameter() = ps.value.get<float>();
+					}
+					else if(ps.type == typeid(int).name()) {
+						oParam->cast<int>().getParameter() = (int)std::round(ps.value.get<float>());
+					}
+				} catch(...) {
+					// Skip
+				}
+				continue; // Don't add to interpolation
 			}
 
 			ParameterSnapshot ps;
@@ -711,11 +790,6 @@ void globalSnapshots::startInterpolation(int targetSlot) {
 	interpolationStartTime = ofGetElapsedTimeMillis();
 	interpolationTargetSlot = targetSlot;
 	transition = 0.0f;
-	
-	ofLogNotice("globalSnapshots") << "Started interpolation to slot " << targetSlot
-								   << " over " << interpolationMs.get()
-								   << "ms with " << interpolationActiveKeys.size()
-								   << " changing params";
 }
 
 void globalSnapshots::updateInterpolation() {
@@ -729,22 +803,23 @@ void globalSnapshots::updateInterpolation() {
 		progress = 1.0f;
 		isInterpolating = false;
 		currentSnapshotSlot = interpolationTargetSlot;
-		transition = 1.0f;
 		done.trigger();
-		ofLogNotice("globalSnapshots") << "Interpolation complete";
-	} else {
-		transition = progress;
 	}
 	
-	// Apply BiPow to the progress for easing
+	// Apply BiPow to the progress for easing (use stored value from when interpolation started)
 	float easedProgress = progress;
-	if(biPow.get() != 0){
-		easedProgress = (easedProgress*2) - 1;
-		customPow(easedProgress, biPow.get());
-		easedProgress = (easedProgress+1) * 0.5;
+	
+	if(interpolationBiPowValue != 0.0f){
+		easedProgress = (easedProgress*2.0f) - 1.0f;  // Map [0,1] to [-1,1]
+		customPow(easedProgress, interpolationBiPowValue);
+		easedProgress = (easedProgress+1.0f) * 0.5f;  // Map [-1,1] back to [0,1]
+	} else {
+		// When BiPow is 0, apply smoothstep instead for smooth easing
+		easedProgress = easedProgress * easedProgress * (3.0f - 2.0f * easedProgress);
 	}
-	// Apply smoothstep after BiPow
-	easedProgress = easedProgress * easedProgress * (3.0f - 2.0f * easedProgress);
+	
+	// Update transition parameter with the eased progress
+	transition = easedProgress;
 	
 	auto targetSnapshot = snapshots.find(interpolationTargetSlot);
 	if(targetSnapshot == snapshots.end()) {
