@@ -7,6 +7,13 @@
 #include "ofMain.h" // for ofGetElapsedTimef / ofGetElapsedTimeMillis
 
 // --- small helpers ---
+static void customPow(float & value, float pow){
+	float k1 = 2*pow*0.99999;
+	float k2 = (k1/((-pow*0.999999)+1));
+	float k3 = k2 * std::fabs(value) + 1;
+	value = value * (k2+1) / k3;
+}
+
 static bool floatsEqual(float a, float b, float eps = 1e-6f) {
 	return std::fabs(a - b) <= eps;
 }
@@ -45,10 +52,13 @@ void globalSnapshots::setup(std::string additionalInfo) {
 	
 	matrixRows.set("Rows", 2, 1, 8);
 	matrixCols.set("Cols", 8, 1, 8);
-	buttonSize.set("Button Size", 28.0f, 15.0f, 60.0f);
+	buttonSize.set("Button Size", 28.0f, 15.0f, 600.0f);
 	showSnapshotNames.set("Show Names", true);
 	includeMacroParams.set("Include Macro Params", false);
 	interpolationMs.set("Interpolation Ms", 0.0f, 0.0f, 5000.0f);
+	biPow.set("BiPow", 0.0f, -1.0f, 1.0f);
+	transition.set("Transition", 0.0f, 0.0f, 1.0f);
+	done.set("Done");
 	
 	addInspectorParameter(includeMacroParams);
 	addInspectorParameter(matrixRows);
@@ -63,12 +73,15 @@ void globalSnapshots::setup(std::string additionalInfo) {
 	});
 
 	addParameter(interpolationMs);
+	addParameter(biPow);
 	addParameter(activeSnapshotSlot.set(
 		"Slot",
 		-1,
 		-1,
 		matrixRows.get() * matrixCols.get() - 1
 	));
+	addOutputParameter(transition);
+	addOutputParameter(done);
 	activeSnapshotSlotListener = activeSnapshotSlot.newListener([this](int &slot){
 		if(slot >= 0) {
 			if(interpolationMs.get() > 0) {
@@ -697,6 +710,7 @@ void globalSnapshots::startInterpolation(int targetSlot) {
 	isInterpolating = true;
 	interpolationStartTime = ofGetElapsedTimeMillis();
 	interpolationTargetSlot = targetSlot;
+	transition = 0.0f;
 	
 	ofLogNotice("globalSnapshots") << "Started interpolation to slot " << targetSlot
 								   << " over " << interpolationMs.get()
@@ -715,10 +729,22 @@ void globalSnapshots::updateInterpolation() {
 		progress = 1.0f;
 		isInterpolating = false;
 		currentSnapshotSlot = interpolationTargetSlot;
+		transition = 1.0f;
+		done.trigger();
 		ofLogNotice("globalSnapshots") << "Interpolation complete";
+	} else {
+		transition = progress;
 	}
 	
-	float easedProgress = progress * progress * (3.0f - 2.0f * progress);
+	// Apply BiPow to the progress for easing
+	float easedProgress = progress;
+	if(biPow.get() != 0){
+		easedProgress = (easedProgress*2) - 1;
+		customPow(easedProgress, biPow.get());
+		easedProgress = (easedProgress+1) * 0.5;
+	}
+	// Apply smoothstep after BiPow
+	easedProgress = easedProgress * easedProgress * (3.0f - 2.0f * easedProgress);
 	
 	auto targetSnapshot = snapshots.find(interpolationTargetSlot);
 	if(targetSnapshot == snapshots.end()) {
