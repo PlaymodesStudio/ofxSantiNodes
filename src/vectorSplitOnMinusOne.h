@@ -1,5 +1,6 @@
 #pragma once
 #include "ofxOceanodeNodeModel.h"
+#include <algorithm> // per std::sort
 
 class vectorSplitOnMinusOne : public ofxOceanodeNodeModel {
 public:
@@ -37,6 +38,7 @@ private:
 	ofEventListener listener;
 
 	void split(const vector<float> &v){
+		// 1) separem pels -1
 		vector<vector<float>> chunks;
 		chunks.reserve(8);
 
@@ -52,16 +54,25 @@ private:
 
 		for(float val : v){
 			if(val == -1.0f){
-				// tanca chunk
 				flushCurrent();
 			}else{
 				current.push_back(val);
 			}
 		}
-		// últim chunk
 		flushCurrent();
 
-		// posem-ho als outputs, buidant els que sobren
+		// nombre de grups trobats (abans d’ordenar ja està bé)
+		numSets = static_cast<int>(chunks.size());
+
+		// 2) ordenem de més llarg a més curt
+		// si hi ha empats, es manté l’ordre d’aparició (stable sort)
+		std::stable_sort(chunks.begin(), chunks.end(),
+			[](const vector<float> &a, const vector<float> &b){
+				return a.size() > b.size(); // desc
+			}
+		);
+
+		// 3) assignem als outputs segons aquest ordre
 		setOut(out1, chunks, 0);
 		setOut(out2, chunks, 1);
 		setOut(out3, chunks, 2);
@@ -71,23 +82,10 @@ private:
 		setOut(out7, chunks, 6);
 		setOut(out8, chunks, 7);
 
-		// nombre de grups trobats
-		numSets = static_cast<int>(chunks.size());
-
-		// calcular el més gran
+		// 4) largest = primer (si n’hi ha)
 		if(!chunks.empty()){
-			// busquem el de més mida; si hi ha empat, es queda el primer
-			size_t bestIdx = 0;
-			size_t bestSize = chunks[0].size();
-			for(size_t i = 1; i < chunks.size(); ++i){
-				if(chunks[i].size() > bestSize){
-					bestSize = chunks[i].size();
-					bestIdx = i;
-				}
-			}
-			largest = chunks[bestIdx];
+			largest = chunks[0];
 		}else{
-			// si no hi ha chunks, posem un vector curt perquè el GUI no peti
 			largest = {0.0f};
 		}
 	}
