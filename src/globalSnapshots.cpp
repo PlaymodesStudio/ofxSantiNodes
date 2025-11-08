@@ -838,19 +838,19 @@ void globalSnapshots::updateInterpolation() {
 			std::string grpName = grp.getEscapedName();
 			
 			for (int i = 0; i < grp.size(); i++) {
-				auto &p = grp.get(i);
-				auto *oParam = dynamic_cast<ofxOceanodeAbstractParameter*>(&p);
-				if(!oParam) continue;
-				
-				std::string thisKey = grpName + "/" + p.getName();
-				if (thisKey != key) continue;
-				
-				auto startIt  = interpolationStartValues.find(key);
-				auto targetIt = targetSnapshot->second.paramValues.find(key);
-				if(startIt == interpolationStartValues.end() || targetIt == targetSnapshot->second.paramValues.end())
-					break;
-				
 				try {
+					auto &p = grp.get(i);
+					auto *oParam = dynamic_cast<ofxOceanodeAbstractParameter*>(&p);
+					if(!oParam) continue;
+					
+					std::string thisKey = grpName + "/" + p.getName();
+					if (thisKey != key) continue;
+					
+					auto startIt  = interpolationStartValues.find(key);
+					auto targetIt = targetSnapshot->second.paramValues.find(key);
+					if(startIt == interpolationStartValues.end() || targetIt == targetSnapshot->second.paramValues.end())
+						break;
+					
 					auto vtype = oParam->valueType();
 					if(vtype == typeid(float).name()) {
 						float startVal  = startIt->second.value.get<float>();
@@ -899,11 +899,11 @@ void globalSnapshots::updateInterpolation() {
 							}
 						}
 					}
+					break;
 				} catch(...) {
-					// Skip
+					// Skip on any error during interpolation
+					continue;
 				}
-				
-				break;
 			}
 		}
 	}
