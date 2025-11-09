@@ -7,16 +7,24 @@ public:
 	vectorDeglitch() : ofxOceanodeNodeModel("vectorDeglitch") {}
 
 	void setup() override {
-		// input 0..1
+		// 0..1 input
 		addParameter(input.set("Input", {0.0f}, {0.0f}, {1.0f}));
 
-		// normalized thresholds
-		addParameter(frameThresh.set("FrameThresh", 0.15f, 0.0f, 1.0f));
+		// per-point change threshold: above this, the point is "suspicious"
 		addParameter(pointThresh.set("PointThresh", 0.10f, 0.0f, 1.0f));
-		addParameter(blend.set("Blend", 1.0f, 0.0f, 1.0f)); // 1 = 100% valor antic
 
-		// quant considerem que un frame és "plà" (p.ex. tot zeros)
+		// how many bad points (fraction 0..1) make the whole frame bad
+		// e.g. 0.35 → if >35% of indices jump, we reject the frame
+		addParameter(badRatio.set("BadRatio", 0.35f, 0.0f, 1.0f));
+
+		// when a point is suspicious but frame is OK, blend to previous
+		addParameter(blend.set("Blend", 1.0f, 0.0f, 1.0f)); // 1 = keep old
+
+		// flat detector (all zeros or very small range)
 		addParameter(flatEps.set("FlatEps", 0.0001f, 0.0f, 0.01f));
+
+		// how many frames to keep outputting last good after a bad frame
+		addParameter(glitchHold.set("Hold", 2, 0, 6));
 
 		addOutputParameter(clean.set("Clean", {0.0f}, {0.0f}, {1.0f}));
 		addOutputParameter(glitched.set("Glitched", 0, 0, 1));
@@ -27,17 +35,27 @@ public:
 
 		firstFrame = true;
 		waitingForResync = false;
+		holdCounter = 0;
 	}
 
 private:
+	// params
 	ofParameter<std::vector<float>> input;
-	ofParameter<float> frameThresh, pointThresh, blend, flatEps;
+	ofParameter<float> pointThresh;
+	ofParameter<float> badRatio;
+	ofParameter<float> blend;
+	ofParameter<float> flatEps;
+	ofParameter<int>   glitchHold;
+
 	ofParameter<std::vector<float>> clean;
 	ofParameter<int> glitched;
 
-	std::vector<float> prev;
+	// state
+	std::vector<float> lastGood;    // last accepted frame
+	std::vector<float> prevRaw;     // last raw frame
 	bool firstFrame;
-	bool waitingForResync;  // estem en "hem rebut zeros, espera al pròxim frame bo"
+	bool waitingForResync;
+	int  holdCounter;
 	ofEventListener listener;
 
 	bool isFlat(const std::vector<float> &v, float eps){
@@ -51,79 +69,102 @@ private:
 	}
 
 	void process(const std::vector<float> &inVec){
-		// 1. primer frame
+		// 1) first frame
 		if(firstFrame){
 			clean = inVec;
-			prev = inVec;
+			lastGood = inVec;
+			prevRaw  = inVec;
 			glitched = 0;
+			waitingForResync = isFlat(inVec, flatEps.get());
 			firstFrame = false;
-			waitingForResync = isFlat(inVec, flatEps.get());
 			return;
 		}
 
-		// 2. si la mida canvia, reseteja (per si de cas)
-		if(inVec.size() != prev.size()){
+		// 2) size changed → accept and reset
+		if(inVec.size() != lastGood.size()){
 			clean = inVec;
-			prev = inVec;
+			lastGood = inVec;
+			prevRaw  = inVec;
 			glitched = 0;
 			waitingForResync = isFlat(inVec, flatEps.get());
+			holdCounter = 0;
 			return;
 		}
 
-		// 3. detectem si aquest frame és "plà" (zeros)
-		bool flatNow = isFlat(inVec, flatEps.get());
+		// now sizes match
+		const std::vector<float> &cur = inVec;
+		size_t n = cur.size();
 
-		// si ara és plà -> entrem en mode "espera el pròxim bo"
+		bool flatNow = isFlat(cur, flatEps.get());
+
+		// 3) flat → accept but enter resync
 		if(flatNow){
-			clean = inVec;
-			prev = inVec;
+			clean = cur;
+			lastGood = cur;
+			prevRaw  = cur;
 			glitched = 0;
 			waitingForResync = true;
+			holdCounter = 0;
 			return;
 		}
 
-		// 4. si veníem d'un frame plà → acceptem aquest directament i sortim de resync
+		// 4) resync: first non-flat after flat is accepted
 		if(waitingForResync){
-			clean = inVec;
-			prev = inVec;
+			clean = cur;
+			lastGood = cur;
+			prevRaw  = cur;
 			glitched = 0;
 			waitingForResync = false;
+			holdCounter = 0;
 			return;
 		}
 
-		// 5. aquí ja tenim: mateixa mida, frame no plà, no estem en resync
-		size_t n = inVec.size();
-		std::vector<float> out(n);
-
-		// frame-level diff
-		float avgDiff = 0.0f;
-		for(size_t i = 0; i < n; ++i){
-			avgDiff += std::fabs(inVec[i] - prev[i]);
-		}
-		avgDiff /= (float)n;
-
-		if(avgDiff > frameThresh.get()){
-			// frame glitxat: reuse prev
-			out = prev;
+		// 5) if we are in hold, just keep last good
+		if(holdCounter > 0){
+			clean = lastGood;
 			glitched = 1;
-		}else{
-			// per-point
-			float ptTh = pointThresh.get();
-			float b = blend.get();
-			for(size_t i = 0; i < n; ++i){
-				float cur = inVec[i];
-				float old = prev[i];
-				float d = std::fabs(cur - old);
-				if(d > ptTh){
-					cur = old * b + cur * (1.0f - b);
-				}
-				out[i] = cur;
+			holdCounter--;
+			prevRaw = cur;
+			return;
+		}
+
+		// 6) per-index deviation counting
+		float ptTh = pointThresh.get();
+		int badCount = 0;
+		for(size_t i = 0; i < n; ++i){
+			if(std::fabs(cur[i] - lastGood[i]) > ptTh){
+				badCount++;
 			}
-			glitched = 0;
+		}
+
+		float ratio = (n > 0) ? (float)badCount / (float)n : 0.0f;
+
+		// 7) if too many indices changed → frame is bad
+		if(ratio > badRatio.get()){
+			clean = lastGood;               // keep old
+			glitched = 1;
+			holdCounter = glitchHold.get(); // swallow next 1–3 frames
+			prevRaw = cur;
+			return;
+		}
+
+		// 8) otherwise frame is OK, but we still deglitch per-point
+		std::vector<float> out(n);
+		float b = blend.get();
+		for(size_t i = 0; i < n; ++i){
+			float c = cur[i];
+			float o = lastGood[i];
+			float d = std::fabs(c - o);
+			if(d > ptTh){
+				// suspicious point → blend
+				c = o * b + c * (1.0f - b);
+			}
+			out[i] = c;
 		}
 
 		clean = out;
-		prev = out;
-		// no canviem waitingForResync aquí perquè ja estem en mode normal
+		glitched = 0;
+		lastGood = out;   // update accepted
+		prevRaw  = cur;
 	}
 };
