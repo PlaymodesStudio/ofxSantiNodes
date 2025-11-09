@@ -174,6 +174,7 @@
 #include "metaballAnalyzer.h"
 #include "vectorSplitOnMinusOne.h"
 #include "vectorDeglitch.h"
+#include "debounce.h"
 
 
 
@@ -349,6 +350,7 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<metaballAnalyzer>("Santi/Math");
 	o.registerModel<vectorSplitOnMinusOne>("Santi/Math");
 	o.registerModel<vectorDeglitch>("Santi/Math");
+	o.registerModel<debounce>("Santi/Math");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
