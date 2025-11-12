@@ -1,5 +1,6 @@
 #pragma once
 #include "ofxOceanodeNodeModel.h"
+#include <algorithm> // per std::sort
 
 class vectorSplitOnMinusOne : public ofxOceanodeNodeModel {
 public:
@@ -19,6 +20,9 @@ public:
 		addOutputParameter(out7.set("Out7", {0.0f}, {0.0f}, {1.0f}));
 		addOutputParameter(out8.set("Out8", {0.0f}, {0.0f}, {1.0f}));
 
+		// nou output: el vector més gran trobat
+		addOutputParameter(largest.set("Largest", {0.0f}, {0.0f}, {1.0f}));
+
 		addOutputParameter(numSets.set("NumSets", 0, 0, 8));
 
 		listener = input.newListener([this](vector<float> &v){
@@ -29,10 +33,12 @@ public:
 private:
 	ofParameter<vector<float>> input;
 	ofParameter<vector<float>> out1, out2, out3, out4, out5, out6, out7, out8;
+	ofParameter<vector<float>> largest;
 	ofParameter<int> numSets;
 	ofEventListener listener;
 
 	void split(const vector<float> &v){
+		// 1) separem pels -1
 		vector<vector<float>> chunks;
 		chunks.reserve(8);
 
@@ -48,16 +54,25 @@ private:
 
 		for(float val : v){
 			if(val == -1.0f){
-				// tanca chunk
 				flushCurrent();
 			}else{
 				current.push_back(val);
 			}
 		}
-		// últim chunk
 		flushCurrent();
 
-		// posem-ho als outputs, buidant els que sobren
+		// nombre de grups trobats (abans d’ordenar ja està bé)
+		numSets = static_cast<int>(chunks.size());
+
+		// 2) ordenem de més llarg a més curt
+		// si hi ha empats, es manté l’ordre d’aparició (stable sort)
+		std::stable_sort(chunks.begin(), chunks.end(),
+			[](const vector<float> &a, const vector<float> &b){
+				return a.size() > b.size(); // desc
+			}
+		);
+
+		// 3) assignem als outputs segons aquest ordre
 		setOut(out1, chunks, 0);
 		setOut(out2, chunks, 1);
 		setOut(out3, chunks, 2);
@@ -67,7 +82,12 @@ private:
 		setOut(out7, chunks, 6);
 		setOut(out8, chunks, 7);
 
-		numSets = (int)chunks.size();
+		// 4) largest = primer (si n’hi ha)
+		if(!chunks.empty()){
+			largest = chunks[0];
+		}else{
+			largest = {0.0f};
+		}
 	}
 
 	void setOut(ofParameter<vector<float>> &dest,
