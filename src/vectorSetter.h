@@ -22,7 +22,9 @@ public:
                              vector<float>(1, 0.0f),
                              vector<float>(1, -std::numeric_limits<float>::max()),
                              vector<float>(1, std::numeric_limits<float>::max())));
-        addParameter(accum.set("Accum", false));
+		addParameter(accum.set("Accum", false));
+		addParameter(accOnValue.set("Acc.OnValue", false));
+		//addParameterDropdown(accumType, "Accum Mode", 0,{"None", "Acc.OnIndex", "Acc.OnValue", "Always"});
         addOutputParameter(output.set("Output",
                                     vector<float>(1, 0.0f),
                                     vector<float>(1, -std::numeric_limits<float>::max()),
@@ -35,7 +37,7 @@ public:
             updateOutput();
         }));
         listeners.push(index.newListener([this](vector<int> &v){
-            updateOutput();
+            if(!accOnValue) updateOutput();
         }));
         listeners.push(setTo.newListener([this](vector<float> &v){
             updateOutput();
@@ -50,8 +52,11 @@ private:
     ofParameter<vector<int>> index;
     ofParameter<vector<float>> setTo;
     ofParameter<bool> accum;
+    ofParameter<bool> accOnValue;
     ofParameter<vector<float>> output;
-    vector<float> previousOutput;
+	//ofParameter<int> accumType;
+	vector<float> previousOutput;
+	
 
     ofEventListeners listeners;
 
