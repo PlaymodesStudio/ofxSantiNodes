@@ -8,7 +8,7 @@
 class vectorSetter : public ofxOceanodeNodeModel {
 public:
     vectorSetter() : ofxOceanodeNodeModel("Vector Setter") {
-        description = "Modifies specific elements of an input vector at given indices. Accepts single or multiple indices and can set to a single value or a vector of values. With accumulation enabled, previous values are preserved unless overwritten.";
+        description = "This node takes an input vector of floats and lets you replace specific elements at given indices, then outputs the modified vector. You choose which positions to change with the “Index” vector and what values to write with the “Set To” vector. If “Set To” has only one value, that value is used for all indices. If it has fewer values than indices, the last value is reused to fill the rest. If it has more values, the extra ones are ignored.\n\nWhen “Accum” is off, each calculation starts from the current input vector. When “Accum” is on, the node starts from the previous output (as long as it’s the same size as the input), so earlier edits stay in place until you overwrite them. The “Update Mode” menu controls what triggers a recalculation: “OnIndex” reacts to index changes, “OnValue” reacts to value changes, and “Always” reacts to both, while input changes always update the result.";
 
         addParameter(input.set("Input",
                              vector<float>(1, 0.0f),
@@ -23,8 +23,8 @@ public:
                              vector<float>(1, -std::numeric_limits<float>::max()),
                              vector<float>(1, std::numeric_limits<float>::max())));
 		addParameter(accum.set("Accum", false));
-		addParameter(accOnValue.set("Acc.OnValue", false));
-		//addParameterDropdown(accumType, "Accum Mode", 0,{"None", "Acc.OnIndex", "Acc.OnValue", "Always"});
+		//addParameter(accOnValue.set("Acc.OnValue", false));
+		addParameterDropdown(accumType,"Update Mode",2,{"OnIndex", "OnValue", "Always"});
         addOutputParameter(output.set("Output",
                                     vector<float>(1, 0.0f),
                                     vector<float>(1, -std::numeric_limits<float>::max()),
@@ -34,17 +34,18 @@ public:
         previousOutput = vector<float>(1, 0.0f);
 
         listeners.push(input.newListener([this](vector<float> &v){
-            updateOutput();
+			updateOutput();
         }));
         listeners.push(index.newListener([this](vector<int> &v){
-            if(!accOnValue) updateOutput();
+            if((accumType==0)||(accumType==2)) updateOutput();
         }));
         listeners.push(setTo.newListener([this](vector<float> &v){
-            updateOutput();
+			if((accumType==1)||(accumType==2)) updateOutput();
         }));
-        listeners.push(accum.newListener([this](bool &v){
-            updateOutput();
-        }));
+//        listeners.push(accumType.newListener([this](int &i){
+//			if((accumType!=0)) updateOutput(true);
+//			else updateOutput(false);
+//        }));
     }
 
 private:
@@ -52,9 +53,9 @@ private:
     ofParameter<vector<int>> index;
     ofParameter<vector<float>> setTo;
     ofParameter<bool> accum;
-    ofParameter<bool> accOnValue;
+    //ofParameter<bool> accOnValue;
     ofParameter<vector<float>> output;
-	//ofParameter<int> accumType;
+	ofParameter<int> accumType;
 	vector<float> previousOutput;
 	
 
