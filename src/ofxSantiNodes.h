@@ -175,6 +175,11 @@
 #include "vectorSplitOnMinusOne.h"
 #include "vectorDeglitch.h"
 #include "debounce.h"
+#include "progression.h"
+#include "intervalRatios.h"
+#include "justChords.h"
+#include "harmonicPartials.h"
+
 
 
 
@@ -351,6 +356,10 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<vectorSplitOnMinusOne>("Santi/Math");
 	o.registerModel<vectorDeglitch>("Santi/Math");
 	o.registerModel<debounce>("Santi/Math");
+	o.registerModel<progression>("Santi/Math");
+	o.registerModel<intervalRatios>("Santi/Math");
+	o.registerModel<justChords>("Santi/Math");
+	o.registerModel<harmonicPartials>("Santi/Math");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
