@@ -179,6 +179,8 @@
 #include "intervalRatios.h"
 #include "justChords.h"
 #include "harmonicPartials.h"
+#include "justIntonationAdapter.h"
+#include "matrixDisplay.h"
 
 
 
@@ -356,10 +358,14 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<vectorSplitOnMinusOne>("Santi/Math");
 	o.registerModel<vectorDeglitch>("Santi/Math");
 	o.registerModel<debounce>("Santi/Math");
+	
 	o.registerModel<progression>("Santi/Math");
 	o.registerModel<intervalRatios>("Santi/Math");
 	o.registerModel<justChords>("Santi/Math");
 	o.registerModel<harmonicPartials>("Santi/Math");
+	o.registerModel<justIntonationAdapter>("Santi/Math");
+	
+	o.registerModel<matrixDisplay>("Santi/General");
 
     
     o.registerModel<tableRowId>("Santi/Thalastasi");
