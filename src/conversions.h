@@ -9,7 +9,7 @@ class conversions : public ofxOceanodeNodeModel {
 public:
     conversions() : ofxOceanodeNodeModel("Conversions") {
         addParameter(input.set("Input", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
-        addParameterDropdown(operation, "Op", 0, {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance", "lin-log", "log-lin", "kelvin-rgb", "rgb-kelvin"});
+        addParameterDropdown(operation, "Op", 0, {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance", "lin-log", "log-lin", "kelvin-rgb", "rgb-kelvin", "beat-sec"});
         addOutputParameter(output.set("Output", {0.0f}, {-FLT_MAX}, {FLT_MAX}));
         
         description = "Converts between various units or scales.";
@@ -144,7 +144,7 @@ private:
     
 	void processInput(const vector<float>& vf) {
 			vector<float> out;
-			vector<string> operations = {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance", "lin-log", "log-lin", "kelvin-rgb", "rgb-kelvin"};
+			vector<string> operations = {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance", "lin-log", "log-lin", "kelvin-rgb", "rgb-kelvin", "beat-sec"};
 			
 			int opIndex = operation.get();
 			string op = operations[opIndex];
@@ -184,6 +184,10 @@ private:
 					else if(op == "beat-ms") {
 						float bpm = getOceanodeBPM();
 						out.push_back((1.0 / (bpm / 60.0)) * 1000.0 * value);
+					}
+					else if(op == "beat-sec") {
+						float bpm = getOceanodeBPM();
+						out.push_back((1.0 / (bpm / 60.0)) * value);
 					}
 					else if(op == "ms-beat") {
 						float bpm = getOceanodeBPM();
