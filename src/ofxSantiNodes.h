@@ -181,6 +181,13 @@
 #include "harmonicPartials.h"
 #include "justIntonationAdapter.h"
 #include "matrixDisplay.h"
+#include "reaperOscTransport.h"
+#include "midiClockTransport.h"
+#include "ppqBeats.h"
+#include "ppqMeter.h"
+#include "ppqPhasor.h"
+#include "ppqGenerator.h"
+#include "ppqTimeline.h"
 
 
 
@@ -358,6 +365,13 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<vectorSplitOnMinusOne>("Santi/Math");
 	o.registerModel<vectorDeglitch>("Santi/Math");
 	o.registerModel<debounce>("Santi/Math");
+	o.registerModel<reaperOscTransport>("Santi/AudioUtils");
+	o.registerModel<midiClockTransport>("Santi/AudioUtils");
+	o.registerModel<ppqBeats>("Santi/AudioUtils");
+	o.registerModel<ppqMeter>("Santi/AudioUtils");
+	o.registerModel<ppqPhasor>("Santi/AudioUtils");
+	o.registerModel<ppqGenerator>("Santi/AudioUtils");
+	o.registerModel<ppqTimeline>("Santi/AudioUtils");
 	
 	o.registerModel<progression>("Santi/Math");
 	o.registerModel<intervalRatios>("Santi/Math");
