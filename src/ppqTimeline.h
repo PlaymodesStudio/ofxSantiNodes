@@ -28,10 +28,19 @@ public:
 		addParameter(loopEnabled.set("Loop", false));
 		addParameter(loopStartBar.set("Loop Start", 0, 0, 2047)); // 0-based
 		addParameter(loopEndBar.set("Loop End", 4, 1, 2048));     // exclusive
+		addParameter(wrapAtEnd.set("Wrap End", true));
 
 		// ---------- UI ----------
 		addParameter(showWindow.set("Show", false));
 		addParameter(zoomBars.set("Zoom Bars", 8, 1, 128));
+		addParameterDropdown(gridDiv, "Grid", 2, {
+			"4th", "8th", "16th", "32nd"
+		});
+
+		addParameterDropdown(gridMode, "Grid Mode", 0, {
+			"Straight", "Dotted", "Triplet"
+		});
+
 
 		// ---------- Outputs ----------
 		addOutputParameter(ppq24.set("PPQ 24", 0, 0, INT_MAX));
@@ -51,10 +60,24 @@ public:
 		float dt = ofGetLastFrameTime();
 		if(dt <= 0.f) return;
 
+		double prev = ppqAcc;
+
 		ppqAcc += dt * (bpm.get() * 24.f / 60.f);
-		handleLoop();
+
+		handleLoop(prev);
+
+		// --- wrap whole timeline ---
+		if(!loopEnabled.get() && wrapAtEnd.get()){
+			double tot = double(totalTicks());
+			if(tot > 0.0 && ppqAcc >= tot){
+				ppqAcc = std::fmod(ppqAcc, tot);
+			}
+		}
+
 		updateOutputs();
+
 	}
+
 
 	// ---------- GUI ----------
 	void draw(ofEventArgs &) override {
@@ -119,21 +142,24 @@ private:
 		phasor = 0.f;
 	}
 
-	void handleLoop(){
+	void handleLoop(double prevPPQ){
 		if(!loopEnabled) return;
 
 		int tpb = ticksPerBar();
-		int startPPQ = loopStartBar.get() * tpb;
-		int endPPQ   = loopEndBar.get()   * tpb;
+		double startPPQ = double(loopStartBar.get()) * double(tpb);
+		double endPPQ   = double(loopEndBar.get())   * double(tpb);
 
-		if(endPPQ <= startPPQ) return;
+		double len = endPPQ - startPPQ;
+		if(len <= 0.0) return;
 
-		if(ppqAcc >= endPPQ){
-			ppqAcc = startPPQ +
-					 fmod(ppqAcc - startPPQ,
-						  double(endPPQ - startPPQ));
+		// Only wrap if playback advanced across the loop end.
+		// This prevents immediate wrap when user seeks beyond loop end.
+		if(prevPPQ < endPPQ && ppqAcc >= endPPQ){
+			ppqAcc = startPPQ + std::fmod(ppqAcc - startPPQ, len);
+			if(ppqAcc < startPPQ) ppqAcc += len; // safety
 		}
 	}
+
 
 	void updateOutputs(){
 		int tot = totalTicks();
@@ -152,52 +178,93 @@ private:
 	// Timeline UI
 	// =====================================================
 
+	int gridTicks() const {
+		int base;
+
+		switch(gridDiv.get()){
+			case 0: base = 24; break; // 4th
+			case 1: base = 12; break; // 8th
+			case 2: base = 6;  break; // 16th
+			case 3: base = 3;  break; // 32nd
+			default: base = 24;
+		}
+
+		switch(gridMode.get()){
+			case 0: return base;          // straight
+			case 1: return base * 3 / 2;  // dotted
+			case 2: return base * 2 / 3;  // triplet
+			default: return base;
+		}
+	}
+
 	void drawTransportHeader(){
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6,4));
 
-		// Play / Stop
+		// ---- Play / Stop ----
 		if(play.get()){
-			if(ImGui::Button("⏸ Stop")){
+			if(ImGui::Button("Stop")){
 				play = false;
 			}
 		}else{
-			if(ImGui::Button("▶ Play")){
+			if(ImGui::Button("Play")){
 				play = true;
 			}
 		}
 
 		ImGui::SameLine();
+		ImGui::Spacing();
+		ImGui::SameLine();
 
-		// BPM
+		// ---- BPM ----
 		float bpmVal = bpm.get();
+		ImGui::Text("BPM");
+		ImGui::SameLine();
 		ImGui::SetNextItemWidth(80);
-		if(ImGui::InputFloat("BPM", &bpmVal, 0.1f, 1.0f, "%.2f")){
+		if(ImGui::InputFloat("##bpm", &bpmVal, 0.f, 0.f, "%.2f")){
 			bpm = ofClamp(bpmVal, 1.f, 999.f);
 		}
 
 		ImGui::SameLine();
+		ImGui::Spacing();
+		ImGui::SameLine();
 
-		// Time signature
+		// ---- Time signature ----
 		int num = numerator.get();
 		int den = denominator.get();
 
-		ImGui::SetNextItemWidth(50);
-		if(ImGui::InputInt("##num", &num)){
+		ImGui::Text("Time");
+		ImGui::SameLine();
+
+		ImGui::SetNextItemWidth(40);
+		if(ImGui::InputInt("##num", &num, 0, 0)){
 			numerator = ofClamp(num, 1, 32);
 		}
 
 		ImGui::SameLine();
 		ImGui::Text("/");
-
 		ImGui::SameLine();
-		ImGui::SetNextItemWidth(50);
-		if(ImGui::InputInt("##den", &den)){
-			// Force power-of-two feel but don't over-restrict
+
+		ImGui::SetNextItemWidth(40);
+		if(ImGui::InputInt("##den", &den, 0, 0)){
 			denominator = ofClamp(den, 1, 32);
 		}
+		
+		// ---- Grid settings ----
+		ImGui::SameLine();
+		ImGui::Text("Grid");
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(70);
+		ImGui::Combo("##griddiv", (int*)&gridDiv.get(),
+			"4th\0""8th\0""16th\0""32nd\0");
+
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(90);
+		ImGui::Combo("##gridmode", (int*)&gridMode.get(),
+			"Straight\0""Dotted\0""Triplet\0");
 
 		ImGui::PopStyleVar();
 	}
+
 	
 	void drawTimeline(){
 		drawTransportHeader();
@@ -254,14 +321,22 @@ private:
 
 			// Beats
 			if(bar < viewEndBar){
-				for(int b = 1; b < numerator.get(); ++b){
-					float bx2 = bx + (float(b) / numerator.get()) * (size.x / barsVisible);
-					dl->AddLine(
-						ImVec2(bx2, y0 + 26),
-						ImVec2(bx2, y1),
-						IM_COL32(80,80,80,120),
-						1.0f
-					);
+				int gTicks = gridTicks();
+				if(gTicks > 0){
+					int viewStartPPQ = viewStartBar * tpb;
+					int viewEndPPQ   = viewStartPPQ + barsVisible * tpb;
+
+					for(int t = viewStartPPQ; t <= viewEndPPQ; t += gTicks){
+						float x = x0 +
+							(float(t - viewStartPPQ) / (barsVisible * tpb)) * size.x;
+
+						dl->AddLine(
+							ImVec2(x, y0 + 26),
+							ImVec2(x, y1),
+							IM_COL32(80,80,80,120),
+							1.0f
+						);
+					}
 				}
 			}
 		}
@@ -371,9 +446,14 @@ private:
 	ofParameter<bool> loopEnabled;
 	ofParameter<int> loopStartBar;
 	ofParameter<int> loopEndBar;
+	ofParameter<bool> wrapAtEnd;
 
 	ofParameter<bool> showWindow;
 	ofParameter<int> zoomBars;
+	
+	ofParameter<int> gridDiv;
+	ofParameter<int> gridMode;
+
 
 	ofParameter<int>   ppq24;
 	ofParameter<float> phasor;
