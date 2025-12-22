@@ -12,25 +12,40 @@ public:
 
 	void setup() override {
 
+		// ---------- Clock Mode ----------
+		addSeparator("CLOCK",ofColor(240,240,240));
+		addParameterDropdown(clockMode, "Clock Mode", 0, {
+			"Internal", "External"
+		});
+
 		// ---------- Transport ----------
+		addSeparator("TRANSPORT",ofColor(240,240,240));
 		addParameter(play.set("Play", false));
 		addParameter(bpm.set("BPM", 120.f, 1.f, 999.f));
 		addParameter(reset.set("Reset"));
 
+		// ---------- External PPQ Input ----------
+		addSeparator("PPQ  INPUT",ofColor(240,240,240));
+		addParameter(ppqInput.set("PPQ In", 0, 0, INT_MAX));
+
 		// ---------- Meter ----------
+		addSeparator("TIME MEASURE",ofColor(240,240,240));
 		addParameter(numerator.set("Numerator", 4, 1, 32));
 		addParameter(denominator.set("Denominator", 4, 1, 32));
 
 		// ---------- Structure ----------
+		addSeparator("LENGTH",ofColor(240,240,240));
 		addParameter(totalBars.set("Bars", 8, 1, 2048));
 
 		// ---------- Loop ----------
+		addSeparator("LOOP",ofColor(240,240,240));
 		addParameter(loopEnabled.set("Loop", false));
 		addParameter(loopStartBar.set("Loop Start", 0, 0, 2047)); // 0-based
 		addParameter(loopEndBar.set("Loop End", 4, 1, 2048));     // exclusive
 		addParameter(wrapAtEnd.set("Wrap End", true));
 
 		// ---------- UI ----------
+		addSeparator("GUI",ofColor(240,240,240));
 		addParameter(showWindow.set("Show", false));
 		addParameter(zoomBars.set("Zoom Bars", 8, 1, 128));
 		addParameterDropdown(gridDiv, "Grid", 2, {
@@ -43,6 +58,7 @@ public:
 
 
 		// ---------- Outputs ----------
+		addSeparator("OUT",ofColor(240,240,240));
 		addOutputParameter(ppq24.set("PPQ 24", 0, 0, INT_MAX));
 		addOutputParameter(phasor.set("Phasor", 0.f, 0.f, 1.f));
 
@@ -55,14 +71,20 @@ public:
 
 	// ---------- Clock ----------
 	void update(ofEventArgs &) override {
-		if(!play) return;
-
-		float dt = ofGetLastFrameTime();
-		if(dt <= 0.f) return;
-
 		double prev = ppqAcc;
 
-		ppqAcc += dt * (bpm.get() * 24.f / 60.f);
+		// External or Internal clock mode
+		if(clockMode.get() == 1){ // External
+			ppqAcc = ppqInput.get();
+		}
+		else{ // Internal
+			if(!play) return;
+
+			float dt = ofGetLastFrameTime();
+			if(dt <= 0.f) return;
+
+			ppqAcc += dt * (bpm.get() * 24.f / 60.f);
+		}
 
 		handleLoop(prev);
 
@@ -200,33 +222,47 @@ private:
 	void drawTransportHeader(){
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6,4));
 
-		// ---- Play / Stop ----
-		if(play.get()){
-			if(ImGui::Button("Stop")){
-				play = false;
-			}
-		}else{
-			if(ImGui::Button("Play")){
-				play = true;
-			}
-		}
+		// ---- Clock Mode ----
+		ImGui::Text("Clock");
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(90);
+		ImGui::Combo("##clockmode", (int*)&clockMode.get(),
+			"Internal\0""External\0");
 
 		ImGui::SameLine();
 		ImGui::Spacing();
 		ImGui::SameLine();
 
-		// ---- BPM ----
-		float bpmVal = bpm.get();
-		ImGui::Text("BPM");
-		ImGui::SameLine();
-		ImGui::SetNextItemWidth(80);
-		if(ImGui::InputFloat("##bpm", &bpmVal, 0.f, 0.f, "%.2f")){
-			bpm = ofClamp(bpmVal, 1.f, 999.f);
-		}
+		// Only show transport controls in Internal mode
+		if(clockMode.get() == 0){
+			// ---- Play / Stop ----
+			if(play.get()){
+				if(ImGui::Button("Stop")){
+					play = false;
+				}
+			}else{
+				if(ImGui::Button("Play")){
+					play = true;
+				}
+			}
 
-		ImGui::SameLine();
-		ImGui::Spacing();
-		ImGui::SameLine();
+			ImGui::SameLine();
+			ImGui::Spacing();
+			ImGui::SameLine();
+
+			// ---- BPM ----
+			float bpmVal = bpm.get();
+			ImGui::Text("BPM");
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(80);
+			if(ImGui::InputFloat("##bpm", &bpmVal, 0.f, 0.f, "%.2f")){
+				bpm = ofClamp(bpmVal, 1.f, 999.f);
+			}
+
+			ImGui::SameLine();
+			ImGui::Spacing();
+			ImGui::SameLine();
+		}
 
 		// ---- Time signature ----
 		int num = numerator.get();
@@ -395,8 +431,8 @@ private:
 				}
 			}
 
-			// If not dragging loop → move playhead
-			if(dragMode == DRAG_NONE){
+			// If not dragging loop → move playhead (only in Internal mode)
+			if(dragMode == DRAG_NONE && clockMode.get() == 0){
 				ppqAcc = barAtMouse * tpb;
 				updateOutputs();
 			}
@@ -434,6 +470,9 @@ private:
 	// =====================================================
 
 	double ppqAcc = 0.0;
+
+	ofParameter<int> clockMode;
+	ofParameter<int> ppqInput;
 
 	ofParameter<bool> play;
 	ofParameter<float> bpm;
