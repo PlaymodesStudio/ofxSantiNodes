@@ -188,6 +188,13 @@
 #include "ppqPhasor.h"
 #include "ppqGenerator.h"
 #include "ppqTimeline.h"
+#include "vectorMorphology.h"
+#include "vectorMorphologyVV.h"
+#include "vectorRegionVV.h"
+#include "vectorOfVectorDisplay.h"
+#include "vectorOfVectorIndexedSampler.h"
+#include "vectorToCoordinates.h"
+#include "circularValueEaser.h"
 
 
 
@@ -372,6 +379,13 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<ppqPhasor>("Santi/AudioUtils");
 	o.registerModel<ppqGenerator>("Santi/AudioUtils");
 	o.registerModel<ppqTimeline>("Santi/AudioUtils");
+	o.registerModel<vectorMorphology>("Santi/Vectors");
+	o.registerModel<vectorMorphologyVV>("Santi/Vectors");
+	o.registerModel<vectorRegionVV>("Santi/Vectors");
+	o.registerModel<vectorOfVectorDisplay>("Santi/Vectors");
+	o.registerModel<vectorOfVectorIndexedSampler>("Santi/Vectors");
+	o.registerModel<vectorToCoordinates>("Santi/Vectors");
+	o.registerModel<circularValueEaser>("Santi/Vectors");
 	
 	o.registerModel<progression>("Santi/Math");
 	o.registerModel<intervalRatios>("Santi/Math");
