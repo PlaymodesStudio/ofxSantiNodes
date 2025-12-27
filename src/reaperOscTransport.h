@@ -45,6 +45,9 @@ public:
 		addOutputParameter(ppq24f.set("PPQ 24f", 0.f, 0.f, FLT_MAX));
 		ppq24f.setSerializable(false);
 		
+		addOutputParameter(beatTransport.set("Beat Transport", 0.f, 0.f, FLT_MAX));
+		beatTransport.setSerializable(false);
+		
 		addOutputParameter(timeSeconds.set("Time(s)", 0.f, 0.f, FLT_MAX));
 		timeSeconds.setSerializable(false);
 		
@@ -275,6 +278,7 @@ public:
 			// beats = (seconds * BPM) / 60
 			float currentBeat = (currentTimeSeconds * bpm.get()) / 60.0f;
 			beat = currentBeat;
+			beatTransport = currentBeat;
 			
 			// High-precision floating-point PPQ
 			float ppqFloat = currentBeat * 24.0f;
@@ -314,6 +318,7 @@ private:
 		beat = 0.f;
 		ppq24 = 0;
 		ppq24f = 0.f;
+		beatTransport = 0.f;
 		timeSeconds = 0.f;
 		bpm = 120.f;
 		lastTimeSeconds = -1.f;
@@ -341,6 +346,7 @@ private:
 	ofParameter<float> beat;
 	ofParameter<int> ppq24;
 	ofParameter<float> ppq24f;
+	ofParameter<float> beatTransport;
 	ofParameter<float> timeSeconds;
 	ofParameter<float> bpm;
 	

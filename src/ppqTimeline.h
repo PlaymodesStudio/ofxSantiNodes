@@ -20,13 +20,14 @@ public:
 
 		// ---------- Transport ----------
 		addSeparator("TRANSPORT",ofColor(240,240,240));
-		addParameter(play.set("Play", false));
+		addParameter(play.set("Play", 0, 0, 1));
 		addParameter(bpm.set("BPM", 120.f, 1.f, 999.f));
 		addParameter(reset.set("Reset"));
 
-		// ---------- External PPQ Input ----------
-		addSeparator("PPQ  INPUT",ofColor(240,240,240));
+		// ---------- External Inputs ----------
+		addSeparator("EXTERNAL INPUT",ofColor(240,240,240));
 		addParameter(ppqInput.set("PPQ In", 0, 0, INT_MAX));
+		addParameter(beatTransportInput.set("Beat In", 0.f, 0.f, FLT_MAX));
 
 		// ---------- Meter ----------
 		addSeparator("TIME MEASURE",ofColor(240,240,240));
@@ -39,17 +40,17 @@ public:
 
 		// ---------- Loop ----------
 		addSeparator("LOOP",ofColor(240,240,240));
-		addParameter(loopEnabled.set("Loop", false));
-		addParameter(loopStartBar.set("Loop Start", 0, 0, 2047)); // 0-based
-		addParameter(loopEndBar.set("Loop End", 4, 1, 2048));     // exclusive
-		addParameter(wrapAtEnd.set("Wrap End", true));
+		addParameter(loopEnabled.set("Loop", 0, 0, 1));
+		addParameter(loopStartBeat.set("Loop Start", 0.f, 0.f, FLT_MAX));
+		addParameter(loopEndBeat.set("Loop End", 4.f, 0.f, FLT_MAX));
+		addParameter(wrapAtEnd.set("Wrap End", 1, 0, 1));
 
 		// ---------- UI ----------
 		addSeparator("GUI",ofColor(240,240,240));
 		addParameter(showWindow.set("Show", false));
 		addParameter(zoomBars.set("Zoom Bars", 8, 1, 128));
-		addParameterDropdown(gridDiv, "Grid", 2, {
-			"4th", "8th", "16th", "32nd"
+		addParameterDropdown(gridDiv, "Grid", 5, {
+			"None", "Bar", "1st", "2nd", "4th", "8th", "16th", "32nd", "64th"
 		});
 
 		addParameterDropdown(gridMode, "Grid Mode", 0, {
@@ -59,8 +60,15 @@ public:
 
 		// ---------- Outputs ----------
 		addSeparator("OUT",ofColor(240,240,240));
+		addOutputParameter(jumpTrig.set("Jump", 0, 0, 1));
+		jumpTrig.setSerializable(false);
+		
 		addOutputParameter(ppq24.set("PPQ 24", 0, 0, INT_MAX));
+		addOutputParameter(ppq24f.set("PPQ 24f", 0.f, 0.f, FLT_MAX));
 		addOutputParameter(phasor.set("Phasor", 0.f, 0.f, 1.f));
+		addOutputParameter(beatTransport.set("Beat Transport", 0.f, 0.f, FLT_MAX));
+		addOutputParameter(bar.set("Bar", 0, 0, INT_MAX));
+		addOutputParameter(barBeat.set("Bar Beat", 0.f, 0.f, FLT_MAX));
 
 		listeners.push(reset.newListener([this]() {
 			resetTransport();
@@ -71,28 +79,58 @@ public:
 
 	// ---------- Clock ----------
 	void update(ofEventArgs &) override {
-		double prev = ppqAcc;
+		double prev = beatAcc;
+
+		// Decrement jump trigger counter
+		if(jumpTrigFramesRemaining > 0){
+			jumpTrigFramesRemaining--;
+			jumpTrig = 1;
+		} else {
+			jumpTrig = 0;
+		}
 
 		// External or Internal clock mode
 		if(clockMode.get() == 1){ // External
-			ppqAcc = ppqInput.get();
+			// Prefer beatTransport input if available, otherwise use PPQ
+			float beatIn = beatTransportInput.get();
+			int ppqIn = ppqInput.get();
+			
+			if(beatIn > 0.0001f || (beatIn == 0.0f && ppqIn == 0)){
+				// Use beat transport input
+				beatAcc = beatIn;
+			} else {
+				// Convert PPQ input to beats
+				beatAcc = ppqIn / 24.0;
+			}
+			
+			// Detect jumps in external input
+			if(lastExternalBeat >= 0){
+				double delta = std::abs(beatAcc - lastExternalBeat);
+				// Jump if moved more than expected for one frame at current BPM
+				double expectedDelta = (bpm.get() / 60.0) * 0.1; // 100ms worth
+				if(delta > expectedDelta){
+					jumpTrigFramesRemaining = 3; // Stay high for 3 frames
+				}
+			}
+			lastExternalBeat = beatAcc;
 		}
 		else{ // Internal
-			if(!play) return;
+			if(play.get() == 0) return;
 
 			float dt = ofGetLastFrameTime();
 			if(dt <= 0.f) return;
 
-			ppqAcc += dt * (bpm.get() * 24.f / 60.f);
+			// Accumulate in BEATS (quarter notes)
+			beatAcc += dt * (bpm.get() / 60.f);
 		}
 
 		handleLoop(prev);
 
-		// --- wrap whole timeline ---
-		if(!loopEnabled.get() && wrapAtEnd.get()){
-			double tot = double(totalTicks());
-			if(tot > 0.0 && ppqAcc >= tot){
-				ppqAcc = std::fmod(ppqAcc, tot);
+		// --- wrap whole timeline at the end ---
+		if(wrapAtEnd.get() == 1){
+			double totBeats = totalBeats();
+			if(totBeats > 0 && beatAcc >= totBeats){
+				beatAcc = std::fmod(beatAcc, totBeats);
 			}
 		}
 
@@ -103,16 +141,21 @@ public:
 
 	// ---------- GUI ----------
 	void draw(ofEventArgs &) override {
-		if(!showWindow) return;
+		if(!showWindow.get()) return;
 
 		std::string title =
 			(canvasID == "Canvas" ? "" : canvasID + "/") +
 			"PPQ Timeline " + ofToString(getNumIdentifier());
 
-		if(ImGui::Begin(title.c_str(), (bool *)&showWindow.get())){
+		bool show = showWindow.get();
+		if(ImGui::Begin(title.c_str(), &show)){
 			drawTimeline();
 		}
 		ImGui::End();
+		
+		if(show != showWindow.get()){
+			showWindow = show;
+		}
 	}
 
 private:
@@ -129,7 +172,7 @@ private:
 	};
 
 	DragMode dragMode = DRAG_NONE;
-	int dragAnchorBar = 0;
+	double dragAnchorBeat = 0.0;
 
 	// =====================================================
 	// Timing helpers
@@ -154,46 +197,73 @@ private:
 		return ticksPerBar() * totalBars.get();
 	}
 
+	double totalBeats() const {
+		return totalTicks() / 24.0;
+	}
+
 	// =====================================================
 	// Core logic
 	// =====================================================
 
 	void resetTransport(){
-		ppqAcc = 0.0;
+		beatAcc = 0.0;
 		ppq24 = 0;
+		ppq24f = 0.f;
 		phasor = 0.f;
+		beatTransport = 0.f;
+		bar = 0;
+		barBeat = 0.f;
+		jumpTrig = 0;
+		jumpTrigFramesRemaining = 0;
+		lastExternalBeat = -1.0;
 	}
 
-	void handleLoop(double prevPPQ){
-		if(!loopEnabled) return;
+	void handleLoop(double prevBeats){
+		if(loopEnabled.get() == 0) return;
 
-		int tpb = ticksPerBar();
-		double startPPQ = double(loopStartBar.get()) * double(tpb);
-		double endPPQ   = double(loopEndBar.get())   * double(tpb);
+		double startBeats = loopStartBeat.get();
+		double endBeats = loopEndBeat.get();
 
-		double len = endPPQ - startPPQ;
+		double len = endBeats - startBeats;
 		if(len <= 0.0) return;
 
 		// Only wrap if playback advanced across the loop end.
 		// This prevents immediate wrap when user seeks beyond loop end.
-		if(prevPPQ < endPPQ && ppqAcc >= endPPQ){
-			ppqAcc = startPPQ + std::fmod(ppqAcc - startPPQ, len);
-			if(ppqAcc < startPPQ) ppqAcc += len; // safety
+		if(prevBeats < endBeats && beatAcc >= endBeats){
+			beatAcc = startBeats + std::fmod(beatAcc - startBeats, len);
+			if(beatAcc < startBeats) beatAcc += len; // safety
+			
+			// Loop wrap is a jump - trigger for 3 frames
+			jumpTrigFramesRemaining = 3;
 		}
 	}
 
 
 	void updateOutputs(){
-		int tot = totalTicks();
-		if(tot <= 0) return;
+		double totBeats = totalBeats();
+		if(totBeats <= 0) return;
 
-		int ip = std::max(0, int(std::floor(ppqAcc)));
-		ppq24 = ip;
+		// Wrap to timeline length
+		double wrappedBeats = std::fmod(beatAcc, totBeats);
+		if(wrappedBeats < 0) wrappedBeats += totBeats;
 
-		int wrapped = ip % tot;
-		if(wrapped < 0) wrapped += tot;
+		// beatTransport is primary output (wrapped to timeline)
+		beatTransport = float(wrappedBeats);
 
-		phasor = float(wrapped) / float(tot);
+		// PPQ outputs derived from beatTransport
+		ppq24f = beatTransport * 24.0f;
+		ppq24 = int(std::floor(ppq24f));
+
+		// Phasor (wrapped 0-1 over timeline)
+		phasor = float(wrappedBeats / totBeats);
+		
+		// Calculate bar and barBeat
+		// beatsPerBar calculated directly from time signature
+		double beatsPerBar = double(numerator.get()) * (4.0 / double(denominator.get()));
+		if(beatsPerBar > 0){
+			bar = int(std::floor(wrappedBeats / beatsPerBar));
+			barBeat = float(wrappedBeats - (bar * beatsPerBar));
+		}
 	}
 
 	// =====================================================
@@ -204,10 +274,15 @@ private:
 		int base;
 
 		switch(gridDiv.get()){
-			case 0: base = 24; break; // 4th
-			case 1: base = 12; break; // 8th
-			case 2: base = 6;  break; // 16th
-			case 3: base = 3;  break; // 32nd
+			case 0: return 0;                    // None
+			case 1: base = ticksPerBar(); break; // Bar
+			case 2: base = 96; break; // 1st (whole note)
+			case 3: base = 48; break; // 2nd (half note)
+			case 4: base = 24; break; // 4th
+			case 5: base = 12; break; // 8th
+			case 6: base = 6;  break; // 16th
+			case 7: base = 3;  break; // 32nd
+			case 8: base = 1;  break; // 64th (actually 96th in PPQ24, but close enough)
 			default: base = 24;
 		}
 
@@ -236,13 +311,13 @@ private:
 		// Only show transport controls in Internal mode
 		if(clockMode.get() == 0){
 			// ---- Play / Stop ----
-			if(play.get()){
+			if(play.get() == 1){
 				if(ImGui::Button("Stop")){
-					play = false;
+					play = 0;
 				}
 			}else{
 				if(ImGui::Button("Play")){
-					play = true;
+					play = 1;
 				}
 			}
 
@@ -289,9 +364,9 @@ private:
 		ImGui::SameLine();
 		ImGui::Text("Grid");
 		ImGui::SameLine();
-		ImGui::SetNextItemWidth(70);
+		ImGui::SetNextItemWidth(90);
 		ImGui::Combo("##griddiv", (int*)&gridDiv.get(),
-			"4th\0""8th\0""16th\0""32nd\0");
+			"None\0""Bar\0""1st\0""2nd\0""4th\0""8th\0""16th\0""32nd\0""64th\0");
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(90);
@@ -324,10 +399,14 @@ private:
 			IM_COL32(30, 30, 30, 255)
 		);
 
-		int tpb = ticksPerBar();
 		int barsVisible = zoomBars.get();
 		int viewStartBar = 0;
 		int viewEndBar   = viewStartBar + barsVisible;
+
+		// Calculate beats per bar directly from time signature
+		// In PPQ24 system, a quarter note (denominator=4) = 1 beat
+		// Other denominators scale accordingly
+		double beatsPerBar = double(numerator.get()) * (4.0 / double(denominator.get()));
 
 		auto barToX = [&](int bar){
 			return x0 + (float(bar - viewStartBar) / barsVisible) * size.x;
@@ -338,14 +417,37 @@ private:
 			return viewStartBar + int(std::floor(t * barsVisible));
 		};
 
+		auto xToBeat = [&](float x){
+			float t = ofClamp((x - x0) / size.x, 0.f, 1.f);
+			double totalViewBeats = barsVisible * beatsPerBar;
+			double beatOffset = t * totalViewBeats;
+			return viewStartBar * beatsPerBar + beatOffset;
+		};
+
+		auto xToBeatSnapped = [&](float x){
+			double beat = xToBeat(x);
+			int gTicks = gridTicks();
+			if(gTicks > 0){
+				// Snap to grid divisions
+				double gridBeats = gTicks / 24.0;
+				beat = std::round(beat / gridBeats) * gridBeats;
+			}
+			return beat;
+		};
+
+		auto beatToBar = [&](double beat){
+			return int(beat / beatsPerBar);
+		};
+
 		// ---------- RULER ----------
 		for(int bar = viewStartBar; bar <= viewEndBar; ++bar){
 			float bx = barToX(bar);
 
+			// Bar lines - prominent
 			dl->AddLine(
 				ImVec2(bx, y0),
 				ImVec2(bx, y1),
-				IM_COL32(100,100,100,200),
+				IM_COL32(120,120,120,255),
 				2.0f
 			);
 
@@ -355,22 +457,28 @@ private:
 			dl->AddText(ImVec2(bx + 4, y0 + 4),
 				IM_COL32(220,220,220,220), buf);
 
-			// Beats
+			// Grid lines - subtle, darker and thinner
 			if(bar < viewEndBar){
 				int gTicks = gridTicks();
+				// Only draw grid if not "None" (gTicks == 0)
 				if(gTicks > 0){
-					int viewStartPPQ = viewStartBar * tpb;
-					int viewEndPPQ   = viewStartPPQ + barsVisible * tpb;
+					double gridBeats = gTicks / 24.0;
+					double viewStartBeats = viewStartBar * beatsPerBar;
+					double viewEndBeats = viewStartBeats + (barsVisible * beatsPerBar);
+					double barStartBeats = bar * beatsPerBar;
+					double barEndBeats = (bar + 1) * beatsPerBar;
 
-					for(int t = viewStartPPQ; t <= viewEndPPQ; t += gTicks){
-						float x = x0 +
-							(float(t - viewStartPPQ) / (barsVisible * tpb)) * size.x;
+					for(double b = barStartBeats + gridBeats; b < barEndBeats; b += gridBeats){
+						if(b < viewStartBeats || b > viewEndBeats) continue;
+						
+						float x = x0 + float((b - viewStartBeats) / (barsVisible * beatsPerBar)) * size.x;
 
+						// Grid lines - darker and thinner than bar lines
 						dl->AddLine(
 							ImVec2(x, y0 + 26),
 							ImVec2(x, y1),
-							IM_COL32(80,80,80,120),
-							1.0f
+							IM_COL32(70,70,70,100),
+							0.5f
 						);
 					}
 				}
@@ -378,9 +486,12 @@ private:
 		}
 
 		// ---------- LOOP ----------
-		if(loopEnabled){
-			float lx1 = barToX(loopStartBar.get());
-			float lx2 = barToX(loopEndBar.get());
+		if(loopEnabled.get() == 1){
+			double viewStartBeats = viewStartBar * beatsPerBar;
+			double totalViewBeats = barsVisible * beatsPerBar;
+			
+			float lx1 = x0 + float((loopStartBeat.get() - viewStartBeats) / totalViewBeats) * size.x;
+			float lx2 = x0 + float((loopEndBeat.get() - viewStartBeats) / totalViewBeats) * size.x;
 
 			// Body
 			dl->AddRectFilled(
@@ -397,11 +508,10 @@ private:
 		}
 
 		// ---------- PLAYHEAD ----------
-		float viewStartPPQ = viewStartBar * tpb;
-		float viewPPQ      = barsVisible * tpb;
+		double viewStartBeats = viewStartBar * beatsPerBar;
+		double totalViewBeats = barsVisible * beatsPerBar;
 
-		float playX = x0 +
-			(float(ppqAcc - viewStartPPQ) / viewPPQ) * size.x;
+		float playX = x0 + float((beatAcc - viewStartBeats) / totalViewBeats) * size.x;
 
 		dl->AddLine(
 			ImVec2(playX, y0),
@@ -416,45 +526,53 @@ private:
 		ImVec2 mouse = ImGui::GetIO().MousePos;
 
 		if(ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
-			int barAtMouse = xToBar(mouse.x);
+			double beatAtMouse = xToBeatSnapped(mouse.x);
 			dragMode = DRAG_NONE;
 
-			if(loopEnabled){
-				if(abs(barAtMouse - loopStartBar.get()) <= 0)
+			if(loopEnabled.get() == 1){
+				double loopStart = loopStartBeat.get();
+				double loopEnd = loopEndBeat.get();
+				double thresholdBeats = std::max(1, gridTicks()) / 24.0;
+				
+				if(abs(beatAtMouse - loopStart) <= thresholdBeats)
 					dragMode = DRAG_LOOP_START;
-				else if(abs(barAtMouse - loopEndBar.get()) <= 0)
+				else if(abs(beatAtMouse - loopEnd) <= thresholdBeats)
 					dragMode = DRAG_LOOP_END;
-				else if(barAtMouse > loopStartBar.get() &&
-						barAtMouse < loopEndBar.get()){
+				else if(beatAtMouse > loopStart && beatAtMouse < loopEnd){
 					dragMode = DRAG_LOOP_MOVE;
-					dragAnchorBar = barAtMouse;
+					dragAnchorBeat = beatAtMouse;
 				}
 			}
 
 			// If not dragging loop → move playhead (only in Internal mode)
 			if(dragMode == DRAG_NONE && clockMode.get() == 0){
-				ppqAcc = barAtMouse * tpb;
+				beatAcc = beatAtMouse;
+				jumpTrigFramesRemaining = 3; // User-initiated seek is a jump - stay high for 3 frames
 				updateOutputs();
 			}
 		}
 
 		if(ImGui::IsMouseDragging(ImGuiMouseButton_Left)){
-			int barAtMouse = xToBar(mouse.x);
+			double beatAtMouse = xToBeatSnapped(mouse.x);
 
 			if(dragMode == DRAG_LOOP_START){
-				loopStartBar = ofClamp(barAtMouse, 0, loopEndBar.get()-1);
+				double newBeat = ofClamp(beatAtMouse, 0.0, loopEndBeat.get() - (1.0/24.0));
+				loopStartBeat = float(newBeat);
 			}
 			else if(dragMode == DRAG_LOOP_END){
-				loopEndBar = ofClamp(barAtMouse, loopStartBar.get()+1, totalBars.get());
+				double totBeats = totalBeats();
+				double newBeat = ofClamp(beatAtMouse, loopStartBeat.get() + (1.0/24.0), totBeats);
+				loopEndBeat = float(newBeat);
 			}
 			else if(dragMode == DRAG_LOOP_MOVE){
-				int delta = barAtMouse - dragAnchorBar;
-				int len = loopEndBar.get() - loopStartBar.get();
+				double delta = beatAtMouse - dragAnchorBeat;
+				double len = loopEndBeat.get() - loopStartBeat.get();
+				double totBeats = totalBeats();
 
-				int newStart = ofClamp(loopStartBar.get()+delta, 0, totalBars.get()-len);
-				loopStartBar = newStart;
-				loopEndBar   = newStart + len;
-				dragAnchorBar = barAtMouse;
+				double newStart = ofClamp(loopStartBeat.get() + delta, 0.0, totBeats - len);
+				loopStartBeat = float(newStart);
+				loopEndBeat = float(newStart + len);
+				dragAnchorBeat = beatAtMouse;
 			}
 		}
 
@@ -469,12 +587,15 @@ private:
 	// State
 	// =====================================================
 
-	double ppqAcc = 0.0;
+	double beatAcc = 0.0;
+	double lastExternalBeat = -1.0; // For jump detection in external mode
+	int jumpTrigFramesRemaining = 0; // Frame counter for jump trigger duration
 
 	ofParameter<int> clockMode;
 	ofParameter<int> ppqInput;
+	ofParameter<float> beatTransportInput;
 
-	ofParameter<bool> play;
+	ofParameter<int> play;
 	ofParameter<float> bpm;
 	ofParameter<void> reset;
 
@@ -482,10 +603,10 @@ private:
 	ofParameter<int> denominator;
 	ofParameter<int> totalBars;
 
-	ofParameter<bool> loopEnabled;
-	ofParameter<int> loopStartBar;
-	ofParameter<int> loopEndBar;
-	ofParameter<bool> wrapAtEnd;
+	ofParameter<int> loopEnabled;
+	ofParameter<float> loopStartBeat;
+	ofParameter<float> loopEndBeat;
+	ofParameter<int> wrapAtEnd;
 
 	ofParameter<bool> showWindow;
 	ofParameter<int> zoomBars;
@@ -495,7 +616,12 @@ private:
 
 
 	ofParameter<int>   ppq24;
+	ofParameter<float> ppq24f;
 	ofParameter<float> phasor;
+	ofParameter<float> beatTransport;
+	ofParameter<int>   bar;
+	ofParameter<float> barBeat;
+	ofParameter<int>   jumpTrig;
 
 	ofEventListeners listeners;
 };
