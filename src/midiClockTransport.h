@@ -16,6 +16,7 @@
 	3) BPM is computed on the MAIN THREAD over a window of N ticks (default 24 = 1 beat),
 	   and we suppress BPM updates for the first X ticks after start/continue/jump.
 	4) Snapshot no longer relies on MIDI-thread BPM smoothing (optional, removed for stability).
+	5) Jump trigger now stays high for 3 frames for proper synchronization.
 */
 
 class midiClockTransport :
@@ -35,18 +36,18 @@ public:
 		/* -------- Inputs -------- */
 		addSeparator("INPUTS", ofColor(240, 240, 240));
 		addParameterDropdown(midiPort, "Port", 0, midiIn.getInPortList());
-		addParameter(enable.set("Enable", false));
+		addParameter(enable.set("Enable", 0, 0, 1));
 		addParameter(listPorts.set("List Ports"));
 
 		/* -------- Transport outputs -------- */
 		addSeparator("TRANSPORT", ofColor(240, 240, 240));
-		addOutputParameter(playState.set("Play", false));
+		addOutputParameter(playState.set("Play", 0, 0, 1));
 		playState.setSerializable(false);
 
-		addOutputParameter(stopState.set("Stop", false));
+		addOutputParameter(stopState.set("Stop", 0, 0, 1));
 		stopState.setSerializable(false);
 
-		addOutputParameter(jumpTrig.set("Jump", false));
+		addOutputParameter(jumpTrig.set("Jump", 0, 0, 1));
 		jumpTrig.setSerializable(false);
 
 		/* -------- MIDI Clock outputs -------- */
@@ -61,6 +62,9 @@ public:
 		addOutputParameter(ppq24f.set("PPQ 24f", 0.f, 0.f, FLT_MAX));
 		ppq24f.setSerializable(false);
 
+		addOutputParameter(beatTransport.set("Beat Transport", 0.f, 0.f, FLT_MAX));
+		beatTransport.setSerializable(false);
+
 		addOutputParameter(timeSeconds.set("Time(s)", 0.f, 0.f, FLT_MAX));
 		timeSeconds.setSerializable(false);
 
@@ -72,8 +76,8 @@ public:
 			restartMidi(device);
 		}));
 
-		listeners.push(enable.newListener([this](bool &e){
-			e ? startMidi() : stopMidi();
+		listeners.push(enable.newListener([this](int &e){
+			(e == 1) ? startMidi() : stopMidi();
 		}));
 
 		listeners.push(listPorts.newListener([this](){
@@ -180,8 +184,13 @@ public:
 			got = true;
 		}
 
-		// Edge trigger default
-		jumpTrig = false;
+		// Decrement jump trigger counter
+		if(jumpTrigFramesRemaining > 0){
+			jumpTrigFramesRemaining--;
+			jumpTrig = 1;
+		} else {
+			jumpTrig = 0;
+		}
 
 		if(!got) return;
 
@@ -189,7 +198,7 @@ public:
 		const bool jumpEdge = (s.jumpCounter != lastJumpCounter_main);
 		lastJumpCounter_main = s.jumpCounter;
 
-		// Transport edges for “start of playing”
+		// Transport edges for "start of playing"
 		const bool startEdge    = (s.startCounter != lastStartCounter_main);
 		const bool stopEdge     = (s.stopCounter  != lastStopCounter_main);
 		const bool contEdge     = (s.contCounter  != lastContCounter_main);
@@ -198,17 +207,20 @@ public:
 		lastContCounter_main  = s.contCounter;
 
 		// Publish transport states (main thread)
-		const bool wasPlaying = playState.get(); // previous frame value
-		playState = s.playing;
-		stopState = s.stopped;
+		const bool wasPlaying = (playState.get() == 1); // previous frame value
+		playState = s.playing ? 1 : 0;
+		stopState = s.stopped ? 1 : 0;
 
-		// One-frame trigger
-		jumpTrig = jumpEdge;
+		// Trigger jump for 3 frames
+		if(jumpEdge){
+			jumpTrigFramesRemaining = 3;
+		}
 
 		// Publish clock scalars (main thread)
 		ppq24  = s.tickCount;
 		ppq24f = static_cast<float>(s.tickCount);
 		beat   = static_cast<float>(s.tickCount) / 24.f;
+		beatTransport = beat.get(); // Same as beat
 
 		// ---------- BPM STABILIZATION ----------
 		// Strategy:
@@ -247,7 +259,7 @@ public:
 			haveLastTick_main = false;
 		}
 
-		// Only update BPM after we’ve seen enough ticks post-edge
+		// Only update BPM after we've seen enough ticks post-edge
 		if(playingNow && ticksSinceEdge_main >= BPM_IGNORE_TICKS_AFTER_EDGE) {
 			if(!haveBpmWindow_main) {
 				bpmWindowStartMs_main = s.ms;
@@ -342,9 +354,11 @@ private:
 
 	bool haveLastTick_main = false;
 	int lastTickObserved_main = 0;
+	
+	int jumpTrigFramesRemaining = 0; // Frame counter for jump trigger duration
 
 	void pushSnapshot(uint64_t nowMs) {
-		// MIDI thread: publish latest snapshot; drop backlog to keep “latest-only”
+		// MIDI thread: publish latest snapshot; drop backlog to keep "latest-only"
 		ClockSnapshot old;
 		while(snapToMain.tryReceive(old)) {}
 
@@ -395,7 +409,7 @@ private:
 
 	void restartMidi(int device) {
 		stopMidi();
-		if(enable) startMidi();
+		if(enable.get() == 1) startMidi();
 	}
 
 	/* ================= RESET ================= */
@@ -418,13 +432,14 @@ private:
 
 	void resetMainThreadState() {
 		// clear output params
-		playState = false;
-		stopState = true;
-		jumpTrig = false;
+		playState = 0;
+		stopState = 1;
+		jumpTrig = 0;
 
 		beat = 0.f;
 		ppq24 = 0;
 		ppq24f = 0.f;
+		beatTransport = 0.f;
 		timeSeconds = 0.f;
 		bpm = 120.f;
 
@@ -447,6 +462,8 @@ private:
 		ticksSinceEdge_main = 0;
 		haveLastTick_main = false;
 		lastTickObserved_main = 0;
+		
+		jumpTrigFramesRemaining = 0;
 	}
 
 	/* -------- MIDI -------- */
@@ -454,16 +471,17 @@ private:
 
 	/* -------- Parameters -------- */
 	ofParameter<int> midiPort;
-	ofParameter<bool> enable;
+	ofParameter<int> enable;
 	ofParameter<void> listPorts;
 
-	ofParameter<bool> playState;
-	ofParameter<bool> stopState;
-	ofParameter<bool> jumpTrig;
+	ofParameter<int> playState;
+	ofParameter<int> stopState;
+	ofParameter<int> jumpTrig;
 
 	ofParameter<float> beat;
 	ofParameter<int> ppq24;
 	ofParameter<float> ppq24f;
+	ofParameter<float> beatTransport;
 	ofParameter<float> timeSeconds;
 	ofParameter<float> bpm;
 
