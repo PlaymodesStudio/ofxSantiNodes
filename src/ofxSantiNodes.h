@@ -195,6 +195,7 @@
 #include "vectorOfVectorIndexedSampler.h"
 #include "vectorToCoordinates.h"
 #include "circularValueEaser.h"
+#include "rateLimiter.h"
 
 
 
@@ -392,6 +393,7 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<justChords>("Santi/Math");
 	o.registerModel<harmonicPartials>("Santi/Math");
 	o.registerModel<justIntonationAdapter>("Santi/Math");
+	o.registerModel<rateLimiter>("Santi/General");
 	
 	o.registerModel<matrixDisplay>("Santi/General");
 
