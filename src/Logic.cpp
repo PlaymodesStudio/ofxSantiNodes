@@ -10,7 +10,7 @@ void Logic::setup() {
     addParameter(input1.set("Input 1", {0}, {-FLT_MAX}, {FLT_MAX}));
     addParameter(input2.set("Input 2", {0}, {-FLT_MAX}, {FLT_MAX}));
     addParameterDropdown(operation, "Op", 0,
-      {">", ">=", "<", "<=", "==", "!=", "&&", "||", "!>", "!<", "!>=", "!<="});
+      {">", ">=", "<", "<=", "==", "!=", "&&", "||", "!>", "!<", "!>=", "!<=", "XOR", "NAND", "NOR", "XNOR", "NOT"});
     addOutputParameter(output.set("Output", {0}, {0}, {1}));
 
     listeners.push(input1.newListener([this](vector<float>& vf) {
@@ -33,7 +33,7 @@ void Logic::computeLogic() {
 		};
 
 		vector<float> result;
-		vector<string> operations = {">", ">=", "<", "<=", "==", "!=", "&&", "||", "!>", "!<", "!>=", "!<="};
+		vector<string> operations = {">", ">=", "<", "<=", "==", "!=", "&&", "||", "!>", "!<", "!>=", "!<=", "XOR", "NAND", "NOR", "XNOR", "NOT"};
 
 		for (size_t i = 0; i < std::max(input1->size(), input2->size()); ++i) {
 			bool logicResult = false;
@@ -52,6 +52,11 @@ void Logic::computeLogic() {
 			else if (op == "!<") logicResult = !(val1 < val2);
 			else if (op == "!>=") logicResult = !(val1 >= val2);
 			else if (op == "!<=") logicResult = !(val1 <= val2);
+			else if (op == "XOR") logicResult = static_cast<bool>(val1) != static_cast<bool>(val2);
+			else if (op == "NAND") logicResult = !(static_cast<bool>(val1) && static_cast<bool>(val2));
+			else if (op == "NOR") logicResult = !(static_cast<bool>(val1) || static_cast<bool>(val2));
+			else if (op == "XNOR") logicResult = static_cast<bool>(val1) == static_cast<bool>(val2);
+			else if (op == "NOT") logicResult = !static_cast<bool>(val1);
 			result.push_back(logicResult ? 1.0f : 0.0f);
 		}
 		output = result;
