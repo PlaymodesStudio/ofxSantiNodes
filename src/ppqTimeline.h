@@ -3,12 +3,37 @@
 
 #include "ofxOceanodeNodeModel.h"
 #include "imgui.h"
+#include "transportTrack.h"
 #include <cmath>
 #include <algorithm>
+#include <vector>
 
 class ppqTimeline : public ofxOceanodeNodeModel {
 public:
-	ppqTimeline() : ofxOceanodeNodeModel("PPQ Timeline") {}
+	
+	// --- STATIC REGISTRY: Allows tracks to find timelines ---
+	static std::vector<ppqTimeline*>& getTimelines() {
+		static std::vector<ppqTimeline*> instances;
+		return instances;
+	}
+	
+	ppqTimeline() : ofxOceanodeNodeModel("PPQ Timeline") {
+		getTimelines().push_back(this);
+	}
+	
+	virtual ~ppqTimeline() {
+		auto& tls = getTimelines();
+		tls.erase(std::remove(tls.begin(), tls.end(), this), tls.end());
+	}
+	
+	// --- TRACK MANAGEMENT ---
+	void subscribeTrack(transportTrack* track) {
+		subscribedTracks.push_back(track);
+	}
+	
+	void unsubscribeTrack(transportTrack* track) {
+		subscribedTracks.erase(std::remove(subscribedTracks.begin(), subscribedTracks.end(), track), subscribedTracks.end());
+	}
 
 	void setup() override {
 
@@ -48,7 +73,7 @@ public:
 		// ---------- UI ----------
 		addSeparator("GUI",ofColor(240,240,240));
 		addParameter(showWindow.set("Show", false));
-		addParameter(zoomBars.set("Zoom Bars", 8, 1, 128));
+		addParameter(zoomBars.set("Zoom Bars", 8, 1, totalBars.get())); // Max = totalBars
 		addParameterDropdown(gridDiv, "Grid", 5, {
 			"None", "Bar", "1st", "2nd", "4th", "8th", "16th", "32nd", "64th"
 		});
@@ -73,9 +98,31 @@ public:
 		listeners.push(reset.newListener([this]() {
 			resetTransport();
 		}));
+		
+		// Update zoom constraint when totalBars changes
+		listeners.push(totalBars.newListener([this](int &bars) {
+			int currentZoom = zoomBars.get();
+			zoomBars.setMax(bars);
+			// Clamp current zoom if it exceeds new max
+			if(currentZoom > bars) {
+				zoomBars = bars;
+			}
+		}));
 
 		resetTransport();
 	}
+	
+	// --- Public Accessors for Tracks ---
+	double getBeatPosition() const { return beatAcc; }
+	int getNumerator() const { return numerator; }
+	int getDenominator() const { return denominator; }
+	int getGridTicks() const { return gridTicks(); }
+	
+	// Loop accessors
+	bool isLoopEnabled() const { return loopEnabled.get() == 1; }
+	double getLoopStart() const { return loopStartBeat.get(); }
+	double getLoopEnd() const { return loopEndBeat.get(); }
+		
 
 	// ---------- Clock ----------
 	void update(ofEventArgs &) override {
@@ -115,13 +162,33 @@ public:
 			lastExternalBeat = beatAcc;
 		}
 		else{ // Internal
-			if(play.get() == 0) return;
+			if(play.get() == 0){
+				// Transport stopped - reset timing state when stopped
+				transportRunning = false;
+				return;
+			}
 
-			float dt = ofGetLastFrameTime();
-			if(dt <= 0.f) return;
-
-			// Accumulate in BEATS (quarter notes)
-			beatAcc += dt * (bpm.get() / 60.f);
+			uint64_t now = ofGetElapsedTimeMillis();
+			
+			// First frame after play starts
+			if(!transportRunning){
+				lastTimeMs = now;
+				beatAccBase = beatAcc; // Start from current position (preserves position on resume)
+				lastBpm = bpm.get();
+				transportRunning = true;
+			}
+			
+			// Handle BPM changes
+			if(std::abs(bpm.get() - lastBpm) > 0.001f){
+				// BPM changed - snapshot current position as new base
+				beatAccBase = beatAcc;
+				lastTimeMs = now;
+				lastBpm = bpm.get();
+			}
+			
+			// Calculate beats from elapsed time (drift-free)
+			double elapsedSeconds = (now - lastTimeMs) / 1000.0;
+			beatAcc = beatAccBase + (elapsedSeconds * (bpm.get() / 60.0));
 		}
 
 		handleLoop(prev);
@@ -131,241 +198,265 @@ public:
 			double totBeats = totalBeats();
 			if(totBeats > 0 && beatAcc >= totBeats){
 				beatAcc = std::fmod(beatAcc, totBeats);
+				// Update base to reflect the wrap
+				if(transportRunning){
+					beatAccBase = beatAcc;
+					lastTimeMs = ofGetElapsedTimeMillis();
+				}
 			}
 		}
 
 		updateOutputs();
 
 	}
+	
 
 
 	// ---------- GUI ----------
 	void draw(ofEventArgs &) override {
 		if(!showWindow.get()) return;
 
-		std::string title =
-			(canvasID == "Canvas" ? "" : canvasID + "/") +
-			"PPQ Timeline " + ofToString(getNumIdentifier());
-
+		std::string title = "Timeline " + ofToString(getNumIdentifier());
 		bool show = showWindow.get();
-		if(ImGui::Begin(title.c_str(), &show)){
-			drawTimeline();
+
+		// Fixed layout constants
+		const float RULER_HEIGHT = 40.0f;  // Reduced from 120
+		const float SEPARATOR_HEIGHT = 4.0f;
+
+		// Calculate total required height dynamically based on track heights
+		float totalH = RULER_HEIGHT + 40; // Ruler + margin
+		if(!subscribedTracks.empty()) {
+			totalH += 60; // Header space
+			for(auto* track : subscribedTracks) {
+				if(!track->isCollapsed()) {
+					totalH += track->getHeight() + SEPARATOR_HEIGHT;
+				} else {
+					totalH += 20; // Just space for collapsed header
+				}
+			}
+		}
+
+		ImGui::SetNextWindowSize(ImVec2(800, totalH), ImGuiCond_Always);
+
+		if(ImGui::Begin(title.c_str(), &show)) {
+			
+			// 1. Draw Master Ruler
+			drawTimeline(RULER_HEIGHT);
+
+			// 2. Draw Tracks
+			if(!subscribedTracks.empty()) {
+				ImGui::Spacing();
+				ImGui::Separator();
+				ImGui::TextColored(ImVec4(0.7,0.7,0.7,1), "TRACKS");
+				ImGui::Separator();
+
+				// Calculate shared view parameters
+				ImDrawList* dl = ImGui::GetWindowDrawList();
+				
+				int barsVisible = zoomBars.get();
+				double beatsPerBar = double(numerator.get()) * (4.0 / double(denominator.get()));
+				
+				// Match the ruler's view - start from bar 0
+				int viewStartBar = 0;
+				double viewStartBeat = viewStartBar * beatsPerBar;
+				double viewEndBeat = viewStartBeat + (barsVisible * beatsPerBar);
+
+				for(auto* track : subscribedTracks) {
+					ImGui::PushID(track);
+					
+					// Track header with collapse button
+					ImVec2 headerStart = ImGui::GetCursorScreenPos();
+					float availW = ImGui::GetContentRegionAvail().x;
+					
+					// Collapse/expand triangle button
+					bool isCollapsed = track->isCollapsed();
+					const char* arrowIcon = isCollapsed ? ">" : "v";
+					
+					if(ImGui::SmallButton(arrowIcon)) {
+						track->setCollapsed(!isCollapsed);
+					}
+					
+					// Track name next to button
+					ImGui::SameLine();
+					ImGui::Text("%s", track->getTrackName().c_str());
+					
+					// Only draw track content if not collapsed
+					if(!isCollapsed) {
+						// Get available width and this track's height
+						float trackHeight = track->getHeight();
+						ImVec2 trackSize(availW, trackHeight);
+						
+						// Let track draw itself - it handles its own InvisibleButton
+						track->drawInTimeline(dl, ImVec2(0,0), trackSize, viewStartBeat, viewEndBeat);
+						
+						// Draggable separator
+						ImVec2 sepPos = ImGui::GetCursorScreenPos();
+						ImGui::InvisibleButton("##resize", ImVec2(availW, SEPARATOR_HEIGHT));
+						
+						// Visual feedback
+						bool isHovered = ImGui::IsItemHovered();
+						if(isHovered) {
+							ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+						}
+						
+						// Draw separator line
+						ImU32 sepColor = isHovered ? IM_COL32(150, 150, 150, 255) : IM_COL32(80, 80, 80, 255);
+						float sepThickness = isHovered ? 3.0f : 1.0f;
+						dl->AddLine(
+							ImVec2(sepPos.x, sepPos.y + SEPARATOR_HEIGHT/2),
+							ImVec2(sepPos.x + availW, sepPos.y + SEPARATOR_HEIGHT/2),
+							sepColor,
+							sepThickness
+						);
+						
+						// Handle drag
+						if(ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+							float deltaY = ImGui::GetIO().MouseDelta.y;
+							float newHeight = track->getHeight() + deltaY;
+							track->setHeight(newHeight);
+						}
+					} else {
+						// Collapsed - just show a thin separator
+						ImGui::Spacing();
+					}
+					
+					ImGui::PopID();
+				}
+			}
 		}
 		ImGui::End();
-		
-		if(show != showWindow.get()){
-			showWindow = show;
-		}
+
+		if(show != showWindow.get()) showWindow = show;
 	}
 
 private:
+	
+	std::vector<transportTrack*> subscribedTracks;
 
-	// =====================================================
-	// Interaction state
-	// =====================================================
-
-	enum DragMode {
-		DRAG_NONE = 0,
-		DRAG_LOOP_START,
-		DRAG_LOOP_END,
-		DRAG_LOOP_MOVE
-	};
-
+	// --- Drag state for ruler ---
+	enum DragMode { DRAG_NONE, DRAG_LOOP_START, DRAG_LOOP_END, DRAG_LOOP_MOVE };
 	DragMode dragMode = DRAG_NONE;
 	double dragAnchorBeat = 0.0;
 
-	// =====================================================
-	// Timing helpers
-	// =====================================================
-
-	int ticksPerBeat() const {
-		switch(denominator.get()){
-			case 1:  return 96;
-			case 2:  return 48;
-			case 4:  return 24;
-			case 8:  return 12;
-			case 16: return 6;
-			default: return std::max(1, int(96.f / denominator.get()));
-		}
-	}
-
-	int ticksPerBar() const {
-		return ticksPerBeat() * numerator.get();
-	}
-
-	int totalTicks() const {
-		return ticksPerBar() * totalBars.get();
+	// --- Grid helpers ---
+	int gridTicks() const {
+		int div = gridDiv.get();
+		int mode = gridMode.get();
+		if(div == 0) return 0; // None
+		
+		int baseTicks = 0;
+		if(div == 1) baseTicks = 96;      // Bar
+		else if(div == 2) baseTicks = 48; // 1st
+		else if(div == 3) baseTicks = 24; // 2nd
+		else if(div == 4) baseTicks = 12; // 4th
+		else if(div == 5) baseTicks = 6;  // 8th
+		else if(div == 6) baseTicks = 3;  // 16th
+		else if(div == 7) baseTicks = 1.5;// 32nd
+		else if(div == 8) baseTicks = 0.75; // 64th
+		
+		if(mode == 1) baseTicks = baseTicks * 1.5; // Dotted
+		else if(mode == 2) baseTicks = baseTicks / 1.5; // Triplet (approximate)
+		
+		return baseTicks;
 	}
 
 	double totalBeats() const {
-		return totalTicks() / 24.0;
+		double beatsPerBar = double(numerator.get()) * (4.0 / double(denominator.get()));
+		return totalBars.get() * beatsPerBar;
 	}
 
-	// =====================================================
-	// Core logic
-	// =====================================================
+	void handleLoop(double prev){
+		if(loopEnabled.get() == 1){
+			double ls = loopStartBeat.get();
+			double le = loopEndBeat.get();
+			if(ls < le){
+				// If playhead crossed loop end
+				if(prev < le && beatAcc >= le){
+					beatAcc = ls + (beatAcc - le);
+					// Update base to reflect the loop jump
+					if(transportRunning){
+						beatAccBase = beatAcc;
+						lastTimeMs = ofGetElapsedTimeMillis();
+					}
+				}
+			}
+		}
+	}
 
 	void resetTransport(){
 		beatAcc = 0.0;
-		ppq24 = 0;
-		ppq24f = 0.f;
-		phasor = 0.f;
-		beatTransport = 0.f;
-		bar = 0;
-		barBeat = 0.f;
-		jumpTrig = 0;
-		jumpTrigFramesRemaining = 0;
+		beatAccBase = 0.0;
 		lastExternalBeat = -1.0;
+		jumpTrigFramesRemaining = 0;
+		updateOutputs();
 	}
-
-	void handleLoop(double prevBeats){
-		if(loopEnabled.get() == 0) return;
-
-		double startBeats = loopStartBeat.get();
-		double endBeats = loopEndBeat.get();
-
-		double len = endBeats - startBeats;
-		if(len <= 0.0) return;
-
-		// Only wrap if playback advanced across the loop end.
-		// This prevents immediate wrap when user seeks beyond loop end.
-		if(prevBeats < endBeats && beatAcc >= endBeats){
-			beatAcc = startBeats + std::fmod(beatAcc - startBeats, len);
-			if(beatAcc < startBeats) beatAcc += len; // safety
-			
-			// Loop wrap is a jump - trigger for 3 frames
-			jumpTrigFramesRemaining = 3;
-		}
-	}
-
 
 	void updateOutputs(){
-		double totBeats = totalBeats();
-		if(totBeats <= 0) return;
-
-		// Wrap to timeline length
-		double wrappedBeats = std::fmod(beatAcc, totBeats);
-		if(wrappedBeats < 0) wrappedBeats += totBeats;
-
-		// beatTransport is primary output (wrapped to timeline)
-		beatTransport = float(wrappedBeats);
-
-		// PPQ outputs derived from beatTransport
-		ppq24f = beatTransport * 24.0f;
-		ppq24 = int(std::floor(ppq24f));
-
-		// Phasor (wrapped 0-1 over timeline)
-		phasor = float(wrappedBeats / totBeats);
-		
-		// Calculate bar and barBeat
-		// beatsPerBar calculated directly from time signature
 		double beatsPerBar = double(numerator.get()) * (4.0 / double(denominator.get()));
-		if(beatsPerBar > 0){
-			bar = int(std::floor(wrappedBeats / beatsPerBar));
-			barBeat = float(wrappedBeats - (bar * beatsPerBar));
-		}
+		
+		int currentBar = int(beatAcc / beatsPerBar);
+		double beatInBar = beatAcc - (currentBar * beatsPerBar);
+		
+		ppq24 = int(beatAcc * 24.0);
+		ppq24f = float(beatAcc * 24.0);
+		phasor = float(std::fmod(beatAcc, 1.0));
+		beatTransport = float(beatAcc);
+		bar = currentBar;
+		barBeat = float(beatInBar);
 	}
 
-	// =====================================================
-	// Timeline UI
-	// =====================================================
-
-	int gridTicks() const {
-		int base;
-
-		switch(gridDiv.get()){
-			case 0: return 0;                    // None
-			case 1: base = ticksPerBar(); break; // Bar
-			case 2: base = 96; break; // 1st (whole note)
-			case 3: base = 48; break; // 2nd (half note)
-			case 4: base = 24; break; // 4th
-			case 5: base = 12; break; // 8th
-			case 6: base = 6;  break; // 16th
-			case 7: base = 3;  break; // 32nd
-			case 8: base = 1;  break; // 64th (actually 96th in PPQ24, but close enough)
-			default: base = 24;
-		}
-
-		switch(gridMode.get()){
-			case 0: return base;          // straight
-			case 1: return base * 3 / 2;  // dotted
-			case 2: return base * 2 / 3;  // triplet
-			default: return base;
-		}
-	}
-
+	// --- Transport Header Controls ---
 	void drawTransportHeader(){
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6,4));
-
-		// ---- Clock Mode ----
-		ImGui::Text("Clock");
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8,4));
+		
+		// Play/Stop
+		if(ImGui::Button(play.get() ? "Stop" : "Play")){
+			play = !play.get();
+		}
+		
 		ImGui::SameLine();
-		ImGui::SetNextItemWidth(90);
-		ImGui::Combo("##clockmode", (int*)&clockMode.get(),
-			"Internal\0""External\0");
-
-		ImGui::SameLine();
-		ImGui::Spacing();
-		ImGui::SameLine();
-
-		// Only show transport controls in Internal mode
-		if(clockMode.get() == 0){
-			// ---- Play / Stop ----
-			if(play.get() == 1){
-				if(ImGui::Button("Stop")){
-					play = 0;
-				}
-			}else{
-				if(ImGui::Button("Play")){
-					play = 1;
-				}
-			}
-
-			ImGui::SameLine();
-			ImGui::Spacing();
-			ImGui::SameLine();
-
-			// ---- BPM ----
-			float bpmVal = bpm.get();
-			ImGui::Text("BPM");
-			ImGui::SameLine();
-			ImGui::SetNextItemWidth(80);
-			if(ImGui::InputFloat("##bpm", &bpmVal, 0.f, 0.f, "%.2f")){
-				bpm = ofClamp(bpmVal, 1.f, 999.f);
-			}
-
-			ImGui::SameLine();
-			ImGui::Spacing();
-			ImGui::SameLine();
+		if(ImGui::Button("Reset")){
+			resetTransport();
 		}
 
-		// ---- Time signature ----
-		int num = numerator.get();
-		int den = denominator.get();
-
-		ImGui::Text("Time");
+		// BPM
 		ImGui::SameLine();
-
-		ImGui::SetNextItemWidth(40);
-		if(ImGui::InputInt("##num", &num, 0, 0)){
-			numerator = ofClamp(num, 1, 32);
+		ImGui::SetNextItemWidth(80);
+		float bpmVal = bpm.get();
+		if(ImGui::DragFloat("BPM", &bpmVal, 1.0f, 1.0f, 999.0f, "%.1f")){
+			bpm = bpmVal;
 		}
 
+		// Time Signature
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(50);
+		int numVal = numerator.get();
+		if(ImGui::DragInt("##num", &numVal, 0.1f, 1, 32)){
+			numerator = numVal;
+		}
+		
 		ImGui::SameLine();
 		ImGui::Text("/");
-		ImGui::SameLine();
-
-		ImGui::SetNextItemWidth(40);
-		if(ImGui::InputInt("##den", &den, 0, 0)){
-			denominator = ofClamp(den, 1, 32);
-		}
 		
-		// ---- Grid settings ----
 		ImGui::SameLine();
-		ImGui::Text("Grid");
+		ImGui::SetNextItemWidth(50);
+		int denVal = denominator.get();
+		if(ImGui::DragInt("##den", &denVal, 0.1f, 1, 32)){
+			denominator = denVal;
+		}
+
+		// Zoom
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(80);
+		int zoomVal = zoomBars.get();
+		if(ImGui::DragInt("Zoom", &zoomVal, 0.1f, 1, 128)){
+			zoomBars = zoomVal;
+		}
+
+		// Grid
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(90);
-		ImGui::Combo("##griddiv", (int*)&gridDiv.get(),
+		ImGui::Combo("##grid", (int*)&gridDiv.get(),
 			"None\0""Bar\0""1st\0""2nd\0""4th\0""8th\0""16th\0""32nd\0""64th\0");
 
 		ImGui::SameLine();
@@ -377,48 +468,46 @@ private:
 	}
 
 	
-	void drawTimeline(){
+	void drawTimeline(float height){
 		drawTransportHeader();
-		ImGui::Separator();
+		
 		ImDrawList* dl = ImGui::GetWindowDrawList();
 		ImVec2 pos = ImGui::GetCursorScreenPos();
-		ImVec2 size = ImGui::GetContentRegionAvail();
+		float availW = ImGui::GetContentRegionAvail().x;
+		ImVec2 size(availW, height);
+		
+		// Create interactive button - this advances the cursor
+		ImGui::InvisibleButton("##rulerArea", size);
+		
+		// Capture the actual rect for drawing
+		ImVec2 p = ImGui::GetItemRectMin();
+		ImVec2 s = ImGui::GetItemRectSize();
 
-		if(size.x < 400) size.x = 800;
-		if(size.y < 100) size.y = 180;
-
-		float x0 = pos.x;
-		float y0 = pos.y;
-		float x1 = pos.x + size.x;
-		float y1 = pos.y + size.y;
+		float x0 = p.x;
+		float y0 = p.y;
+		float x1 = p.x + s.x;
+		float y1 = p.y + s.y;
 
 		// Background
-		dl->AddRectFilled(
-			ImVec2(x0, y0),
-			ImVec2(x1, y1),
-			IM_COL32(30, 30, 30, 255)
-		);
+		dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(30, 30, 30, 255));
 
 		int barsVisible = zoomBars.get();
 		int viewStartBar = 0;
 		int viewEndBar   = viewStartBar + barsVisible;
 
-		// Calculate beats per bar directly from time signature
-		// In PPQ24 system, a quarter note (denominator=4) = 1 beat
-		// Other denominators scale accordingly
 		double beatsPerBar = double(numerator.get()) * (4.0 / double(denominator.get()));
 
 		auto barToX = [&](int bar){
-			return x0 + (float(bar - viewStartBar) / barsVisible) * size.x;
+			return x0 + (float(bar - viewStartBar) / barsVisible) * s.x;
 		};
 
 		auto xToBar = [&](float x){
-			float t = ofClamp((x - x0) / size.x, 0.f, 1.f);
+			float t = ofClamp((x - x0) / s.x, 0.f, 1.f);
 			return viewStartBar + int(std::floor(t * barsVisible));
 		};
 
 		auto xToBeat = [&](float x){
-			float t = ofClamp((x - x0) / size.x, 0.f, 1.f);
+			float t = ofClamp((x - x0) / s.x, 0.f, 1.f);
 			double totalViewBeats = barsVisible * beatsPerBar;
 			double beatOffset = t * totalViewBeats;
 			return viewStartBar * beatsPerBar + beatOffset;
@@ -428,7 +517,6 @@ private:
 			double beat = xToBeat(x);
 			int gTicks = gridTicks();
 			if(gTicks > 0){
-				// Snap to grid divisions
 				double gridBeats = gTicks / 24.0;
 				beat = std::round(beat / gridBeats) * gridBeats;
 			}
@@ -443,7 +531,7 @@ private:
 		for(int bar = viewStartBar; bar <= viewEndBar; ++bar){
 			float bx = barToX(bar);
 
-			// Bar lines - prominent
+			// Bar lines
 			dl->AddLine(
 				ImVec2(bx, y0),
 				ImVec2(bx, y1),
@@ -457,10 +545,9 @@ private:
 			dl->AddText(ImVec2(bx + 4, y0 + 4),
 				IM_COL32(220,220,220,220), buf);
 
-			// Grid lines - subtle, darker and thinner
+			// Grid lines
 			if(bar < viewEndBar){
 				int gTicks = gridTicks();
-				// Only draw grid if not "None" (gTicks == 0)
 				if(gTicks > 0){
 					double gridBeats = gTicks / 24.0;
 					double viewStartBeats = viewStartBar * beatsPerBar;
@@ -471,9 +558,8 @@ private:
 					for(double b = barStartBeats + gridBeats; b < barEndBeats; b += gridBeats){
 						if(b < viewStartBeats || b > viewEndBeats) continue;
 						
-						float x = x0 + float((b - viewStartBeats) / (barsVisible * beatsPerBar)) * size.x;
+						float x = x0 + float((b - viewStartBeats) / (barsVisible * beatsPerBar)) * s.x;
 
-						// Grid lines - darker and thinner than bar lines
 						dl->AddLine(
 							ImVec2(x, y0 + 26),
 							ImVec2(x, y1),
@@ -490,8 +576,8 @@ private:
 			double viewStartBeats = viewStartBar * beatsPerBar;
 			double totalViewBeats = barsVisible * beatsPerBar;
 			
-			float lx1 = x0 + float((loopStartBeat.get() - viewStartBeats) / totalViewBeats) * size.x;
-			float lx2 = x0 + float((loopEndBeat.get() - viewStartBeats) / totalViewBeats) * size.x;
+			float lx1 = x0 + float((loopStartBeat.get() - viewStartBeats) / totalViewBeats) * s.x;
+			float lx2 = x0 + float((loopEndBeat.get() - viewStartBeats) / totalViewBeats) * s.x;
 
 			// Body
 			dl->AddRectFilled(
@@ -511,7 +597,7 @@ private:
 		double viewStartBeats = viewStartBar * beatsPerBar;
 		double totalViewBeats = barsVisible * beatsPerBar;
 
-		float playX = x0 + float((beatAcc - viewStartBeats) / totalViewBeats) * size.x;
+		float playX = x0 + float((beatAcc - viewStartBeats) / totalViewBeats) * s.x;
 
 		dl->AddLine(
 			ImVec2(playX, y0),
@@ -522,7 +608,6 @@ private:
 
 
 		// ---------- INTERACTION ----------
-		ImGui::InvisibleButton("timeline", size);
 		ImVec2 mouse = ImGui::GetIO().MousePos;
 
 		if(ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
@@ -547,7 +632,13 @@ private:
 			// If not dragging loop → move playhead (only in Internal mode)
 			if(dragMode == DRAG_NONE && clockMode.get() == 0){
 				beatAcc = beatAtMouse;
-				jumpTrigFramesRemaining = 3; // User-initiated seek is a jump - stay high for 3 frames
+				jumpTrigFramesRemaining = 3;
+				
+				if(transportRunning){
+					beatAccBase = beatAcc;
+					lastTimeMs = ofGetElapsedTimeMillis();
+				}
+				
 				updateOutputs();
 			}
 		}
@@ -579,8 +670,8 @@ private:
 		if(ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
 			dragMode = DRAG_NONE;
 		}
-
-		ImGui::Dummy(size);
+		
+		// Cursor already advanced by InvisibleButton, no Dummy needed!
 	}
 
 	// =====================================================
@@ -588,8 +679,13 @@ private:
 	// =====================================================
 
 	double beatAcc = 0.0;
-	double lastExternalBeat = -1.0; // For jump detection in external mode
-	int jumpTrigFramesRemaining = 0; // Frame counter for jump trigger duration
+	double lastExternalBeat = -1.0;
+	int jumpTrigFramesRemaining = 0;
+	
+	bool transportRunning = false;
+	uint64_t lastTimeMs = 0;
+	double beatAccBase = 0.0;
+	double lastBpm = 120.0;
 
 	ofParameter<int> clockMode;
 	ofParameter<int> ppqInput;
