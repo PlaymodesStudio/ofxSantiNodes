@@ -175,19 +175,18 @@
 #include "vectorSplitOnMinusOne.h"
 #include "vectorDeglitch.h"
 #include "debounce.h"
+#include "circularCrossfade.h"
+#include "sigmoidCurve.h"
+
+//harmony
 #include "progression.h"
 #include "intervalRatios.h"
 #include "justChords.h"
 #include "harmonicPartials.h"
 #include "justIntonationAdapter.h"
+
+///Lightnet
 #include "matrixDisplay.h"
-#include "reaperOscTransport.h"
-#include "midiClockTransport.h"
-#include "ppqBeats.h"
-#include "ppqMeter.h"
-#include "ppqPhasor.h"
-#include "ppqGenerator.h"
-#include "ppqTimeline.h"
 #include "vectorMorphology.h"
 #include "vectorMorphologyVV.h"
 #include "vectorRegionVV.h"
@@ -195,7 +194,22 @@
 #include "vectorOfVectorIndexedSampler.h"
 #include "vectorToCoordinates.h"
 #include "circularValueEaser.h"
+
+///Transport
+#include "reaperOscTransport.h"
+#include "midiClockTransport.h"
+#include "ppqBeats.h"
+#include "ppqMeter.h"
+#include "ppqPhasor.h"
+#include "ppqGenerator.h"
+#include "ppqTimeline.h"
 #include "rateLimiter.h"
+#include "transportQuantizer.h"
+#include "midiNoteQuantizer.h"
+#include "gateTrack.h"
+#include "curveTrack.h"
+#include "pianoRollTrack.h"
+
 
 
 
@@ -373,13 +387,8 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<vectorSplitOnMinusOne>("Santi/Math");
 	o.registerModel<vectorDeglitch>("Santi/Math");
 	o.registerModel<debounce>("Santi/Math");
-	o.registerModel<reaperOscTransport>("Santi/AudioUtils");
-	o.registerModel<midiClockTransport>("Santi/AudioUtils");
-	o.registerModel<ppqBeats>("Santi/AudioUtils");
-	o.registerModel<ppqMeter>("Santi/AudioUtils");
-	o.registerModel<ppqPhasor>("Santi/AudioUtils");
-	o.registerModel<ppqGenerator>("Santi/AudioUtils");
-	o.registerModel<ppqTimeline>("Santi/AudioUtils");
+	o.registerModel<sigmoidCurve>("Santi/Math");
+	
 	o.registerModel<vectorMorphology>("Santi/Vectors");
 	o.registerModel<vectorMorphologyVV>("Santi/Vectors");
 	o.registerModel<vectorRegionVV>("Santi/Vectors");
@@ -387,13 +396,29 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<vectorOfVectorIndexedSampler>("Santi/Vectors");
 	o.registerModel<vectorToCoordinates>("Santi/Vectors");
 	o.registerModel<circularValueEaser>("Santi/Vectors");
+	o.registerModel<rateLimiter>("Santi/General");
+	o.registerModel<circularCrossfade>("Santi/Vectors");
+	o.registerModel<transportQuantizer>("Santi/Vectors");
 	
 	o.registerModel<progression>("Santi/Math");
-	o.registerModel<intervalRatios>("Santi/Math");
-	o.registerModel<justChords>("Santi/Math");
-	o.registerModel<harmonicPartials>("Santi/Math");
-	o.registerModel<justIntonationAdapter>("Santi/Math");
-	o.registerModel<rateLimiter>("Santi/General");
+	o.registerModel<intervalRatios>("Santi/Harmony");
+	o.registerModel<justChords>("Santi/Harmony");
+	o.registerModel<harmonicPartials>("Santi/Harmony");
+	o.registerModel<justIntonationAdapter>("Santi/Harmony");
+	
+	
+	o.registerModel<reaperOscTransport>("Santi/Timeline");
+	o.registerModel<midiClockTransport>("Santi/Timeline");
+	o.registerModel<ppqBeats>("Santi/Timeline");
+	o.registerModel<ppqMeter>("Santi/Timeline");
+	o.registerModel<ppqPhasor>("Santi/Timeline");
+	o.registerModel<ppqGenerator>("Santi/Timeline");
+	o.registerModel<ppqTimeline>("Santi/Timeline");
+	o.registerModel<gateTrack>("Santi/Timeline");
+	o.registerModel<curveTrack>("Santi/Timeline");
+	o.registerModel<pianoRollTrack>("Santi/Timeline");
+	o.registerModel<midiNoteQuantizer>("Santi/Timeline");
+	
 	
 	o.registerModel<matrixDisplay>("Santi/General");
 
