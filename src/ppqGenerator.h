@@ -66,6 +66,11 @@ public:
 			if(p && !wasPlaying) {
 				jumpTrig = true;
 			}
+			
+			// Reset transport running state
+			if(!p) {
+				transportRunning = false;
+			}
 		}));
 
 		listeners.push(reset.newListener([this]() {
@@ -85,10 +90,28 @@ public:
 
 		if(!play) return;
 
-		float dt = ofGetLastFrameTime();
-		if(dt <= 0.f) return;
-
-		ppqAcc += dt * bpm.get() * 24.f / 60.f;
+		uint64_t now = ofGetElapsedTimeMillis();
+		
+		// First frame after play starts
+		if(!transportRunning) {
+			lastTimeMs = now;
+			ppqAccBase = ppqAcc; // Start from current position (preserves position on resume)
+			lastBpm = bpm.get();
+			transportRunning = true;
+		}
+		
+		// Handle BPM changes
+		if(std::abs(bpm.get() - lastBpm) > 0.001f) {
+			// BPM changed - snapshot current position as new base
+			ppqAccBase = ppqAcc;
+			lastTimeMs = now;
+			lastBpm = bpm.get();
+		}
+		
+		// Calculate PPQ from elapsed time (drift-free)
+		double elapsedSeconds = (now - lastTimeMs) / 1000.0;
+		ppqAcc = ppqAccBase + (elapsedSeconds * bpm.get() * 24.0 / 60.0);
+		
 		updateOutputs();
 	}
 
@@ -147,6 +170,13 @@ private:
 	void seekToPhase(float phase) {
 		phase = ofClamp(phase, 0.f, 1.f);
 		ppqAcc = phase * float(totalTicks());
+		
+		// Update timing base to reflect the seek
+		if(transportRunning) {
+			ppqAccBase = ppqAcc;
+			lastTimeMs = ofGetElapsedTimeMillis();
+		}
+		
 		updateOutputs();
 
 		// Scrubbing triggers a jump
@@ -161,6 +191,12 @@ private:
 		phasor = 0.f;
 		playState = false;
 		stopState = true;
+		
+		// Reset drift-free timing state
+		transportRunning = false;
+		lastTimeMs = 0;
+		ppqAccBase = 0.0;
+		lastBpm = bpm.get();
 
 		// Reset triggers a jump
 		jumpTrig = true;
@@ -169,6 +205,12 @@ private:
 	// ---------- STATE ----------
 
 	float ppqAcc = 0.f;
+	
+	// Drift-free timing state
+	bool transportRunning = false;
+	uint64_t lastTimeMs = 0;
+	double ppqAccBase = 0.0;
+	double lastBpm = 120.0;
 
 	// ---------- PARAMETERS ----------
 
@@ -195,4 +237,3 @@ private:
 };
 
 #endif /* ppqGenerator_h */
-
