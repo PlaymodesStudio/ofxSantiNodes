@@ -177,6 +177,7 @@
 #include "debounce.h"
 #include "circularCrossfade.h"
 #include "sigmoidCurve.h"
+#include "histogram2.h"
 
 //harmony
 #include "progression.h"
@@ -388,6 +389,7 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<vectorDeglitch>("Santi/Math");
 	o.registerModel<debounce>("Santi/Math");
 	o.registerModel<sigmoidCurve>("Santi/Math");
+	o.registerModel<histogram2>("Santi/Math");
 	
 	o.registerModel<vectorMorphology>("Santi/Vectors");
 	o.registerModel<vectorMorphologyVV>("Santi/Vectors");
