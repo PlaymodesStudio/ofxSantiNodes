@@ -191,8 +191,12 @@ private:
 					// Global end is before this segment starts - segment not visible
 					segmentStart = 0.0f;
 					segmentEnd = 0.0f;
-				} else if (globalStart >= segmentEndProgress) {
+				} else if (globalStart > segmentEndProgress) {
 					// Global start is after this segment ends - segment not visible
+					segmentStart = 0.0f;
+					segmentEnd = 0.0f;
+				} else if (globalStart == globalEnd) {
+					// Special case: when start equals end, nothing should be visible
 					segmentStart = 0.0f;
 					segmentEnd = 0.0f;
 				} else {
