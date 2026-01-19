@@ -181,6 +181,8 @@
 #include "indexRouter.h"
 #include "trimGroupPaths.h"
 #include "vectorInverter.h"
+#include "hue2rgb.h"
+#include "ignoreZeros.h"
 
 //harmony
 #include "progression.h"
@@ -396,6 +398,8 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<indexRouter>("Santi/Vectors");
 	o.registerModel<trimGroupPaths>("Santi/Vectors");
 	o.registerModel<vectorInverter>("Santi/Vectors");
+	o.registerModel<hsv2rgb>("Santi/Conversions");
+	o.registerModel<ignoreZeros>("Santi/Vectors");
 	
 	o.registerModel<vectorMorphology>("Santi/Vectors");
 	o.registerModel<vectorMorphologyVV>("Santi/Vectors");
