@@ -17,13 +17,20 @@ public:
 		addParameter(pointsX.set("In.X", {0.5}, {-FLT_MAX}, {FLT_MAX}));
 		addParameter(pointsY.set("In.Y", {0.5}, {-FLT_MAX}, {FLT_MAX}));
 		addParameter(showWindow.set("Show GUI", false));
+		
 		addParameter(start.set("Start", {0.0}, {0.0}, {1.0}));
 		addParameter(end.set("End", {1.0}, {0.0}, {1.0}));
 		addParameter(opacity.set("Opacity", {1.0}, {0.0}, {1.0}));
+		addParameter(red.set("Red", {1.0}, {0.0}, {1.0}));
+		addParameter(green.set("Green", {1.0}, {0.0}, {1.0}));
+		addParameter(blue.set("Blue", {1.0}, {0.0}, {1.0}));
 		
 		addOutputParameter(outX.set("Out.X", {0}, {-FLT_MAX}, {FLT_MAX}));
 		addOutputParameter(outY.set("Out.Y", {0}, {-FLT_MAX}, {FLT_MAX}));
 		addOutputParameter(opacityOut.set("Opacity Out", {0}, {0}, {1}));
+		addOutputParameter(outR.set("Out.R", {0}, {0}, {1}));
+		addOutputParameter(outG.set("Out.G", {0}, {0}, {1}));
+		addOutputParameter(outB.set("Out.B", {0}, {0}, {1}));
 		
 		addInspectorParameter(numGroups.set("Num Groups", 1, 1, 100));
 		
@@ -398,13 +405,19 @@ public:
 			outX = vector<float>();
 			outY = vector<float>();
 			opacityOut = vector<float>();
+			outR = vector<float>();
+			outG = vector<float>();
+			outB = vector<float>();
 			return;
 		}
 		
 		// Store trimmed results per path per group
-		// We need to track which group each segment belongs to for proper opacity mapping
+		// We need to track which group each segment belongs to for proper opacity and color mapping
 		vector<map<int, vector<glm::vec2>>> trimmedPathsByGroup(inputPaths.size());
 		vector<map<int, vector<float>>> pathOpacitiesByGroup(inputPaths.size());
+		vector<map<int, vector<float>>> pathColorsRByGroup(inputPaths.size());
+		vector<map<int, vector<float>>> pathColorsGByGroup(inputPaths.size());
+		vector<map<int, vector<float>>> pathColorsBByGroup(inputPaths.size());
 		
 		// Process each group
 		for (int groupIdx = 0; groupIdx < pathGroups.size(); groupIdx++)
@@ -416,6 +429,9 @@ public:
 			float groupStart = getValueForIndex(start.get(), groupIdx, 0.0f);
 			float groupEnd = getValueForIndex(end.get(), groupIdx, 1.0f);
 			float groupOpacity = getValueForIndex(opacity.get(), groupIdx, 1.0f);
+			float groupR = getValueForIndex(red.get(), groupIdx, 1.0f);
+			float groupG = getValueForIndex(green.get(), groupIdx, 1.0f);
+			float groupB = getValueForIndex(blue.get(), groupIdx, 1.0f);
 			
 			// Handle start > end case
 			if (groupStart > groupEnd)
@@ -447,6 +463,9 @@ public:
 				
 				vector<glm::vec2> groupTrimmedPath;
 				vector<float> groupPathOpacity;
+				vector<float> groupPathR;
+				vector<float> groupPathG;
+				vector<float> groupPathB;
 				
 				// Process each segment in this path
 				for (size_t segIdx = 0; segIdx < path.size() - 1; segIdx++)
@@ -522,6 +541,15 @@ public:
 							
 							groupPathOpacity.push_back(groupOpacity);
 							groupPathOpacity.push_back(groupOpacity);
+							
+							groupPathR.push_back(groupR);
+							groupPathR.push_back(groupR);
+							
+							groupPathG.push_back(groupG);
+							groupPathG.push_back(groupG);
+							
+							groupPathB.push_back(groupB);
+							groupPathB.push_back(groupB);
 						}
 					}
 					
@@ -533,6 +561,9 @@ public:
 				{
 					trimmedPathsByGroup[pathIdx][groupIdx] = groupTrimmedPath;
 					pathOpacitiesByGroup[pathIdx][groupIdx] = groupPathOpacity;
+					pathColorsRByGroup[pathIdx][groupIdx] = groupPathR;
+					pathColorsGByGroup[pathIdx][groupIdx] = groupPathG;
+					pathColorsBByGroup[pathIdx][groupIdx] = groupPathB;
 				}
 			}
 		}
@@ -540,10 +571,11 @@ public:
 		// Assemble output in original path order
 		// For each path, concatenate all its groups' segments
 		vector<float> finalX, finalY, finalOpacity;
+		vector<float> finalR, finalG, finalB;
 		
 		for (size_t pathIdx = 0; pathIdx < inputPaths.size(); pathIdx++)
 		{
-			vector<float> pathX, pathY, pathOp;
+			vector<float> pathX, pathY, pathOp, pathR, pathG, pathB;
 			
 			// Combine all groups for this path
 			for(int groupIdx = 0; groupIdx < pathGroups.size(); groupIdx++)
@@ -552,6 +584,9 @@ public:
 				{
 					const auto& path = trimmedPathsByGroup[pathIdx][groupIdx];
 					const auto& opacities = pathOpacitiesByGroup[pathIdx][groupIdx];
+					const auto& colorsR = pathColorsRByGroup[pathIdx][groupIdx];
+					const auto& colorsG = pathColorsGByGroup[pathIdx][groupIdx];
+					const auto& colorsB = pathColorsBByGroup[pathIdx][groupIdx];
 					
 					for (size_t i = 0; i < path.size(); i++)
 					{
@@ -566,6 +601,15 @@ public:
 						{
 							pathOp.push_back(1.0f);
 						}
+						
+						if (i < colorsR.size()) pathR.push_back(colorsR[i]);
+						else pathR.push_back(1.0f);
+						
+						if (i < colorsG.size()) pathG.push_back(colorsG[i]);
+						else pathG.push_back(1.0f);
+						
+						if (i < colorsB.size()) pathB.push_back(colorsB[i]);
+						else pathB.push_back(1.0f);
 					}
 				}
 			}
@@ -576,11 +620,14 @@ public:
 				finalX.insert(finalX.end(), pathX.begin(), pathX.end());
 				finalY.insert(finalY.end(), pathY.begin(), pathY.end());
 				finalOpacity.insert(finalOpacity.end(), pathOp.begin(), pathOp.end());
+				finalR.insert(finalR.end(), pathR.begin(), pathR.end());
+				finalG.insert(finalG.end(), pathG.begin(), pathG.end());
+				finalB.insert(finalB.end(), pathB.begin(), pathB.end());
 				
 				// Add separator
 				finalX.push_back(-1);
 				finalY.push_back(-1);
-				// No opacity for separator
+				// No opacity or color for separator
 			}
 		}
 		
@@ -614,6 +661,9 @@ public:
 		outX = finalX;
 		outY = finalY;
 		opacityOut = finalOpacity;
+		outR = finalR;
+		outG = finalG;
+		outB = finalB;
 	}
 	
 	void presetSave(ofJson &json) override
@@ -710,7 +760,9 @@ private:
 	
 	ofParameter<vector<float>> pointsX, pointsY;
 	ofParameter<vector<float>> start, end, opacity;
+	ofParameter<vector<float>> red, green, blue;
 	ofParameter<vector<float>> outX, outY, opacityOut;
+	ofParameter<vector<float>> outR, outG, outB;
 	ofParameter<bool> showWindow;
 	ofParameter<int> numGroups;
 	ofEventListener listener;
