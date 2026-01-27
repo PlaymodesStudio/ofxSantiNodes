@@ -477,6 +477,7 @@ private:
 		ImVec2 size(availW, height);
 		
 		// Create interactive button - this advances the cursor
+		if(size.x==0) size.x = 100;
 		ImGui::InvisibleButton("##rulerArea", size);
 		
 		// Capture the actual rect for drawing
@@ -488,14 +489,30 @@ private:
 		float x1 = p.x + s.x;
 		float y1 = p.y + s.y;
 
-		// Background
-		dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(30, 30, 30, 255));
-
 		int barsVisible = zoomBars.get();
 		int viewStartBar = 0;
 		int viewEndBar   = viewStartBar + barsVisible;
 
 		double beatsPerBar = double(numerator.get()) * (4.0 / double(denominator.get()));
+
+		// Background
+		// Calculate the split X coordinate where the timeline ends (totalBars)
+		// Formula: x0 + (totalBars / barsVisible) * width
+		float splitX = x0 + (float(totalBars.get()) / float(barsVisible)) * s.x;
+
+		// Clamp splitX to the right edge (x1) to handle cases where totalBars > barsVisible
+		float drawSplitX = std::min(splitX, x1);
+
+		// Section 1: Active timeline area (from start to totalBars)
+		// Color: Standard dark gray (30, 30, 30)
+		dl->AddRectFilled(ImVec2(x0, y0), ImVec2(drawSplitX, y1), IM_COL32(30, 30, 30, 255));
+
+		// Section 2: Beyond timeline area (from totalBars to end of view)
+		// Only draw if the split point is visible (i.e., totalBars < barsVisible)
+		if (drawSplitX < x1) {
+			// Color: 20% darker (24, 24, 24)
+			dl->AddRectFilled(ImVec2(drawSplitX, y0), ImVec2(x1, y1), IM_COL32(12, 12, 12, 255));
+		}
 
 		auto barToX = [&](int bar){
 			return x0 + (float(bar - viewStartBar) / barsVisible) * s.x;
