@@ -184,6 +184,7 @@
 #include "hue2rgb.h"
 #include "ignoreZeros.h"
 #include "vectorColorGradient.h"
+#include "vectorMatrixResize.h"
 
 //harmony
 #include "progression.h"
@@ -402,6 +403,7 @@ static void registerModels(ofxOceanode &o)
 	o.registerModel<hsv2rgb>("Santi/Conversions");
 	o.registerModel<ignoreZeros>("Santi/Vectors");
 	o.registerModel<vectorColorGradient>("Santi/Vectors");
+	o.registerModel<vectorMatrixResize>("Santi/Vectors");
 	
 	o.registerModel<vectorMorphology>("Santi/Vectors");
 	o.registerModel<vectorMorphologyVV>("Santi/Vectors");
