@@ -6,17 +6,16 @@
 #include "ofThreadChannel.h"
 #include <cmath>
 #include <cstdint>
+#include <deque>
 
 /*
-	MIDI Clock Transport (thread-safe + stable BPM)
+	MIDI Clock Transport (thread-safe, tick-based BPM)
 
-	Changes vs previous "fixed" version:
-	1) MIDI callback NEVER touches ofParameters (still true).
-	2) Ignore MIDI_TIME_CLOCK until START/CONTINUE sets playing=true (REAPER-friendly).
-	3) BPM is computed on the MAIN THREAD over a window of N ticks (default 24 = 1 beat),
-	   and we suppress BPM updates for the first X ticks after start/continue/jump.
-	4) Snapshot no longer relies on MIDI-thread BPM smoothing (optional, removed for stability).
-	5) Jump trigger now stays high for 3 frames for proper synchronization.
+	Key features:
+	1) BPM calculated using sliding window of tick intervals (24 PPQ)
+	2) SPP handling with toggle for REAPER vs standard MIDI
+	3) "Clock Only Mode" for devices without transport signals
+	4) Configurable smoothing window size
 */
 
 class midiClockTransport :
@@ -37,6 +36,10 @@ public:
 		addSeparator("INPUTS", ofColor(240, 240, 240));
 		addParameterDropdown(midiPort, "Port", 0, midiIn.getInPortList());
 		addParameter(enable.set("Enable", 0, 0, 1));
+		addParameter(clockOnlyMode.set("Clock Only", 0, 0, 1));
+		addParameter(reaperMode.set("REAPER Mode", 1, 0, 1));  // Default ON for REAPER compatibility
+		addParameter(bpmWindowSize.set("BPM Window", 24, 12, 96));  // Window size in ticks (12-96, default 24 = 1 beat)
+		addParameter(bpmDecimals.set("BPM Decimals", 1, 0, 2));  // Rounding precision (0, 1, or 2 decimal places)
 		addParameter(listPorts.set("List Ports"));
 
 		/* -------- Transport outputs -------- */
@@ -80,6 +83,13 @@ public:
 			(e == 1) ? startMidi() : stopMidi();
 		}));
 
+		listeners.push(clockOnlyMode.newListener([this](int &mode){
+			if(mode == 1) {
+				playing_midi = true;
+				stopped_midi = false;
+			}
+		}));
+
 		listeners.push(listPorts.newListener([this](){
 			midiIn.listInPorts();
 		}));
@@ -94,75 +104,95 @@ public:
 		const MidiStatus st = msg.status;
 
 		if(st == MIDI_TIME_CLOCK) {
-			// REAPER / DAW safety: ignore clocks until transport says we're playing
-			if(!playing_midi) return;
+			const uint64_t now = ofGetElapsedTimeMicros();
 
-			const uint64_t now = ofGetElapsedTimeMillis();
-
-			const int prevTick = tickCount_midi;
-			tickCount_midi++;
-
-			// Jump detection: if we ever see discontinuity in tick progression.
-			// (In practice tickCount increments by 1 always here, but keep the logic
-			// in case you later derive ticks differently.)
-			if(prevTick > 0) {
-				const int expected = prevTick + 1;
-				const int delta = std::abs(tickCount_midi - expected);
-				if(delta > 2) jumpCounter_midi++;
+			if(!playing_midi && clockOnlyMode.get() == 0) {
+				return;
 			}
 
-			lastClockMs_midi = now;
+			if(clockOnlyMode.get() == 1 && !playing_midi) {
+				playing_midi = true;
+				stopped_midi = false;
+				startCounter_midi++;
+			}
+
+			tickCount_midi++;
+			
+			// Store tick timestamp for BPM calculation (microseconds)
+			tickTimestamps_midi.push_back(now);
+			
+			// Trim to max window size (keep some extra for flexibility)
+			const size_t maxSize = 128;
+			while(tickTimestamps_midi.size() > maxSize) {
+				tickTimestamps_midi.pop_front();
+			}
+
+			lastClockMs_midi = now / 1000;  // Keep ms version for other uses
 			stopped_midi = false;
 
 			pushSnapshot(now);
 		}
 		else if(st == MIDI_SONG_POS_POINTER) {
 			if(msg.bytes.size() >= 2) {
-				const int sppValue = (static_cast<int>(msg.bytes[1]) << 7) | static_cast<int>(msg.bytes[0]);
-
-				const int REAPER_OFFSET = 242;
-				const int SPP_MAX = 16384; // 14-bit max
-
-				int basePPQ = ((sppValue - REAPER_OFFSET) * 3) / 64;
-				if(basePPQ < 0) basePPQ = 0;
-
-				const int MAX_PPQ_PER_WRAP = ((SPP_MAX - REAPER_OFFSET) * 3) / 64;
-
-				if(playing_midi && tickCount_midi > 0 && MAX_PPQ_PER_WRAP > 0) {
-					const int expectedWrap = tickCount_midi / MAX_PPQ_PER_WRAP;
-					const int candidate1 = basePPQ + (expectedWrap * MAX_PPQ_PER_WRAP);
-					const int candidate2 = basePPQ + ((expectedWrap + 1) * MAX_PPQ_PER_WRAP);
-					tickCount_midi = (std::abs(candidate1 - tickCount_midi) < std::abs(candidate2 - tickCount_midi))
-						? candidate1 : candidate2;
+				const uint8_t byte0 = static_cast<uint8_t>(msg.bytes[0]);
+				const uint8_t byte1 = static_cast<uint8_t>(msg.bytes[1]);
+				
+				int newTickCount = 0;
+				
+				if(reaperMode.get() == 1) {
+					// REAPER mode: byte1 encodes position, byte0 is always 242 (ignored)
+					// byte1 = beat * 4 (i.e., sixteenth notes)
+					// ticks = byte1 * 6 (since 24 PPQ / 4 sixteenths = 6 ticks per sixteenth)
+					newTickCount = static_cast<int>(byte1) * 6;
+					
+					ofLogNotice("MIDI SPP [REAPER]") << "byte1=" << (int)byte1
+													 << " -> ticks=" << newTickCount
+													 << " (beat " << (newTickCount / 24.0f) << ")";
 				} else {
-					tickCount_midi = basePPQ;
+					// Standard MIDI SPP: 14-bit value in units of 1/16th notes
+					const int sppValue = (static_cast<int>(byte1) << 7) | static_cast<int>(byte0);
+					newTickCount = sppValue * 6;
+					
+					ofLogNotice("MIDI SPP [Standard]") << "sppValue=" << sppValue
+													   << " -> ticks=" << newTickCount
+													   << " (beat " << (newTickCount / 24.0f) << ")";
 				}
+				
+				// Detect jump
+				if(std::abs(newTickCount - tickCount_midi) > 12) {
+					jumpCounter_midi++;
+				}
+				
+				tickCount_midi = newTickCount;
+				lastSpp_midi = (static_cast<int>(byte1) << 7) | static_cast<int>(byte0);
+				
+				// Clear tick timestamps on jump (they're no longer valid for BPM calc)
+				tickTimestamps_midi.clear();
 
-				// SPP = jump event
-				jumpCounter_midi++;
-				lastSpp_midi = sppValue;
-
-				pushSnapshot(ofGetElapsedTimeMillis());
+				pushSnapshot(ofGetElapsedTimeMicros());
 			}
 		}
 		else if(st == MIDI_START) {
-			resetMidiThreadState();        // zero tick, timestamps, etc.
+			resetMidiThreadState();
 			playing_midi = true;
 			stopped_midi = false;
 
 			startCounter_midi++;
-			jumpCounter_midi++;            // treat start as an edge/jump
+			jumpCounter_midi++;
 
-			pushSnapshot(ofGetElapsedTimeMillis());
+			pushSnapshot(ofGetElapsedTimeMicros());
 		}
 		else if(st == MIDI_CONTINUE) {
 			playing_midi = true;
 			stopped_midi = false;
 
 			contCounter_midi++;
-			jumpCounter_midi++;            // treat continue as an edge/jump
+			jumpCounter_midi++;
+			
+			// Clear tick timestamps on continue (timing discontinuity)
+			tickTimestamps_midi.clear();
 
-			pushSnapshot(ofGetElapsedTimeMillis());
+			pushSnapshot(ofGetElapsedTimeMicros());
 		}
 		else if(st == MIDI_STOP) {
 			playing_midi = false;
@@ -170,21 +200,19 @@ public:
 
 			stopCounter_midi++;
 
-			pushSnapshot(ofGetElapsedTimeMillis());
+			pushSnapshot(ofGetElapsedTimeMicros());
 		}
 	}
 
 	/* ================= MAIN THREAD (Oceanode update loop) ================= */
 
 	void update(ofEventArgs &args) override {
-		// Drain snapshots; keep latest (resample to frame rate)
 		ClockSnapshot s;
 		bool got = false;
 		while(snapToMain.tryReceive(s)) {
 			got = true;
 		}
 
-		// Decrement jump trigger counter
 		if(jumpTrigFramesRemaining > 0){
 			jumpTrigFramesRemaining--;
 			jumpTrig = 1;
@@ -194,118 +222,82 @@ public:
 
 		if(!got) return;
 
-		// Compute jump edge BEFORE updating playState parameter (we need previous too)
-		const bool jumpEdge = (s.jumpCounter != lastJumpCounter_main);
-		lastJumpCounter_main = s.jumpCounter;
-
-		// Transport edges for "start of playing"
-		const bool startEdge    = (s.startCounter != lastStartCounter_main);
-		const bool stopEdge     = (s.stopCounter  != lastStopCounter_main);
-		const bool contEdge     = (s.contCounter  != lastContCounter_main);
+		const bool jumpEdge  = (s.jumpCounter  != lastJumpCounter_main);
+		const bool startEdge = (s.startCounter != lastStartCounter_main);
+		const bool stopEdge  = (s.stopCounter  != lastStopCounter_main);
+		const bool contEdge  = (s.contCounter  != lastContCounter_main);
+		
+		lastJumpCounter_main  = s.jumpCounter;
 		lastStartCounter_main = s.startCounter;
 		lastStopCounter_main  = s.stopCounter;
 		lastContCounter_main  = s.contCounter;
 
-		// Publish transport states (main thread)
-		const bool wasPlaying = (playState.get() == 1); // previous frame value
 		playState = s.playing ? 1 : 0;
 		stopState = s.stopped ? 1 : 0;
 
-		// Trigger jump for 3 frames
 		if(jumpEdge){
 			jumpTrigFramesRemaining = 3;
 		}
 
-		// Publish clock scalars (main thread)
 		ppq24  = s.tickCount;
 		ppq24f = static_cast<float>(s.tickCount);
-		beat   = static_cast<float>(s.tickCount) / 24.f;
-		beatTransport = beat.get(); // Same as beat
+		
+		const float currentBeat = static_cast<float>(s.tickCount) / 24.f;
+		beat = currentBeat;
+		beatTransport = currentBeat;
 
-		// ---------- BPM STABILIZATION ----------
-		// Strategy:
-		// - Estimate BPM over a window of N ticks (default: 24 ticks = 1 beat)
-		// - Reset/re-prime estimation on start/continue/jump/stop
-		// - Suppress BPM updates for first X ticks after start/continue/jump
-		//
-		// This kills the big oscillations right after pressing play in REAPER.
-
-		const bool playingNow = s.playing;
-		const bool transportEdge = startEdge || contEdge || stopEdge || jumpEdge || (playingNow && !wasPlaying) || (!playingNow && wasPlaying);
-
-		if(transportEdge) {
-			haveBpmWindow_main = false;
-			ticksSinceEdge_main = 0;
-		}
-
-		// Track tick advances to count "ticks since edge"
-		if(playingNow) {
-			if(!haveLastTick_main) {
-				lastTickObserved_main = s.tickCount;
-				haveLastTick_main = true;
-			} else {
-				if(s.tickCount != lastTickObserved_main) {
-					// If tick jumped backwards/forwards a lot, treat as edge
-					if(std::abs(s.tickCount - lastTickObserved_main) > 8) {
-						haveBpmWindow_main = false;
-						ticksSinceEdge_main = 0;
-					} else {
-						ticksSinceEdge_main += std::abs(s.tickCount - lastTickObserved_main);
+		// ---------- BPM CALCULATION (tick-based sliding window, microsecond precision) ----------
+		// Use the last N tick timestamps to calculate average tick interval
+		// BPM = 60000000 / (avg_us_per_tick * 24)
+		
+		const int windowSize = bpmWindowSize.get();
+		const int decimals = bpmDecimals.get();
+		
+		if(s.playing && s.tickTimestamps.size() >= 2) {
+			// Use up to windowSize ticks
+			const size_t available = s.tickTimestamps.size();
+			const size_t useCount = std::min(static_cast<size_t>(windowSize), available);
+			
+			if(useCount >= 2) {
+				// Get timestamps from the end of the deque (most recent)
+				const uint64_t newestUs = s.tickTimestamps.back();
+				const uint64_t oldestUs = s.tickTimestamps[available - useCount];
+				
+				const uint64_t durationUs = newestUs - oldestUs;
+				const size_t tickIntervals = useCount - 1;  // N timestamps = N-1 intervals
+				
+				if(durationUs > 0 && tickIntervals > 0) {
+					// Average microseconds per tick
+					const double avgUsPerTick = static_cast<double>(durationUs) / static_cast<double>(tickIntervals);
+					
+					// BPM = 60000000 / (us_per_tick * 24)
+					const double instantBpm = 60000000.0 / (avgUsPerTick * 24.0);
+					
+					if(std::isfinite(instantBpm) && instantBpm >= 20.0 && instantBpm <= 400.0) {
+						// Light smoothing to avoid micro-jitter
+						bpmSmooth_main = bpmSmooth_main * 0.8 + instantBpm * 0.2;
 					}
-					lastTickObserved_main = s.tickCount;
-				}
-			}
-		} else {
-			haveLastTick_main = false;
-		}
-
-		// Only update BPM after we've seen enough ticks post-edge
-		if(playingNow && ticksSinceEdge_main >= BPM_IGNORE_TICKS_AFTER_EDGE) {
-			if(!haveBpmWindow_main) {
-				bpmWindowStartMs_main = s.ms;
-				bpmWindowStartTick_main = s.tickCount;
-				haveBpmWindow_main = true;
-			} else {
-				const int dTick = s.tickCount - bpmWindowStartTick_main;
-				const uint64_t dMs = s.ms - bpmWindowStartMs_main;
-
-				if(dTick >= BPM_WINDOW_TICKS && dMs > 0) {
-					float instBpm = (60000.f * static_cast<float>(dTick)) / (static_cast<float>(dMs) * 24.f);
-
-					// Plausibility clamp (optional but helpful)
-					if(std::isfinite(instBpm)) {
-						instBpm = ofClamp(instBpm, 1.f, 999.f);
-
-						// Prevent insane spikes relative to current smooth BPM
-						instBpm = ofClamp(instBpm, bpmSmooth_main * 0.85f, bpmSmooth_main * 1.15f);
-
-						// Smooth (since we update less frequently, use stronger alpha)
-						bpmSmooth_main = bpmSmooth_main * (1.f - BPM_SMOOTH_ALPHA) + instBpm * BPM_SMOOTH_ALPHA;
-					}
-
-					// Advance window
-					bpmWindowStartMs_main = s.ms;
-					bpmWindowStartTick_main = s.tickCount;
 				}
 			}
 		}
+		
+		// Round to specified decimal places
+		float bpmRounded = bpmSmooth_main;
+		if(decimals == 0) {
+			bpmRounded = std::round(bpmSmooth_main);
+		} else if(decimals == 1) {
+			bpmRounded = std::round(bpmSmooth_main * 10.0f) / 10.0f;
+		} else if(decimals == 2) {
+			bpmRounded = std::round(bpmSmooth_main * 100.0f) / 100.0f;
+		}
 
-		bpm = ofClamp(bpmSmooth_main, 1.f, 999.f);
+		bpm = ofClamp(bpmRounded, 1.f, 999.f);
 
-		// Time in seconds: (beats / bpm) * 60
 		const float bpmVal = bpm.get();
-		const float currentBeat = beat.get();
 		timeSeconds = (bpmVal > 0.f) ? (currentBeat / bpmVal) * 60.f : 0.f;
 	}
 
 private:
-	/* ================= CONFIG (MAIN THREAD BPM) ================= */
-	static constexpr int   BPM_WINDOW_TICKS = 24;              // 24 = 1 beat; try 96 for extra smooth
-	static constexpr int   BPM_IGNORE_TICKS_AFTER_EDGE = 48;   // ignore first 2 beats after start/jump
-	static constexpr float BPM_SMOOTH_ALPHA = 0.20f;           // smoothing factor when a window update happens
-
-	/* ================= SNAPSHOT / RESAMPLING ================= */
-
 	struct ClockSnapshot {
 		uint64_t ms = 0;
 		int tickCount = 0;
@@ -318,12 +310,15 @@ private:
 		uint32_t stopCounter = 0;
 		uint32_t contCounter = 0;
 
-		int lastSpp = -1; // debug/info
+		int lastSpp = -1;
+		
+		// Tick timestamps for BPM calculation (copied from MIDI thread)
+		std::deque<uint64_t> tickTimestamps;
 	};
 
 	ofThreadChannel<ClockSnapshot> snapToMain;
 
-	// MIDI-thread state (ONLY touched on MIDI thread)
+	/* ================= MIDI THREAD STATE ================= */
 	uint64_t lastClockMs_midi = 0;
 	int tickCount_midi = 0;
 
@@ -336,29 +331,21 @@ private:
 	uint32_t contCounter_midi = 0;
 
 	int lastSpp_midi = -1;
+	
+	// Tick timestamps for BPM calculation
+	std::deque<uint64_t> tickTimestamps_midi;
 
-	// Main-thread edge tracking
+	/* ================= MAIN THREAD STATE ================= */
 	uint32_t lastJumpCounter_main = 0;
 	uint32_t lastStartCounter_main = 0;
 	uint32_t lastStopCounter_main  = 0;
 	uint32_t lastContCounter_main  = 0;
 
-	// Main-thread BPM estimation state
-	float bpmSmooth_main = 120.f;
-
-	bool haveBpmWindow_main = false;
-	uint64_t bpmWindowStartMs_main = 0;
-	int bpmWindowStartTick_main = 0;
-
-	int ticksSinceEdge_main = 0;
-
-	bool haveLastTick_main = false;
-	int lastTickObserved_main = 0;
+	double bpmSmooth_main = 120.0;
 	
-	int jumpTrigFramesRemaining = 0; // Frame counter for jump trigger duration
+	int jumpTrigFramesRemaining = 0;
 
 	void pushSnapshot(uint64_t nowMs) {
-		// MIDI thread: publish latest snapshot; drop backlog to keep "latest-only"
 		ClockSnapshot old;
 		while(snapToMain.tryReceive(old)) {}
 
@@ -375,18 +362,20 @@ private:
 		s.contCounter = contCounter_midi;
 
 		s.lastSpp = lastSpp_midi;
+		
+		// Copy tick timestamps for BPM calculation on main thread
+		s.tickTimestamps = tickTimestamps_midi;
 
 		snapToMain.send(s);
 	}
 
-	/* ================= MIDI MANAGEMENT (MAIN THREAD) ================= */
+	/* ================= MIDI MANAGEMENT ================= */
 
 	void startMidi() {
 		if(midiIn.isOpen()) return;
 
 		midiIn.openPort(midiPort);
 
-		// Allow timing messages (MIDI Clock)
 		midiIn.ignoreTypes(
 			false, // sysex
 			false, // timing
@@ -395,9 +384,13 @@ private:
 
 		midiIn.addListener(this);
 
-		// Reset state when enabling
 		resetMidiThreadState();
 		resetMainThreadState();
+		
+		if(clockOnlyMode.get() == 1) {
+			playing_midi = true;
+			stopped_midi = false;
+		}
 	}
 
 	void stopMidi() {
@@ -421,17 +414,17 @@ private:
 		playing_midi = false;
 		stopped_midi = true;
 
-		// Reset counters (fresh run)
 		jumpCounter_midi = 0;
 		startCounter_midi = 0;
 		stopCounter_midi = 0;
 		contCounter_midi = 0;
 
 		lastSpp_midi = -1;
+		
+		tickTimestamps_midi.clear();
 	}
 
 	void resetMainThreadState() {
-		// clear output params
 		playState = 0;
 		stopState = 1;
 		jumpTrig = 0;
@@ -443,25 +436,15 @@ private:
 		timeSeconds = 0.f;
 		bpm = 120.f;
 
-		// clear pending snapshots
 		ClockSnapshot old;
 		while(snapToMain.tryReceive(old)) {}
 
-		// edge trackers
 		lastJumpCounter_main = 0;
 		lastStartCounter_main = 0;
 		lastStopCounter_main  = 0;
 		lastContCounter_main  = 0;
 
-		// bpm state
-		bpmSmooth_main = 120.f;
-		haveBpmWindow_main = false;
-		bpmWindowStartMs_main = 0;
-		bpmWindowStartTick_main = 0;
-
-		ticksSinceEdge_main = 0;
-		haveLastTick_main = false;
-		lastTickObserved_main = 0;
+		bpmSmooth_main = 120.0;
 		
 		jumpTrigFramesRemaining = 0;
 	}
@@ -472,6 +455,10 @@ private:
 	/* -------- Parameters -------- */
 	ofParameter<int> midiPort;
 	ofParameter<int> enable;
+	ofParameter<int> clockOnlyMode;
+	ofParameter<int> reaperMode;
+	ofParameter<int> bpmWindowSize;
+	ofParameter<int> bpmDecimals;
 	ofParameter<void> listPorts;
 
 	ofParameter<int> playState;
