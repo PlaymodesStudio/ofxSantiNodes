@@ -12,7 +12,7 @@ public:
 	
 	void setup() override
 	{
-		description = "Groups multiple input paths and trims each group sequentially. Click 'Focus' on a group to select paths by clicking on them in the visual preview. Paths can belong to multiple groups. Start/End/Opacity vectors control each group independently.";
+		description = "Groups multiple input paths and trims each group sequentially. Click 'Focus' on a group to select paths by clicking on them in the visual preview. Paths can belong to multiple groups. Start/End/Opacity vectors control each group independently. Endpoint Dots adds a dot at each segment endpoint.";
 		
 		addParameter(pointsX.set("In.X", {0.5}, {-FLT_MAX}, {FLT_MAX}));
 		addParameter(pointsY.set("In.Y", {0.5}, {-FLT_MAX}, {FLT_MAX}));
@@ -20,6 +20,7 @@ public:
 		
 		addParameter(start.set("Start", {0.0}, {0.0}, {1.0}));
 		addParameter(end.set("End", {1.0}, {0.0}, {1.0}));
+		addParameter(endpointDots.set("Endpoint Dots", false));
 		addParameter(opacity.set("Opacity", {1.0}, {0.0}, {1.0}));
 		addParameter(red.set("Red", {1.0}, {0.0}, {1.0}));
 		addParameter(green.set("Green", {1.0}, {0.0}, {1.0}));
@@ -40,6 +41,10 @@ public:
 		listeners.push(numGroups.newListener([this](int &n){
 			pathGroups.resize(n);
 			if(focusedGroup >= n) focusedGroup = -1;
+			calculate();
+		}));
+		
+		listeners.push(endpointDots.newListener([this](bool &b){
 			calculate();
 		}));
 		
@@ -336,6 +341,16 @@ public:
 							draw_list->AddLine(p1, p2,
 											 IM_COL32(drawColor.x*255, drawColor.y*255, drawColor.z*255, alpha*255),
 											 lineWidth);
+							
+							// Draw endpoint dots in preview if enabled
+							if(endpointDots.get())
+							{
+								float dotRadius = 4.0f;
+								draw_list->AddCircleFilled(p1, dotRadius,
+									IM_COL32(drawColor.x*255, drawColor.y*255, drawColor.z*255, alpha*255), 8);
+								draw_list->AddCircleFilled(p2, dotRadius,
+									IM_COL32(drawColor.x*255, drawColor.y*255, drawColor.z*255, alpha*255), 8);
+							}
 						}
 						
 						// Draw path index label
@@ -419,6 +434,15 @@ public:
 		vector<map<int, vector<float>>> pathColorsGByGroup(inputPaths.size());
 		vector<map<int, vector<float>>> pathColorsBByGroup(inputPaths.size());
 		
+		// Store endpoint dots separately per path per group
+		vector<map<int, vector<glm::vec2>>> endpointDotsByGroup(inputPaths.size());
+		vector<map<int, vector<float>>> endpointDotsOpacityByGroup(inputPaths.size());
+		vector<map<int, vector<float>>> endpointDotsRByGroup(inputPaths.size());
+		vector<map<int, vector<float>>> endpointDotsGByGroup(inputPaths.size());
+		vector<map<int, vector<float>>> endpointDotsBByGroup(inputPaths.size());
+		
+		bool addDots = endpointDots.get();
+		
 		// Process each group
 		for (int groupIdx = 0; groupIdx < pathGroups.size(); groupIdx++)
 		{
@@ -466,6 +490,15 @@ public:
 				vector<float> groupPathR;
 				vector<float> groupPathG;
 				vector<float> groupPathB;
+				
+				vector<glm::vec2> groupEndpointDots;
+				vector<float> groupEndpointDotsOpacity;
+				vector<float> groupEndpointDotsR;
+				vector<float> groupEndpointDotsG;
+				vector<float> groupEndpointDotsB;
+				
+				// Use a set to track unique endpoint positions (avoid duplicates)
+				set<pair<float, float>> addedDots;
 				
 				// Process each segment in this path
 				for (size_t segIdx = 0; segIdx < path.size() - 1; segIdx++)
@@ -550,6 +583,33 @@ public:
 							
 							groupPathB.push_back(groupB);
 							groupPathB.push_back(groupB);
+							
+							// Collect endpoint dots (avoid duplicates using set)
+							if (addDots)
+							{
+								auto startKey = make_pair(startPoint.x, startPoint.y);
+								auto endKey = make_pair(endPoint.x, endPoint.y);
+								
+								if (addedDots.find(startKey) == addedDots.end())
+								{
+									addedDots.insert(startKey);
+									groupEndpointDots.push_back(startPoint);
+									groupEndpointDotsOpacity.push_back(groupOpacity);
+									groupEndpointDotsR.push_back(groupR);
+									groupEndpointDotsG.push_back(groupG);
+									groupEndpointDotsB.push_back(groupB);
+								}
+								
+								if (addedDots.find(endKey) == addedDots.end())
+								{
+									addedDots.insert(endKey);
+									groupEndpointDots.push_back(endPoint);
+									groupEndpointDotsOpacity.push_back(groupOpacity);
+									groupEndpointDotsR.push_back(groupR);
+									groupEndpointDotsG.push_back(groupG);
+									groupEndpointDotsB.push_back(groupB);
+								}
+							}
 						}
 					}
 					
@@ -564,6 +624,15 @@ public:
 					pathColorsRByGroup[pathIdx][groupIdx] = groupPathR;
 					pathColorsGByGroup[pathIdx][groupIdx] = groupPathG;
 					pathColorsBByGroup[pathIdx][groupIdx] = groupPathB;
+				}
+				
+				if(!groupEndpointDots.empty())
+				{
+					endpointDotsByGroup[pathIdx][groupIdx] = groupEndpointDots;
+					endpointDotsOpacityByGroup[pathIdx][groupIdx] = groupEndpointDotsOpacity;
+					endpointDotsRByGroup[pathIdx][groupIdx] = groupEndpointDotsR;
+					endpointDotsGByGroup[pathIdx][groupIdx] = groupEndpointDotsG;
+					endpointDotsBByGroup[pathIdx][groupIdx] = groupEndpointDotsB;
 				}
 			}
 		}
@@ -628,6 +697,45 @@ public:
 				finalX.push_back(-1);
 				finalY.push_back(-1);
 				// No opacity or color for separator
+			}
+			
+			// Add endpoint dots for this path (after all segments)
+			if(addDots)
+			{
+				for(int groupIdx = 0; groupIdx < pathGroups.size(); groupIdx++)
+				{
+					if(endpointDotsByGroup[pathIdx].count(groupIdx) > 0)
+					{
+						const auto& dots = endpointDotsByGroup[pathIdx][groupIdx];
+						const auto& opacities = endpointDotsOpacityByGroup[pathIdx][groupIdx];
+						const auto& colorsR = endpointDotsRByGroup[pathIdx][groupIdx];
+						const auto& colorsG = endpointDotsGByGroup[pathIdx][groupIdx];
+						const auto& colorsB = endpointDotsBByGroup[pathIdx][groupIdx];
+						
+						for(size_t i = 0; i < dots.size(); i++)
+						{
+							// Each dot is a single point followed by separator
+							finalX.push_back(dots[i].x);
+							finalY.push_back(dots[i].y);
+							
+							if(i < opacities.size()) finalOpacity.push_back(opacities[i]);
+							else finalOpacity.push_back(1.0f);
+							
+							if(i < colorsR.size()) finalR.push_back(colorsR[i]);
+							else finalR.push_back(1.0f);
+							
+							if(i < colorsG.size()) finalG.push_back(colorsG[i]);
+							else finalG.push_back(1.0f);
+							
+							if(i < colorsB.size()) finalB.push_back(colorsB[i]);
+							else finalB.push_back(1.0f);
+							
+							// Add separator after each dot
+							finalX.push_back(-1);
+							finalY.push_back(-1);
+						}
+					}
+				}
 			}
 		}
 		
@@ -764,6 +872,7 @@ private:
 	ofParameter<vector<float>> outX, outY, opacityOut;
 	ofParameter<vector<float>> outR, outG, outB;
 	ofParameter<bool> showWindow;
+	ofParameter<bool> endpointDots;
 	ofParameter<int> numGroups;
 	ofEventListener listener;
 	ofEventListeners listeners;
