@@ -180,6 +180,8 @@
 #include "ignoreZeros.h"
 #include "vectorColorGradient.h"
 #include "vectorMatrixResize.h"
+#include "bartokAxis.h"
+#include "schoenbergMatrix.h"
 
 
 //harmony
@@ -214,6 +216,7 @@
 #include "valueTrack.h"
 #include "curveTrack.h"
 #include "pianoRollTrack.h"
+#include "generativeGrid2.h"
 
 
 namespace ofxOceanodeSanti{
@@ -398,6 +401,9 @@ void registerModels(ofxOceanode *o)
 	o->registerModel<ignoreZeros>("Santi/Vectors");
 	o->registerModel<vectorColorGradient>("Santi/Vectors");
 	o->registerModel<vectorMatrixResize>("Santi/Vectors");
+	o->registerModel<generativeGrid2>("Santi/Vectors");
+	o->registerModel<bartokAxis>("Santi/Vectors");
+	o->registerModel<schoenbergMatrix>("Santi/Vectors");
 	
 	
 	o->registerModel<vectorMorphology>("Santi/Vectors");
