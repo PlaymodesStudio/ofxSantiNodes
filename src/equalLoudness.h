@@ -14,6 +14,7 @@ public:
 
 private:
     ofParameter<vector<float>> pitch;
+	ofParameter<float> strength;
     ofParameter<vector<float>> outputAmplitudes;
 
     vector<std::unique_ptr<ofEventListener>> listeners;
