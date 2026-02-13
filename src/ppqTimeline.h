@@ -118,6 +118,9 @@ public:
 	int getDenominator() const { return denominator; }
 	int getGridTicks() const { return gridTicks(); }
 	
+	float getBpm() const { return bpm.get(); }
+	bool isPlaying() const { return play.get() == 1; }
+
 	// Loop accessors
 	bool isLoopEnabled() const { return loopEnabled.get() == 1; }
 	double getLoopStart() const { return loopStartBeat.get(); }
