@@ -161,14 +161,20 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 			case envelopeAttack2: {
 				if(phase > getValueForIndex(attack, i) || reachedMax[i]) {
 					phasorValueOnValueChange[i] = f;
-					if(getValueForIndex(decay, i) == 0) {
-						envelopeStage[i] = envelopeSustain2;
-					} else {
-						envelopeStage[i] = envelopeDecay2;
-					}
 					reachedMax[i] = false;
 					lastPhase[i] = 0;
-					phase = 0;
+					
+					if(getValueForIndex(decay, i) == 0) {
+						envelopeStage[i] = envelopeSustain2;
+						// Set output to sustain value immediately
+						tempOutput[i] = maxValue[i] * getValueForIndex(sustain, i);
+						lastSustainValue[i] = tempOutput[i];
+					} else {
+						envelopeStage[i] = envelopeDecay2;
+						// Set output to max value (start of decay)
+						tempOutput[i] = maxValue[i];
+						lastSustainValue[i] = tempOutput[i];
+					}
 				} else {
 					phase = ofMap(phase, 0, getValueForIndex(attack, i), 0, 1, true);
 					if(getValueForIndex(attackPow, i) != 0) {
@@ -193,7 +199,9 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 					envelopeStage[i] = envelopeSustain2;
 					reachedMax[i] = false;
 					lastPhase[i] = 0;
-					phase = 0;
+					// Set output to sustain value immediately
+					tempOutput[i] = maxValue[i] * getValueForIndex(sustain, i);
+					lastSustainValue[i] = tempOutput[i];
 				} else {
 					phase = ofMap(phase, 0, getValueForIndex(decay, i), 0, 1, true);
 					if(getValueForIndex(decayPow, i) != 0) {
@@ -222,7 +230,8 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 					envelopeStage[i] = envelopeEnd2;
 					reachedMax[i] = false;
 					lastPhase[i] = 0;
-					phase = 0;
+					// Set output to zero immediately
+					tempOutput[i] = 0;
 				} else {
 					phase = ofMap(phase, 0, getValueForIndex(release, i), 0, 1, true);
 					if(getValueForIndex(releasePow, i) != 0) {
