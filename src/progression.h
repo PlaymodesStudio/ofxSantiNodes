@@ -13,7 +13,8 @@ public:
 	void setup() override {
 		description = "Generates numeric progressions from a vector input. "
 					  "Size controls the output length. Any operation can run "
-					  "in item-wise or vector-wise mode. Includes jitter and sorting.";
+					  "in item-wise or vector-wise mode. Includes jitter and sorting. "
+					  "StartElement offsets the series index (useful for Fibonacci, Prime, etc.).";
 
 		// Vector input
 		addParameter(input.set("Input",
@@ -23,6 +24,9 @@ public:
 
 		addParameter(step.set("Step", 1.0f, -FLT_MAX, FLT_MAX));
 		addParameter(size.set("Size", 8, 1, 4096));
+
+		// Start element offset for series
+		addParameter(startElement.set("Start El", 0, 0, 1000));
 
 		// Jitter multiplicatiu
 		addParameter(jitter.set("Jitter", 0.0f, 0.0f, 1.0f));
@@ -39,6 +43,8 @@ public:
 		// 5 = Harmonic series
 		// 6 = Subharmonic series
 		// 7 = Spectral sqrt
+		// 8 = Fibonacci
+		// 9 = Prime
 		addParameterDropdown(mode,
 							 "Mode",
 							 1, // per defecte Add
@@ -50,7 +56,9 @@ public:
 								 "Sqrt(prev)",
 								 "Harmonic series",
 								 "Subharmonic series",
-								 "Spectral sqrt"
+								 "Spectral sqrt",
+								 "Fibonacci",
+								 "Prime"
 							 });
 
 		// Dropdown per triar com s'aplica la progressió
@@ -71,6 +79,7 @@ public:
 		listeners.push(input.newListener([this](std::vector<float> &) { recompute(); }));
 		listeners.push(step.newListener([this](float &) { recompute(); }));
 		listeners.push(size.newListener([this](int &) { recompute(); }));
+		listeners.push(startElement.newListener([this](int &) { recompute(); }));
 		listeners.push(jitter.newListener([this](float &) { recompute(); }));
 		listeners.push(sortOutput.newListener([this](bool &) { recompute(); }));
 		listeners.push(mode.newListener([this](int &) { recompute(); }));
@@ -80,24 +89,67 @@ public:
 	}
 
 private:
+	// Helper to generate Fibonacci numbers
+	void ensureFibonacci(int count) {
+		if((int)fibCache.size() >= count) return;
+		
+		if(fibCache.empty()) {
+			fibCache.push_back(1);
+		}
+		if(fibCache.size() == 1 && count > 1) {
+			fibCache.push_back(1);
+		}
+		while((int)fibCache.size() < count) {
+			int n = fibCache.size();
+			fibCache.push_back(fibCache[n-1] + fibCache[n-2]);
+		}
+	}
+
+	// Helper to check primality
+	bool isPrime(int n) {
+		if(n < 2) return false;
+		if(n == 2) return true;
+		if(n % 2 == 0) return false;
+		for(int i = 3; i * i <= n; i += 2) {
+			if(n % i == 0) return false;
+		}
+		return true;
+	}
+
+	// Helper to generate prime numbers
+	void ensurePrimes(int count) {
+		if((int)primeCache.size() >= count) return;
+		
+		int candidate = primeCache.empty() ? 2 : primeCache.back() + 1;
+		while((int)primeCache.size() < count) {
+			if(isPrime(candidate)) {
+				primeCache.push_back(candidate);
+			}
+			candidate++;
+		}
+	}
+
 	float applyOperationItemWise(float base, int index, int opMode, float s, float stepNorm,
-								 const std::vector<float> &tempOut) {
+								 const std::vector<float> &tempOut, int startEl) {
 		// index = i global de 0..size-1
+		// For series-based modes, we add startEl to get the actual series index
+		int seriesIndex = index + startEl;
+		
 		switch(opMode){
-			case 0: // Multiply (geom): base * step^i
-				if(index == 0) return base;
-				return base * std::pow(s, static_cast<float>(index));
+			case 0: // Multiply (geom): base * step^seriesIndex
+				if(seriesIndex == 0) return base;
+				return base * std::pow(s, static_cast<float>(seriesIndex));
 
-			case 1: // Add (arith): base + i*step
-				return base + static_cast<float>(index) * s;
+			case 1: // Add (arith): base + seriesIndex*step
+				return base + static_cast<float>(seriesIndex) * s;
 
-			case 2: // Subtract: base - i*step
-				return base - static_cast<float>(index) * s;
+			case 2: // Subtract: base - seriesIndex*step
+				return base - static_cast<float>(seriesIndex) * s;
 
-			case 3: // Divide: base / step^i
+			case 3: // Divide: base / step^seriesIndex
 			{
-				if(index == 0 || s == 0.0f) return base;
-				float denom = std::pow(s, static_cast<float>(index));
+				if(seriesIndex == 0 || s == 0.0f) return base;
+				float denom = std::pow(s, static_cast<float>(seriesIndex));
 				if(denom == 0.0f) return base;
 				return base / denom;
 			}
@@ -110,25 +162,37 @@ private:
 				return std::sqrt(prev);
 			}
 
-			case 5: // Harmonic series: base * (1 + i*stepNorm)
+			case 5: // Harmonic series: base * (1 + seriesIndex*stepNorm)
 			{
-				float harmIndex = 1.0f + static_cast<float>(index) * stepNorm;
+				float harmIndex = 1.0f + static_cast<float>(seriesIndex) * stepNorm;
 				if(harmIndex <= 0.0f) harmIndex = 1.0f;
 				return base * harmIndex;
 			}
 
-			case 6: // Subharmonic series: base / (1 + i*stepNorm)
+			case 6: // Subharmonic series: base / (1 + seriesIndex*stepNorm)
 			{
-				float harmIndex = 1.0f + static_cast<float>(index) * stepNorm;
+				float harmIndex = 1.0f + static_cast<float>(seriesIndex) * stepNorm;
 				if(harmIndex == 0.0f) harmIndex = 1.0f;
 				return base / harmIndex;
 			}
 
-			case 7: // Spectral sqrt: base * sqrt(1 + i*stepNorm)
+			case 7: // Spectral sqrt: base * sqrt(1 + seriesIndex*stepNorm)
 			{
-				float harmIndex = 1.0f + static_cast<float>(index) * stepNorm;
+				float harmIndex = 1.0f + static_cast<float>(seriesIndex) * stepNorm;
 				if(harmIndex <= 0.0f) harmIndex = 1.0f;
 				return base * std::sqrt(harmIndex);
+			}
+
+			case 8: // Fibonacci: base * fib(seriesIndex)
+			{
+				ensureFibonacci(seriesIndex + 1);
+				return base * static_cast<float>(fibCache[seriesIndex]);
+			}
+
+			case 9: // Prime: base * prime(seriesIndex)
+			{
+				ensurePrimes(seriesIndex + 1);
+				return base * static_cast<float>(primeCache[seriesIndex]);
 			}
 
 			default:
@@ -137,25 +201,28 @@ private:
 	}
 
 	float applyOperationVectorWise(float base, int layer, int opMode, float s, float stepNorm,
-								   float &currentSqrtState) {
+								   float &currentSqrtState, int startEl) {
 		// layer = "capa" o segment index: 0,1,2,...
+		// For series-based modes, we add startEl to get the actual series index
+		int seriesIndex = layer + startEl;
+		
 		switch(opMode){
-			case 0: // Multiply (geom): base * step^layer
+			case 0: // Multiply (geom): base * step^seriesIndex
 			{
-				if(layer == 0) return base;
-				return base * std::pow(s, static_cast<float>(layer));
+				if(seriesIndex == 0) return base;
+				return base * std::pow(s, static_cast<float>(seriesIndex));
 			}
 
-			case 1: // Add (arith): base + layer*step
-				return base + static_cast<float>(layer) * s;
+			case 1: // Add (arith): base + seriesIndex*step
+				return base + static_cast<float>(seriesIndex) * s;
 
-			case 2: // Subtract: base - layer*step
-				return base - static_cast<float>(layer) * s;
+			case 2: // Subtract: base - seriesIndex*step
+				return base - static_cast<float>(seriesIndex) * s;
 
-			case 3: // Divide: base / step^layer
+			case 3: // Divide: base / step^seriesIndex
 			{
-				if(layer == 0 || s == 0.0f) return base;
-				float denom = std::pow(s, static_cast<float>(layer));
+				if(seriesIndex == 0 || s == 0.0f) return base;
+				float denom = std::pow(s, static_cast<float>(seriesIndex));
 				if(denom == 0.0f) return base;
 				return base / denom;
 			}
@@ -171,25 +238,37 @@ private:
 				return currentSqrtState;
 			}
 
-			case 5: // Harmonic series: base * (1 + layer*stepNorm)
+			case 5: // Harmonic series: base * (1 + seriesIndex*stepNorm)
 			{
-				float harmIndex = 1.0f + static_cast<float>(layer) * stepNorm;
+				float harmIndex = 1.0f + static_cast<float>(seriesIndex) * stepNorm;
 				if(harmIndex <= 0.0f) harmIndex = 1.0f;
 				return base * harmIndex;
 			}
 
-			case 6: // Subharmonic series: base / (1 + layer*stepNorm)
+			case 6: // Subharmonic series: base / (1 + seriesIndex*stepNorm)
 			{
-				float harmIndex = 1.0f + static_cast<float>(layer) * stepNorm;
+				float harmIndex = 1.0f + static_cast<float>(seriesIndex) * stepNorm;
 				if(harmIndex == 0.0f) harmIndex = 1.0f;
 				return base / harmIndex;
 			}
 
-			case 7: // Spectral sqrt: base * sqrt(1 + layer*stepNorm)
+			case 7: // Spectral sqrt: base * sqrt(1 + seriesIndex*stepNorm)
 			{
-				float harmIndex = 1.0f + static_cast<float>(layer) * stepNorm;
+				float harmIndex = 1.0f + static_cast<float>(seriesIndex) * stepNorm;
 				if(harmIndex <= 0.0f) harmIndex = 1.0f;
 				return base * std::sqrt(harmIndex);
+			}
+
+			case 8: // Fibonacci: base * fib(seriesIndex)
+			{
+				ensureFibonacci(seriesIndex + 1);
+				return base * static_cast<float>(fibCache[seriesIndex]);
+			}
+
+			case 9: // Prime: base * prime(seriesIndex)
+			{
+				ensurePrimes(seriesIndex + 1);
+				return base * static_cast<float>(primeCache[seriesIndex]);
 			}
 
 			default:
@@ -221,12 +300,13 @@ private:
 		int   opMode   = mode.get();
 		int   applMode = applyMode.get();
 		float j        = jitter.get();
+		int   startEl  = startElement.get();
 
 		if(applMode == 0){
 			// ------- ITEM-WISE -------
 			for(int i = 0; i < outSize; ++i){
 				float base  = getValueForIndex(i);
-				float value = applyOperationItemWise(base, i, opMode, s, stepNorm, tempOut);
+				float value = applyOperationItemWise(base, i, opMode, s, stepNorm, tempOut, startEl);
 
 				if(j > 0.0f){
 					float factor = 1.0f + ofRandomf() * j;
@@ -249,7 +329,7 @@ private:
 					float base = inVec[k];
 					float &stateRef = sqrtState[k]; // per al mode 4
 
-					float value = applyOperationVectorWise(base, layer, opMode, s, stepNorm, stateRef);
+					float value = applyOperationVectorWise(base, layer, opMode, s, stepNorm, stateRef, startEl);
 
 					if(j > 0.0f){
 						float factor = 1.0f + ofRandomf() * j;
@@ -273,6 +353,7 @@ private:
 	ofParameter<std::vector<float>> input;
 	ofParameter<float> step;
 	ofParameter<int>   size;
+	ofParameter<int>   startElement;
 	ofParameter<float> jitter;
 	ofParameter<bool>  sortOutput;
 	ofParameter<int>   mode;      // operació
@@ -281,6 +362,10 @@ private:
 	ofParameter<std::vector<float>> output;
 
 	ofEventListeners listeners;
+
+	// Caches for series
+	std::vector<long long> fibCache;
+	std::vector<int> primeCache;
 };
 
 #endif /* progression_h */
