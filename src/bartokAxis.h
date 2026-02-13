@@ -1,4 +1,3 @@
-
 #ifndef bartokAxis_h
 #define bartokAxis_h
 
