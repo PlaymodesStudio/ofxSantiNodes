@@ -182,6 +182,7 @@
 #include "vectorMatrixResize.h"
 #include "bartokAxis.h"
 #include "schoenbergMatrix.h"
+#include "polyphonicArpeggiator.h"
 
 
 //harmony
@@ -404,6 +405,7 @@ void registerModels(ofxOceanode *o)
 	o->registerModel<generativeGrid2>("Santi/Vectors");
 	o->registerModel<bartokAxis>("Santi/Vectors");
 	o->registerModel<schoenbergMatrix>("Santi/Vectors");
+	o->registerModel<polyphonicArpeggiator>("Santi/Vectors");
 	
 	
 	o->registerModel<vectorMorphology>("Santi/Vectors");
