@@ -28,6 +28,10 @@ polyphonicArpeggiator::polyphonicArpeggiator() : ofxOceanodeNodeModel("Polyphoni
     stepVelocities.reserve(MAX_SEQUENCE_SIZE);
     stepGates.reserve(MAX_SEQUENCE_SIZE);
     deviationValues.reserve(MAX_SEQUENCE_SIZE);
+
+    snapshotSlots.resize(16);
+    activeSnapshotSlot = -1;
+    isMorphing = false;
 }
 
 polyphonicArpeggiator::~polyphonicArpeggiator() {
@@ -45,6 +49,12 @@ void polyphonicArpeggiator::setup() {
                   "Pitch sequence is precomputed from scale and pattern. "
                   "Each trigger advances one step, toggling gates at the "
                   "current position with per-voice strum and duration.";
+
+    // ── SNAPSHOTS ──
+    addSeparator("Snapshots", ofColor(200));
+    uiSnapshots.set("SnapshotsUI", [this](){ drawSnapshotSlots(); });
+    addCustomRegion(uiSnapshots, [this](){ drawSnapshotSlots(); });
+    addParameter(morphTime.set("Morph Time", 0.0f, 0.0f, 10.0f));
 
     // ── TRIGGER & CONTROL ──
     addSeparator("Trigger", ofColor(200));
@@ -258,6 +268,9 @@ void polyphonicArpeggiator::setup() {
     rebuildDeviations();
     rebuildPitchSequence();
     rebuildVelocitySequence();
+
+    // Load all snapshots from disk
+    loadAllSnapshotsFromDisk();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -290,6 +303,11 @@ void polyphonicArpeggiator::update(ofEventArgs &e) {
                 needsUpdate = true;
             }
         }
+    }
+
+    // Update morphing if active
+    if(isMorphing) {
+        updateMorph();
     }
 
     if(needsUpdate) {
@@ -840,15 +858,399 @@ void polyphonicArpeggiator::updateOutputs() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// SNAPSHOT SYSTEM
+// ═══════════════════════════════════════════════════════════
+
+string polyphonicArpeggiator::getSnapshotsFolderPath() {
+    return ofToDataPath("nodeSnapshots/PolyphonicArpeggiator/", true);
+}
+
+string polyphonicArpeggiator::getSnapshotFilePath(int slot) {
+    return getSnapshotsFolderPath() + "snapshot_" + ofToString(slot) + ".json";
+}
+
+void polyphonicArpeggiator::saveSnapshotToDisk(int slot) {
+    if(slot < 0 || slot >= 16) return;
+    if(!snapshotSlots[slot].hasData) return;
+
+    // Ensure directory exists
+    ofDirectory dir(getSnapshotsFolderPath());
+    if(!dir.exists()) {
+        dir.create(true);
+    }
+
+    ArpeggiatorSnapshot snap = snapshotSlots[slot];
+    ofJson json;
+
+    json["seqSize"] = snap.seqSize;
+
+    json["scale"] = snap.scale;
+    json["patternMode"] = snap.patternMode;
+    json["idxPattern"] = snap.idxPattern;
+    json["degStart"] = snap.degStart;
+    json["stepInterval"] = snap.stepInterval;
+    json["transpose"] = snap.transpose;
+    json["continuousPitch"] = snap.continuousPitch;
+
+    json["polyphony"] = snap.polyphony;
+    json["polyInterval"] = snap.polyInterval;
+    json["strum"] = snap.strum;
+    json["strumRndm"] = snap.strumRndm;
+    json["strumDir"] = snap.strumDir;
+
+    json["octaveDev"] = snap.octaveDev;
+    json["octaveDevRng"] = snap.octaveDevRng;
+    json["idxDev"] = snap.idxDev;
+    json["idxDevRng"] = snap.idxDevRng;
+    json["pitchDev"] = snap.pitchDev;
+    json["pitchDevRng"] = snap.pitchDevRng;
+
+    json["velBase"] = snap.velBase;
+    json["velRndm"] = snap.velRndm;
+    json["eucAccStrength"] = snap.eucAccStrength;
+
+    json["durBase"] = snap.durBase;
+    json["durRndm"] = snap.durRndm;
+    json["durEucStrength"] = snap.durEucStrength;
+
+    json["eucLen"] = snap.eucLen;
+    json["eucHits"] = snap.eucHits;
+    json["eucOff"] = snap.eucOff;
+    json["eucAccLen"] = snap.eucAccLen;
+    json["eucAccHits"] = snap.eucAccHits;
+    json["eucAccOff"] = snap.eucAccOff;
+    json["eucDurLen"] = snap.eucDurLen;
+    json["eucDurHits"] = snap.eucDurHits;
+    json["eucDurOff"] = snap.eucDurOff;
+
+    json["stepChance"] = snap.stepChance;
+    json["noteChance"] = snap.noteChance;
+
+    ofSavePrettyJson(getSnapshotFilePath(slot), json);
+}
+
+void polyphonicArpeggiator::loadSnapshotFromDisk(int slot) {
+    if(slot < 0 || slot >= 16) return;
+
+    string filePath = getSnapshotFilePath(slot);
+    ofFile file(filePath);
+
+    if(!file.exists()) {
+        return;
+    }
+
+    ofJson json = ofLoadJson(filePath);
+    if(json.empty()) return;
+
+    ArpeggiatorSnapshot snap;
+
+    snap.seqSize = json.value("seqSize", 16);
+
+    snap.scale = json.value("scale", vector<float>{0, 2, 4, 5, 7, 9, 11});
+    snap.patternMode = json.value("patternMode", 0);
+    snap.idxPattern = json.value("idxPattern", vector<int>{0, 1, 2, 3});
+    snap.degStart = json.value("degStart", 0);
+    snap.stepInterval = json.value("stepInterval", 1);
+    snap.transpose = json.value("transpose", 0);
+    snap.continuousPitch = json.value("continuousPitch", false);
+
+    snap.polyphony = json.value("polyphony", 1);
+    snap.polyInterval = json.value("polyInterval", 2);
+    snap.strum = json.value("strum", 0.0f);
+    snap.strumRndm = json.value("strumRndm", 0.0f);
+    snap.strumDir = json.value("strumDir", 0);
+
+    snap.octaveDev = json.value("octaveDev", 0.0f);
+    snap.octaveDevRng = json.value("octaveDevRng", 1);
+    snap.idxDev = json.value("idxDev", 0.0f);
+    snap.idxDevRng = json.value("idxDevRng", 2);
+    snap.pitchDev = json.value("pitchDev", 0.0f);
+    snap.pitchDevRng = json.value("pitchDevRng", 2);
+
+    snap.velBase = json.value("velBase", 0.8f);
+    snap.velRndm = json.value("velRndm", 0.1f);
+    snap.eucAccStrength = json.value("eucAccStrength", 0.2f);
+
+    snap.durBase = json.value("durBase", 100);
+    snap.durRndm = json.value("durRndm", 20);
+    snap.durEucStrength = json.value("durEucStrength", 50);
+
+    snap.eucLen = json.value("eucLen", 8);
+    snap.eucHits = json.value("eucHits", 8);
+    snap.eucOff = json.value("eucOff", 0);
+    snap.eucAccLen = json.value("eucAccLen", 4);
+    snap.eucAccHits = json.value("eucAccHits", 1);
+    snap.eucAccOff = json.value("eucAccOff", 0);
+    snap.eucDurLen = json.value("eucDurLen", 4);
+    snap.eucDurHits = json.value("eucDurHits", 4);
+    snap.eucDurOff = json.value("eucDurOff", 0);
+
+    snap.stepChance = json.value("stepChance", 1.0f);
+    snap.noteChance = json.value("noteChance", 1.0f);
+
+    snap.hasData = true;
+    snapshotSlots[slot] = snap;
+}
+
+void polyphonicArpeggiator::loadAllSnapshotsFromDisk() {
+    for(int i = 0; i < 16; i++) {
+        loadSnapshotFromDisk(i);
+    }
+}
+
+void polyphonicArpeggiator::deleteSnapshotFromDisk(int slot) {
+    if(slot < 0 || slot >= 16) return;
+
+    string filePath = getSnapshotFilePath(slot);
+    ofFile file(filePath);
+
+    if(file.exists()) {
+        file.remove();
+    }
+
+    // Clear from memory
+    snapshotSlots[slot].hasData = false;
+    if(activeSnapshotSlot == slot) {
+        activeSnapshotSlot = -1;
+    }
+}
+
+void polyphonicArpeggiator::storeToSlot(int slot) {
+    if(slot < 0 || slot >= 16) return;
+
+    ArpeggiatorSnapshot snap;
+
+    // Store current parameter values
+    snap.seqSize = seqSize.get();
+
+    snap.scale = scale.get();
+    snap.patternMode = patternMode.get();
+    snap.idxPattern = idxPattern.get();
+    snap.degStart = degStart.get();
+    snap.stepInterval = stepInterval.get();
+    snap.transpose = transpose.get();
+    snap.continuousPitch = continuousPitch.get();
+
+    snap.polyphony = polyphony.get();
+    snap.polyInterval = polyInterval.get();
+    snap.strum = strum.get();
+    snap.strumRndm = strumRndm.get();
+    snap.strumDir = strumDir.get();
+
+    snap.octaveDev = octaveDev.get();
+    snap.octaveDevRng = octaveDevRng.get();
+    snap.idxDev = idxDev.get();
+    snap.idxDevRng = idxDevRng.get();
+    snap.pitchDev = pitchDev.get();
+    snap.pitchDevRng = pitchDevRng.get();
+
+    snap.velBase = velBase.get();
+    snap.velRndm = velRndm.get();
+    snap.eucAccStrength = eucAccStrength.get();
+
+    snap.durBase = durBase.get();
+    snap.durRndm = durRndm.get();
+    snap.durEucStrength = durEucStrength.get();
+
+    snap.eucLen = eucLen.get();
+    snap.eucHits = eucHits.get();
+    snap.eucOff = eucOff.get();
+    snap.eucAccLen = eucAccLen.get();
+    snap.eucAccHits = eucAccHits.get();
+    snap.eucAccOff = eucAccOff.get();
+    snap.eucDurLen = eucDurLen.get();
+    snap.eucDurHits = eucDurHits.get();
+    snap.eucDurOff = eucDurOff.get();
+
+    snap.stepChance = stepChance.get();
+    snap.noteChance = noteChance.get();
+
+    snap.hasData = true;
+    snapshotSlots[slot] = snap;
+    activeSnapshotSlot = slot;
+
+    // Save to disk immediately
+    saveSnapshotToDisk(slot);
+}
+
+void polyphonicArpeggiator::recallSlot(int slot) {
+    if(slot < 0 || slot >= 16) return;
+    if(!snapshotSlots[slot].hasData) return;
+
+    activeSnapshotSlot = slot;
+
+    if(morphTime.get() <= 0.001f) {
+        // Instant recall
+        ArpeggiatorSnapshot snap = snapshotSlots[slot];
+
+        seqSize.set(snap.seqSize);
+
+        scale.set(snap.scale);
+        patternMode.set(snap.patternMode);
+        idxPattern.set(snap.idxPattern);
+        degStart.set(snap.degStart);
+        stepInterval.set(snap.stepInterval);
+        transpose.set(snap.transpose);
+        continuousPitch.set(snap.continuousPitch);
+
+        polyphony.set(snap.polyphony);
+        polyInterval.set(snap.polyInterval);
+        strum.set(snap.strum);
+        strumRndm.set(snap.strumRndm);
+        strumDir.set(snap.strumDir);
+
+        octaveDev.set(snap.octaveDev);
+        octaveDevRng.set(snap.octaveDevRng);
+        idxDev.set(snap.idxDev);
+        idxDevRng.set(snap.idxDevRng);
+        pitchDev.set(snap.pitchDev);
+        pitchDevRng.set(snap.pitchDevRng);
+
+        velBase.set(snap.velBase);
+        velRndm.set(snap.velRndm);
+        eucAccStrength.set(snap.eucAccStrength);
+
+        durBase.set(snap.durBase);
+        durRndm.set(snap.durRndm);
+        durEucStrength.set(snap.durEucStrength);
+
+        eucLen.set(snap.eucLen);
+        eucHits.set(snap.eucHits);
+        eucOff.set(snap.eucOff);
+        eucAccLen.set(snap.eucAccLen);
+        eucAccHits.set(snap.eucAccHits);
+        eucAccOff.set(snap.eucAccOff);
+        eucDurLen.set(snap.eucDurLen);
+        eucDurHits.set(snap.eucDurHits);
+        eucDurOff.set(snap.eucDurOff);
+
+        stepChance.set(snap.stepChance);
+        noteChance.set(snap.noteChance);
+    } else {
+        // Morphing recall
+        // Capture start state
+        startSnapshot.seqSize = seqSize.get();
+
+        startSnapshot.scale = scale.get();
+        startSnapshot.patternMode = patternMode.get();
+        startSnapshot.idxPattern = idxPattern.get();
+        startSnapshot.degStart = degStart.get();
+        startSnapshot.stepInterval = stepInterval.get();
+        startSnapshot.transpose = transpose.get();
+        startSnapshot.continuousPitch = continuousPitch.get();
+
+        startSnapshot.polyphony = polyphony.get();
+        startSnapshot.polyInterval = polyInterval.get();
+        startSnapshot.strum = strum.get();
+        startSnapshot.strumRndm = strumRndm.get();
+        startSnapshot.strumDir = strumDir.get();
+
+        startSnapshot.octaveDev = octaveDev.get();
+        startSnapshot.octaveDevRng = octaveDevRng.get();
+        startSnapshot.idxDev = idxDev.get();
+        startSnapshot.idxDevRng = idxDevRng.get();
+        startSnapshot.pitchDev = pitchDev.get();
+        startSnapshot.pitchDevRng = pitchDevRng.get();
+
+        startSnapshot.velBase = velBase.get();
+        startSnapshot.velRndm = velRndm.get();
+        startSnapshot.eucAccStrength = eucAccStrength.get();
+
+        startSnapshot.durBase = durBase.get();
+        startSnapshot.durRndm = durRndm.get();
+        startSnapshot.durEucStrength = durEucStrength.get();
+
+        startSnapshot.eucLen = eucLen.get();
+        startSnapshot.eucHits = eucHits.get();
+        startSnapshot.eucOff = eucOff.get();
+        startSnapshot.eucAccLen = eucAccLen.get();
+        startSnapshot.eucAccHits = eucAccHits.get();
+        startSnapshot.eucAccOff = eucAccOff.get();
+        startSnapshot.eucDurLen = eucDurLen.get();
+        startSnapshot.eucDurHits = eucDurHits.get();
+        startSnapshot.eucDurOff = eucDurOff.get();
+
+        startSnapshot.stepChance = stepChance.get();
+        startSnapshot.noteChance = noteChance.get();
+
+        targetSnapshot = snapshotSlots[slot];
+        morphStartTime = ofGetElapsedTimef();
+        isMorphing = true;
+    }
+}
+
+void polyphonicArpeggiator::updateMorph() {
+    float now = ofGetElapsedTimef();
+    float progress = (now - morphStartTime) / std::max(morphTime.get(), 0.001f);
+    if(progress >= 1.0f) {
+        progress = 1.0f;
+        isMorphing = false;
+    }
+
+    // Lerp integer values
+    seqSize.set((int)ofLerp(startSnapshot.seqSize, targetSnapshot.seqSize, progress));
+    transpose.set((int)ofLerp(startSnapshot.transpose, targetSnapshot.transpose, progress));
+    degStart.set((int)ofLerp(startSnapshot.degStart, targetSnapshot.degStart, progress));
+    stepInterval.set((int)ofLerp(startSnapshot.stepInterval, targetSnapshot.stepInterval, progress));
+    polyphony.set((int)ofLerp(startSnapshot.polyphony, targetSnapshot.polyphony, progress));
+    polyInterval.set((int)ofLerp(startSnapshot.polyInterval, targetSnapshot.polyInterval, progress));
+
+    strum.set(ofLerp(startSnapshot.strum, targetSnapshot.strum, progress));
+    strumRndm.set(ofLerp(startSnapshot.strumRndm, targetSnapshot.strumRndm, progress));
+
+    octaveDev.set(ofLerp(startSnapshot.octaveDev, targetSnapshot.octaveDev, progress));
+    octaveDevRng.set((int)ofLerp(startSnapshot.octaveDevRng, targetSnapshot.octaveDevRng, progress));
+    idxDev.set(ofLerp(startSnapshot.idxDev, targetSnapshot.idxDev, progress));
+    idxDevRng.set((int)ofLerp(startSnapshot.idxDevRng, targetSnapshot.idxDevRng, progress));
+    pitchDev.set(ofLerp(startSnapshot.pitchDev, targetSnapshot.pitchDev, progress));
+    pitchDevRng.set((int)ofLerp(startSnapshot.pitchDevRng, targetSnapshot.pitchDevRng, progress));
+
+    velBase.set(ofLerp(startSnapshot.velBase, targetSnapshot.velBase, progress));
+    velRndm.set(ofLerp(startSnapshot.velRndm, targetSnapshot.velRndm, progress));
+    eucAccStrength.set(ofLerp(startSnapshot.eucAccStrength, targetSnapshot.eucAccStrength, progress));
+
+    durBase.set((int)ofLerp(startSnapshot.durBase, targetSnapshot.durBase, progress));
+    durRndm.set((int)ofLerp(startSnapshot.durRndm, targetSnapshot.durRndm, progress));
+    durEucStrength.set((int)ofLerp(startSnapshot.durEucStrength, targetSnapshot.durEucStrength, progress));
+
+    eucLen.set((int)ofLerp(startSnapshot.eucLen, targetSnapshot.eucLen, progress));
+    eucHits.set((int)ofLerp(startSnapshot.eucHits, targetSnapshot.eucHits, progress));
+    eucOff.set((int)ofLerp(startSnapshot.eucOff, targetSnapshot.eucOff, progress));
+    eucAccLen.set((int)ofLerp(startSnapshot.eucAccLen, targetSnapshot.eucAccLen, progress));
+    eucAccHits.set((int)ofLerp(startSnapshot.eucAccHits, targetSnapshot.eucAccHits, progress));
+    eucAccOff.set((int)ofLerp(startSnapshot.eucAccOff, targetSnapshot.eucAccOff, progress));
+    eucDurLen.set((int)ofLerp(startSnapshot.eucDurLen, targetSnapshot.eucDurLen, progress));
+    eucDurHits.set((int)ofLerp(startSnapshot.eucDurHits, targetSnapshot.eucDurHits, progress));
+    eucDurOff.set((int)ofLerp(startSnapshot.eucDurOff, targetSnapshot.eucDurOff, progress));
+
+    stepChance.set(ofLerp(startSnapshot.stepChance, targetSnapshot.stepChance, progress));
+    noteChance.set(ofLerp(startSnapshot.noteChance, targetSnapshot.noteChance, progress));
+
+    // At the end, set discrete values
+    if(progress >= 1.0f) {
+        scale.set(targetSnapshot.scale);
+        patternMode.set(targetSnapshot.patternMode);
+        idxPattern.set(targetSnapshot.idxPattern);
+        continuousPitch.set(targetSnapshot.continuousPitch);
+        strumDir.set(targetSnapshot.strumDir);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
 // PRESET SAVE / LOAD
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::presetSave(ofJson &json) {
     json["currentStep"] = currentStep;
+    json["activeSnapshotSlot"] = activeSnapshotSlot;
+    // Note: Snapshots are saved to disk independently, not in presets
 }
 
 void polyphonicArpeggiator::presetRecallAfterSettingParameters(ofJson &json) {
     if(json.contains("currentStep")) currentStep = json["currentStep"];
+    if(json.contains("activeSnapshotSlot")) activeSnapshotSlot = json["activeSnapshotSlot"];
+
+    // Snapshots are loaded from disk in setup(), not from presets
 
     generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
     generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
@@ -1069,4 +1471,102 @@ void polyphonicArpeggiator::drawVelocityDisplay() {
     }
 
     drawList->AddText(ImVec2(p.x + 2, p.y + 2), IM_COL32(255, 255, 255, 180), "Velocity");
+}
+
+// ═══════════════════════════════════════════════════════════
+// GUI: SNAPSHOT SLOTS
+//   Shows 16 snapshot slots in a 2x8 grid
+//   Click to recall, Shift+Click to store
+// ═══════════════════════════════════════════════════════════
+
+void polyphonicArpeggiator::drawSnapshotSlots() {
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float width = guiWidth.get();
+
+    float slotSize = width / 8.0f;
+    float height = slotSize * 2.0f;
+
+    ImGui::InvisibleButton("##Snapshots", ImVec2(width, height));
+    bool isActive = ImGui::IsItemActive();
+    ImVec2 mouse = ImGui::GetIO().MousePos;
+    bool leftClick = ImGui::IsMouseClicked(0);
+    bool rightClick = ImGui::IsMouseClicked(1);
+    bool shift = ImGui::GetIO().KeyShift;
+    bool ctrl = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;  // Ctrl or Cmd
+
+    // Background
+    drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(25, 25, 25, 255));
+    drawList->AddRect(p, ImVec2(p.x + width, p.y + height), IM_COL32(80, 80, 80, 255));
+
+    for(int i = 0; i < 16; i++) {
+        int row = i / 8;
+        int column = i % 8;
+        ImVec2 slotPos = ImVec2(p.x + column * slotSize, p.y + row * slotSize);
+        ImVec2 slotMax = ImVec2(slotPos.x + slotSize - 2, slotPos.y + slotSize - 2);
+
+        bool hasData = snapshotSlots[i].hasData;
+        bool hovered = (mouse.x >= slotPos.x && mouse.x < slotMax.x &&
+                       mouse.y >= slotPos.y && mouse.y < slotMax.y);
+
+        if(hovered && isActive) {
+            if(leftClick) {
+                if(shift) {
+                    storeToSlot(i);
+                } else {
+                    recallSlot(i);
+                }
+            } else if(rightClick && hasData) {
+                deleteSnapshotFromDisk(i);
+            }
+        }
+
+        // Determine color
+        ImU32 slotColor;
+        if(i == activeSnapshotSlot) {
+            slotColor = IM_COL32(180, 220, 255, 255);  // Active slot - light blue
+        } else if(hasData) {
+            slotColor = IM_COL32(100, 150, 180, 255);  // Has data - blue
+        } else {
+            slotColor = IM_COL32(50, 50, 50, 255);     // Empty - dark gray
+        }
+
+        // Brighten on hover
+        if(hovered) {
+            int r = (int)(slotColor & 0xFF) + 30;
+            int g = (int)((slotColor >> 8) & 0xFF) + 30;
+            int b = (int)((slotColor >> 16) & 0xFF) + 30;
+            slotColor = IM_COL32(std::min(r, 255), std::min(g, 255), std::min(b, 255), 255);
+        }
+
+        drawList->AddRectFilled(slotPos, slotMax, slotColor);
+        drawList->AddRect(slotPos, slotMax, IM_COL32(100, 100, 100, 200));
+
+        // Draw slot number
+        char buf[8];
+        sprintf(buf, "%d", i + 1);
+        drawList->AddText(ImVec2(slotPos.x + 3, slotPos.y + 3), IM_COL32(255, 255, 255, 200), buf);
+
+        // Show "S" indicator when shift-hovering
+        if(shift && hovered) {
+            drawList->AddText(ImVec2(slotPos.x + slotSize - 15, slotPos.y + slotSize - 15),
+                            IM_COL32(255, 100, 100, 255), "S");
+        }
+        // Show "X" indicator when right-click-hovering on filled slot
+        else if(hovered && hasData) {
+            drawList->AddText(ImVec2(slotPos.x + slotSize - 15, slotPos.y + slotSize - 15),
+                            IM_COL32(255, 80, 80, 180), "X");
+        }
+    }
+
+    // Info text
+	/*
+    const char* info;
+    if(shift) {
+        info = "Shift+Click: Store | Right-Click: Delete";
+    } else {
+        info = "Click: Recall | Right-Click: Delete";
+    }
+    drawList->AddText(ImVec2(p.x + 4, p.y + height - 16), IM_COL32(180, 180, 180, 200), info);
+	 */
 }

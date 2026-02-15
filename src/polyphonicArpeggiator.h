@@ -5,6 +5,63 @@
 #include <random>
 #include <algorithm>
 
+// Struct to hold a single snapshot state
+struct ArpeggiatorSnapshot {
+    // Sequence
+    int seqSize;
+
+    // Scale and Pattern
+    vector<float> scale;
+    int patternMode;
+    vector<int> idxPattern;
+    int degStart;
+    int stepInterval;
+    int transpose;
+    bool continuousPitch;
+
+    // Polyphony
+    int polyphony;
+    int polyInterval;
+    float strum;
+    float strumRndm;
+    int strumDir;
+
+    // Deviation
+    float octaveDev;
+    int octaveDevRng;
+    float idxDev;
+    int idxDevRng;
+    float pitchDev;
+    int pitchDevRng;
+
+    // Velocity
+    float velBase;
+    float velRndm;
+    float eucAccStrength;
+
+    // Duration
+    int durBase;
+    int durRndm;
+    int durEucStrength;
+
+    // Euclidean
+    int eucLen;
+    int eucHits;
+    int eucOff;
+    int eucAccLen;
+    int eucAccHits;
+    int eucAccOff;
+    int eucDurLen;
+    int eucDurHits;
+    int eucDurOff;
+
+    // Probability
+    float stepChance;
+    float noteChance;
+
+    bool hasData = false;
+};
+
 class polyphonicArpeggiator : public ofxOceanodeNodeModel {
 public:
     polyphonicArpeggiator();
@@ -84,6 +141,7 @@ private:
     customGuiRegion uiPattern;
     customGuiRegion uiEuclidean;
     customGuiRegion uiVelocity;
+    customGuiRegion uiSnapshots;
 
     // --- Internal State ---
     int currentStep;
@@ -129,6 +187,18 @@ private:
     void drawPatternDisplay();
     void drawEuclideanDisplay();
     void drawVelocityDisplay();
+    void drawSnapshotSlots();
+
+    // --- Snapshot Functions ---
+    void storeToSlot(int slot);
+    void recallSlot(int slot);
+    void updateMorph();
+    void saveSnapshotToDisk(int slot);
+    void loadSnapshotFromDisk(int slot);
+    void loadAllSnapshotsFromDisk();
+    void deleteSnapshotFromDisk(int slot);
+    string getSnapshotsFolderPath();
+    string getSnapshotFilePath(int slot);
 
     // --- Event Listeners ---
     ofEventListeners listeners;
@@ -140,6 +210,17 @@ private:
     int highlightedStep;
     vector<float> stepVelocities;    // last computed velocity per slot (for viz)
     vector<bool> stepGates;          // last gate-on state per slot (for viz)
+
+    // --- Snapshot System ---
+    vector<ArpeggiatorSnapshot> snapshotSlots;
+    int activeSnapshotSlot;
+    ofParameter<float> morphTime;
+
+    // Morphing State
+    bool isMorphing;
+    float morphStartTime;
+    ArpeggiatorSnapshot startSnapshot;
+    ArpeggiatorSnapshot targetSnapshot;
 
     // --- Constants ---
     static constexpr int MAX_SEQUENCE_SIZE = 128;
