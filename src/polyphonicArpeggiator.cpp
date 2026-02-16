@@ -59,6 +59,7 @@ void polyphonicArpeggiator::setup() {
     // ── TRIGGER & CONTROL ──
     addSeparator("Trigger", ofColor(200));
     addParameter(trigger.set("Trigger"));
+    addParameter(reset.set("Reset"));
     addParameter(resetNext.set("ResetNext"));
     addParameter(eucLen.set("EucLen", 8, 1, 64));
     addParameter(eucHits.set("EucHits", 8, 0, 64));
@@ -147,6 +148,7 @@ void polyphonicArpeggiator::setup() {
 
     // ── EVENT LISTENERS ──
     listeners.push(trigger.newListener([this](void){ onTrigger(); }));
+    listeners.push(reset.newListener([this](void){ onReset(); }));
     listeners.push(resetNext.newListener([this](void){ onResetNext(); }));
 
     // Euclidean patterns
@@ -337,6 +339,11 @@ void polyphonicArpeggiator::onTrigger() {
 
     // Advance currentStep by 1 (not by stepInterval - that's for pattern indexing)
     currentStep = (currentStep + 1) % seqSize;
+}
+
+void polyphonicArpeggiator::onReset() {
+    currentStep = 0;  // Immediately reset to beginning of sequence
+    shouldReset = false;  // Clear any pending resetNext
 }
 
 void polyphonicArpeggiator::onResetNext() {

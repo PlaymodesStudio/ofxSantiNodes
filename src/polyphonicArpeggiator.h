@@ -74,6 +74,7 @@ public:
 private:
     // --- Core Trigger Inputs ---
     ofParameter<void> trigger;
+    ofParameter<void> reset;
     ofParameter<void> resetNext;
 
     // --- Euclidean Rhythm Parameters ---
@@ -169,6 +170,7 @@ private:
 
     // --- Helper Functions ---
     void onTrigger();
+    void onReset();
     void onResetNext();
     void generateEuclideanPattern(vector<bool>& pattern, int length, int hits, int offset);
     void rebuildExpandedScale();
