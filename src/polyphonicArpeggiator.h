@@ -17,7 +17,6 @@ struct ArpeggiatorSnapshot {
     int degStart;
     int stepInterval;
     int transpose;
-    bool continuousPitch;
 
     // Polyphony
     int polyphony;
@@ -91,7 +90,6 @@ private:
     ofParameter<int> seqSize;
     ofParameter<int> degStart;
     ofParameter<int> stepInterval;
-    ofParameter<bool> continuousPitch;  // When true, plays consecutive pitches without gaps
 
     // --- Polyphony Parameters ---
     ofParameter<int> polyphony;
@@ -131,6 +129,9 @@ private:
     ofParameter<vector<float>> velocityOut;
     ofParameter<vector<float>> durOut;
     ofParameter<vector<float>> gateVelOut;  // gate * velocity combined output
+    ofParameter<vector<int>> eucGateOut;    // euclidean gate pattern mapped to seqSize
+    ofParameter<vector<int>> eucAccOut;     // euclidean accent pattern mapped to seqSize
+    ofParameter<vector<int>> eucDurOut;     // euclidean duration pattern mapped to seqSize
 
     // --- GUI Parameters ---
     ofParameter<float> guiWidth;
@@ -175,8 +176,8 @@ private:
     void rebuildPitchSequence();
     void rebuildDeviations();             // Regenerate random deviations
     void rebuildVelocitySequence();
+    void rebuildEuclideanOutputs();       // Rebuild euclidean pattern output vectors
     void processStep();
-    void calculateNextPitch();  // Pre-calculate pitch for next step
     void applyPitchDeviations(float& pitch, int scaleIndex);
     float computeStepVelocity(int stepIndex);
     int computeStepDuration(int stepIndex);

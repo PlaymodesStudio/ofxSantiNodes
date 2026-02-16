@@ -75,7 +75,6 @@ void polyphonicArpeggiator::setup() {
     addParameter(degStart.set("IdxStart", 0, 0, 127));
     addParameter(stepInterval.set("StepInterval", 1, 1, 12));
     addParameter(transpose.set("Transpose", 0, 0, 96));
-    addParameter(continuousPitch.set("Continuous", false));
 
     // ── POLYPHONY ──
     addSeparator("Polyphony", ofColor(200));
@@ -124,6 +123,12 @@ void polyphonicArpeggiator::setup() {
         vector<float>(16, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 60000.0f)));
     addOutputParameter(gateVelOut.set("GateVelOut",
         vector<float>(16, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 1.0f)));
+    addOutputParameter(eucGateOut.set("EucGateOut",
+        vector<int>(16, 0), vector<int>(1, 0), vector<int>(1, 1)));
+    addOutputParameter(eucAccOut.set("EucAccOut",
+        vector<int>(16, 0), vector<int>(1, 0), vector<int>(1, 1)));
+    addOutputParameter(eucDurOut.set("EucDurOut",
+        vector<int>(16, 0), vector<int>(1, 0), vector<int>(1, 1)));
 
     // ── DISPLAY ──
     addSeparator("Display", ofColor(200));
@@ -147,32 +152,41 @@ void polyphonicArpeggiator::setup() {
     // Euclidean patterns
     listeners.push(eucLen.newListener([this](int&){
         generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
+        rebuildEuclideanOutputs();
     }));
     listeners.push(eucHits.newListener([this](int&){
         generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
+        rebuildEuclideanOutputs();
     }));
     listeners.push(eucOff.newListener([this](int&){
         generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
+        rebuildEuclideanOutputs();
     }));
 
     listeners.push(eucAccLen.newListener([this](int&){
         generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
+        rebuildEuclideanOutputs();
     }));
     listeners.push(eucAccHits.newListener([this](int&){
         generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
+        rebuildEuclideanOutputs();
     }));
     listeners.push(eucAccOff.newListener([this](int&){
         generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
+        rebuildEuclideanOutputs();
     }));
 
     listeners.push(eucDurLen.newListener([this](int&){
         generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
+        rebuildEuclideanOutputs();
     }));
     listeners.push(eucDurHits.newListener([this](int&){
         generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
+        rebuildEuclideanOutputs();
     }));
     listeners.push(eucDurOff.newListener([this](int&){
         generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
+        rebuildEuclideanOutputs();
     }));
 
     // Pitch rebuild triggers
@@ -187,12 +201,6 @@ void polyphonicArpeggiator::setup() {
         rebuildPitchSequence();
     }));
     listeners.push(stepInterval.newListener([this](int&){
-        rebuildPitchSequence();
-    }));
-    listeners.push(polyphony.newListener([this](int&){
-        rebuildPitchSequence();
-    }));
-    listeners.push(polyInterval.newListener([this](int&){
         rebuildPitchSequence();
     }));
     listeners.push(transpose.newListener([this](int&){
@@ -225,10 +233,8 @@ void polyphonicArpeggiator::setup() {
         rebuildPitchSequence();
     }));
     listeners.push(patternMode.newListener([this](int&){
-        rebuildPitchSequence();
-    }));
-    listeners.push(continuousPitch.newListener([this](bool&){
-        rebuildPitchSequence();
+        // Pattern mode only affects gate traversal, not pitch vector
+        // No need to rebuild pitch sequence
     }));
 
     // seqSize change
@@ -244,6 +250,7 @@ void polyphonicArpeggiator::setup() {
         deviationValues.resize(size, 0.0f);
         rebuildDeviations();
         rebuildPitchSequence();
+        rebuildEuclideanOutputs();
         updateOutputs();
     }));
 
@@ -268,6 +275,7 @@ void polyphonicArpeggiator::setup() {
     rebuildDeviations();
     rebuildPitchSequence();
     rebuildVelocitySequence();
+    rebuildEuclideanOutputs();
 
     // Load all snapshots from disk
     loadAllSnapshotsFromDisk();
@@ -362,10 +370,41 @@ void polyphonicArpeggiator::processStep() {
     auto currentMs = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime).count();
 
     int poly = polyphony.get();
+    int polyInt = polyInterval.get();
+
+    // Get the pattern-determined base index for this step
+    vector<int> pattern;
+    int mode = patternMode.get();
+
+    if(mode == 0) { // Ascending
+        pattern.clear();
+        for(int i = 0; i < sz; i++) {
+            pattern.push_back(i);
+        }
+    } else if(mode == 1) { // Descending
+        pattern.clear();
+        for(int i = sz - 1; i >= 0; i--) {
+            pattern.push_back(i);
+        }
+    } else if(mode == 2) { // Random
+        // For random mode, generate on-the-fly
+        pattern.clear();
+        for(int i = 0; i < sz; i++) {
+            std::uniform_int_distribution<int> randDist(0, sz - 1);
+            pattern.push_back(randDist(rng));
+        }
+    } else { // User
+        pattern = idxPattern.get();
+        if(pattern.empty()) pattern = {0};
+    }
+
+    // Get base index from pattern
+    int patternIndex = currentStep % (int)pattern.size();
+    int baseIndex = pattern[patternIndex] % sz;
 
     // Clear previous gates at positions we'll use
     for(int voice = 0; voice < poly; voice++) {
-        int outputIndex = (currentStep + voice) % sz;
+        int outputIndex = (baseIndex + voice * polyInt) % sz;
         currentGates[outputIndex] = 0;
         stepGates[outputIndex] = false;
     }
@@ -382,9 +421,9 @@ void polyphonicArpeggiator::processStep() {
             }
         }
 
-        int outputIndex = (currentStep + voice) % sz;
+        int outputIndex = (baseIndex + voice * polyInt) % sz;
 
-        // Pitch is already pre-calculated with deviations applied
+        // Pitch is already pre-calculated in the static pitch vector
         // No need to modify it here
 
         // Calculate velocity in real-time
@@ -412,7 +451,7 @@ void polyphonicArpeggiator::processStep() {
         // Use the shared step duration for all voices
         noteDurationsMs[outputIndex] = stepDuration;
         currentDurations[outputIndex] = (float)stepDuration;
-        
+
         if(strumOffset <= 0.5f) {
             // Turn on immediately
             currentGates[outputIndex] = 1;
@@ -426,64 +465,6 @@ void polyphonicArpeggiator::processStep() {
 
     highlightedStep = currentStep;
     updateOutputs();
-}
-
-// Calculate pitch for the next step (called one step before gate)
-void polyphonicArpeggiator::calculateNextPitch() {
-    int nextStep = (currentStep + 1) % seqSize;
-    int sz = seqSize;
-    if(sz <= 0) return;
-    
-    // Get pattern based on mode
-    vector<int> pattern;
-    int mode = patternMode.get();
-    
-    if(mode == 0) { // Ascending
-        pattern.clear();
-        int maxSteps = 128;
-        for(int i = 0; i < maxSteps; i++) {
-            pattern.push_back(i);
-        }
-    } else if(mode == 1) { // Descending
-        pattern.clear();
-        int maxSteps = 128;
-        for(int i = maxSteps - 1; i >= 0; i--) {
-            pattern.push_back(i);
-        }
-    } else if(mode == 2) { // Random
-        // For random mode, we can't predict next pitch
-        return;
-    } else { // User
-        pattern = idxPattern.get();
-        if(pattern.empty()) pattern = {0};
-    }
-    
-    // Get the pattern value for next position
-    int patternIndex = nextStep % (int)pattern.size();
-    int patternValue = pattern[patternIndex];
-    
-    // Apply stepInterval to the pattern value
-    int scaleIndex = degStart + (patternValue * stepInterval.get());
-    
-    int poly = std::min((int)polyphony, (int)MAX_POLYPHONY);
-    
-    // Pre-calculate pitches for next step
-    for(int voice = 0; voice < poly; voice++) {
-        int outputIndex = nextStep;
-        if(voice > 0 && polyphony > 1) {
-            outputIndex = (nextStep + voice) % sz;
-        }
-        
-        int noteIndex = scaleIndex + (voice * polyInterval);
-        float pitch = getScaleDegree(noteIndex);
-        
-        // Don't apply random deviations in pre-calculation
-        pitch += transpose;
-        pitch = ofClamp(pitch, 0.0f, 127.0f);
-        
-        // Store pre-calculated pitch
-        currentPitches[outputIndex] = pitch;
-    }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -531,18 +512,12 @@ void polyphonicArpeggiator::rebuildDeviations() {
 
     deviationValues.resize(sz, 0.0f);
 
-    int poly = polyphony.get();
-
-    for(int pos = 0; pos < sz; pos++) {
-        int logicalStep = pos / std::max(1, poly);
-        int voice = pos % poly;
-
+    for(int i = 0; i < sz; i++) {
         // Start with no deviation
         float deviation = 0.0f;
 
-        // We need the base noteIndex for index deviation
-        // This is a simplified calculation - just get approximate noteIndex
-        int noteIndex = degStart.get() + (logicalStep * stepInterval.get()) + (voice * polyInterval.get());
+        // Calculate the base noteIndex for this position
+        int noteIndex = degStart.get() + (i * stepInterval.get());
 
         // Octave deviation: probability of transposing up by 1 to octaveDevRng octaves
         if(octaveDev.get() > 0 && dist01(rng) < octaveDev.get()) {
@@ -572,7 +547,7 @@ void polyphonicArpeggiator::rebuildDeviations() {
             }
         }
 
-        deviationValues[pos] = deviation;
+        deviationValues[i] = deviation;
     }
 }
 
@@ -582,122 +557,27 @@ void polyphonicArpeggiator::rebuildPitchSequence() {
 
     currentPitches.resize(sz, 60.0f);
 
-    // Generate pattern based on mode
-    vector<int> pattern;
-    int mode = patternMode.get();
-
-    if(mode == 0) { // Ascending
-        pattern.clear();
-        // Pattern length should be based on how many unique steps we want
-        int patternLength = sz / std::max(1, polyphony.get());
-        for(int i = 0; i < patternLength; i++) {
-            pattern.push_back(i);
-        }
-    } else if(mode == 1) { // Descending
-        pattern.clear();
-        int patternLength = sz / std::max(1, polyphony.get());
-        for(int i = patternLength - 1; i >= 0; i--) {
-            pattern.push_back(i);
-        }
-    } else if(mode == 2) { // Random
-        // For random mode, generate a random pattern
-        pattern.clear();
-        int patternLength = sz / std::max(1, polyphony.get());
-        // Maximum index should be based on a reasonable range
-        int maxIndex = std::min(16, patternLength);  // Limit to reasonable range
-        for(int i = 0; i < patternLength; i++) {
-            std::uniform_int_distribution<int> randDist(0, maxIndex - 1);
-            pattern.push_back(randDist(rng));
-        }
-    } else { // User (mode == 3)
-        pattern = idxPattern.get();
-        if(pattern.empty()) pattern = {0};
-    }
-
-    int poly = polyphony.get();
     int stepInt = stepInterval.get();
-    int polyInt = polyInterval.get();
     int degreeStart = degStart.get();
     int transp = transpose.get();
-    bool continuous = continuousPitch.get();
 
-    // For continuous pitch mode, we need to track which notes will actually play
-    int continuousPitchIndex = 0;
-
-    // First, figure out which steps will actually sound (based on euclidean pattern)
-    int numLogicalSteps = sz / std::max(1, poly);
-    vector<bool> activeSteps(numLogicalSteps, true);  // logical steps that will sound
-    if(!euclideanPattern.empty()) {
-        for(int logicalStep = 0; logicalStep < numLogicalSteps; logicalStep++) {
-            int eucStep = logicalStep % (int)euclideanPattern.size();
-            activeSteps[logicalStep] = euclideanPattern[eucStep];
-        }
-    }
-
-    // Calculate pitch for each position in the sequence
-    // The sequence is organized as: step0voice0, step0voice1, step0voice2, step1voice0, step1voice1...
-    for(int pos = 0; pos < sz; pos++) {
-        // Determine which logical step and voice this position represents
-        int logicalStep = pos / poly;  // Which step in the pattern
-        int voice = pos % poly;         // Which polyphonic voice
-
-        int noteIndex;
-
-        if(continuous) {
-            // In continuous mode, use consecutive pitches without gaps
-            // Count how many active steps come before this one (for main voice)
-            int activePitchIndex = 0;
-            for(int i = 0; i < logicalStep && i < (int)activeSteps.size(); i++) {
-                if(activeSteps[i]) activePitchIndex++;
-            }
-
-            // All voices at this position should sound if the step is active
-            if(logicalStep < (int)activeSteps.size() && activeSteps[logicalStep]) {
-                // In continuous mode, each active step gets the next consecutive pitch
-                // The activePitchIndex tells us which consecutive pitch this active step should use
-                int consecutiveIndex = activePitchIndex;
-
-                // For descending mode, reverse the index
-                if(mode == 1) { // Descending
-                    int totalActive = 0;
-                    for(bool active : activeSteps) if(active) totalActive++;
-                    consecutiveIndex = totalActive - 1 - activePitchIndex;
-                }
-                // For random mode, we'll still use consecutive but could shuffle later
-
-                // Apply continuous pitch with polyphonic intervals
-                // IMPORTANT: The consecutive index advances the base pitch
-                // Each voice adds its polyphonic interval on top
-                noteIndex = degreeStart + (consecutiveIndex * stepInt) + (voice * polyInt);
-            } else {
-                // This step won't sound, set a default pitch
-                noteIndex = degreeStart + voice * polyInt;
-            }
-        } else {
-            // Normal mode: use pattern values with potential gaps
-            // Get pattern value for this logical step
-            int patternIndex = logicalStep % (int)pattern.size();
-            int patternValue = pattern[patternIndex];
-
-            // Apply stepInterval to pattern value
-            int scaleIndex = degreeStart + (patternValue * stepInt);
-
-            // Add polyphonic interval for additional voices
-            noteIndex = scaleIndex + (voice * polyInt);
-        }
+    // Build a simple linear pitch vector
+    // Each index i gets the pitch at scale degree (degStart + i * stepInterval)
+    for(int i = 0; i < sz; i++) {
+        int noteIndex = degreeStart + (i * stepInt);
 
         // Get pitch from expanded scale
         float pitch = getScaleDegree(noteIndex);
 
         // Apply pre-calculated deviation (only regenerated when deviation params change)
-        if(pos < (int)deviationValues.size()) {
-            pitch += deviationValues[pos];
+        if(i < (int)deviationValues.size()) {
+            pitch += deviationValues[i];
         }
 
         pitch += transp;
         pitch = ofClamp(pitch, 0.0f, 127.0f);
 
-        currentPitches[pos] = pitch;
+        currentPitches[i] = pitch;
     }
 
     pitchOut.set(currentPitches);
@@ -707,10 +587,50 @@ void polyphonicArpeggiator::rebuildPitchSequence() {
 void polyphonicArpeggiator::rebuildVelocitySequence() {
     int sz = seqSize.get();
     if(sz <= 0) return;
-    
+
     // Just initialize to zero - actual velocities calculated per-trigger
     currentVelocities.resize(sz, 0.0f);
     velocityOut.set(currentVelocities);
+}
+
+// Rebuild euclidean pattern output vectors
+// Maps euclidean patterns to seqSize using modulo
+void polyphonicArpeggiator::rebuildEuclideanOutputs() {
+    int sz = seqSize.get();
+    if(sz <= 0) return;
+
+    // Build euclidean gate output
+    vector<int> eucGate(sz, 0);
+    if(!euclideanPattern.empty()) {
+        int eucLen = (int)euclideanPattern.size();
+        for(int i = 0; i < sz; i++) {
+            int eucIndex = i % eucLen;
+            eucGate[i] = euclideanPattern[eucIndex] ? 1 : 0;
+        }
+    }
+    eucGateOut.set(eucGate);
+
+    // Build euclidean accent output
+    vector<int> eucAcc(sz, 0);
+    if(!euclideanAccents.empty()) {
+        int accLen = (int)euclideanAccents.size();
+        for(int i = 0; i < sz; i++) {
+            int accIndex = i % accLen;
+            eucAcc[i] = euclideanAccents[accIndex] ? 1 : 0;
+        }
+    }
+    eucAccOut.set(eucAcc);
+
+    // Build euclidean duration output
+    vector<int> eucDur(sz, 0);
+    if(!euclideanDurations.empty()) {
+        int durLen = (int)euclideanDurations.size();
+        for(int i = 0; i < sz; i++) {
+            int durIndex = i % durLen;
+            eucDur[i] = euclideanDurations[durIndex] ? 1 : 0;
+        }
+    }
+    eucDurOut.set(eucDur);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -890,7 +810,6 @@ void polyphonicArpeggiator::saveSnapshotToDisk(int slot) {
     json["degStart"] = snap.degStart;
     json["stepInterval"] = snap.stepInterval;
     json["transpose"] = snap.transpose;
-    json["continuousPitch"] = snap.continuousPitch;
 
     json["polyphony"] = snap.polyphony;
     json["polyInterval"] = snap.polyInterval;
@@ -952,7 +871,6 @@ void polyphonicArpeggiator::loadSnapshotFromDisk(int slot) {
     snap.degStart = json.value("degStart", 0);
     snap.stepInterval = json.value("stepInterval", 1);
     snap.transpose = json.value("transpose", 0);
-    snap.continuousPitch = json.value("continuousPitch", false);
 
     snap.polyphony = json.value("polyphony", 1);
     snap.polyInterval = json.value("polyInterval", 2);
@@ -1029,7 +947,6 @@ void polyphonicArpeggiator::storeToSlot(int slot) {
     snap.degStart = degStart.get();
     snap.stepInterval = stepInterval.get();
     snap.transpose = transpose.get();
-    snap.continuousPitch = continuousPitch.get();
 
     snap.polyphony = polyphony.get();
     snap.polyInterval = polyInterval.get();
@@ -1091,7 +1008,6 @@ void polyphonicArpeggiator::recallSlot(int slot) {
         degStart.set(snap.degStart);
         stepInterval.set(snap.stepInterval);
         transpose.set(snap.transpose);
-        continuousPitch.set(snap.continuousPitch);
 
         polyphony.set(snap.polyphony);
         polyInterval.set(snap.polyInterval);
@@ -1137,7 +1053,6 @@ void polyphonicArpeggiator::recallSlot(int slot) {
         startSnapshot.degStart = degStart.get();
         startSnapshot.stepInterval = stepInterval.get();
         startSnapshot.transpose = transpose.get();
-        startSnapshot.continuousPitch = continuousPitch.get();
 
         startSnapshot.polyphony = polyphony.get();
         startSnapshot.polyInterval = polyInterval.get();
@@ -1231,7 +1146,6 @@ void polyphonicArpeggiator::updateMorph() {
         scale.set(targetSnapshot.scale);
         patternMode.set(targetSnapshot.patternMode);
         idxPattern.set(targetSnapshot.idxPattern);
-        continuousPitch.set(targetSnapshot.continuousPitch);
         strumDir.set(targetSnapshot.strumDir);
     }
 }
@@ -1270,6 +1184,7 @@ void polyphonicArpeggiator::presetRecallAfterSettingParameters(ofJson &json) {
     rebuildExpandedScale();
     rebuildDeviations();
     rebuildPitchSequence();
+    rebuildEuclideanOutputs();
 }
 
 // ═══════════════════════════════════════════════════════════
