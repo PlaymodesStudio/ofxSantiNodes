@@ -21,6 +21,7 @@ struct ArpeggiatorSnapshot {
     // Polyphony
     int polyphony;
     int polyInterval;
+    int skipSteps;
     float strum;
     float strumRndm;
     int strumDir;
@@ -95,6 +96,7 @@ private:
     // --- Polyphony Parameters ---
     ofParameter<int> polyphony;
     ofParameter<int> polyInterval;
+    ofParameter<int> skipSteps;
     ofParameter<float> strum;
     ofParameter<float> strumRndm;
     ofParameter<int> strumDir;       // dropdown: 0=Ascending, 1=Descending, 2=Random

@@ -81,6 +81,7 @@ void polyphonicArpeggiator::setup() {
     addSeparator("Polyphony", ofColor(200));
     addParameter(polyphony.set("Polyphony", 1, 1, MAX_POLYPHONY));
     addParameter(polyInterval.set("PolyInterval", 2, 1, 12));
+    addParameter(skipSteps.set("SkipSteps", 0, 0, 32));
     addParameter(strum.set("Strum", 0.0f, 0.0f, 500.0f));
     addParameter(strumRndm.set("StrumRndm", 0.0f, 0.0f, 200.0f));
     addParameterDropdown(strumDir, "StrumDir", 0, {"Ascending", "Descending", "Random"});
@@ -337,8 +338,11 @@ void polyphonicArpeggiator::onTrigger() {
 
     processStep();
 
-    // Advance currentStep by 1 (not by stepInterval - that's for pattern indexing)
-    currentStep = (currentStep + 1) % seqSize;
+    // Advance currentStep by (1 + skipSteps)
+    // skipSteps=0 means advance by 1 (normal behavior)
+    // skipSteps>0 means jump additional steps
+    int stepAdvance = 1 + skipSteps.get();
+    currentStep = (currentStep + stepAdvance) % seqSize;
 }
 
 void polyphonicArpeggiator::onReset() {
@@ -820,6 +824,7 @@ void polyphonicArpeggiator::saveSnapshotToDisk(int slot) {
 
     json["polyphony"] = snap.polyphony;
     json["polyInterval"] = snap.polyInterval;
+    json["skipSteps"] = snap.skipSteps;
     json["strum"] = snap.strum;
     json["strumRndm"] = snap.strumRndm;
     json["strumDir"] = snap.strumDir;
@@ -881,6 +886,7 @@ void polyphonicArpeggiator::loadSnapshotFromDisk(int slot) {
 
     snap.polyphony = json.value("polyphony", 1);
     snap.polyInterval = json.value("polyInterval", 2);
+    snap.skipSteps = json.value("skipSteps", 0);
     snap.strum = json.value("strum", 0.0f);
     snap.strumRndm = json.value("strumRndm", 0.0f);
     snap.strumDir = json.value("strumDir", 0);
@@ -957,6 +963,7 @@ void polyphonicArpeggiator::storeToSlot(int slot) {
 
     snap.polyphony = polyphony.get();
     snap.polyInterval = polyInterval.get();
+    snap.skipSteps = skipSteps.get();
     snap.strum = strum.get();
     snap.strumRndm = strumRndm.get();
     snap.strumDir = strumDir.get();
@@ -1018,6 +1025,7 @@ void polyphonicArpeggiator::recallSlot(int slot) {
 
         polyphony.set(snap.polyphony);
         polyInterval.set(snap.polyInterval);
+        skipSteps.set(snap.skipSteps);
         strum.set(snap.strum);
         strumRndm.set(snap.strumRndm);
         strumDir.set(snap.strumDir);
@@ -1063,6 +1071,7 @@ void polyphonicArpeggiator::recallSlot(int slot) {
 
         startSnapshot.polyphony = polyphony.get();
         startSnapshot.polyInterval = polyInterval.get();
+        startSnapshot.skipSteps = skipSteps.get();
         startSnapshot.strum = strum.get();
         startSnapshot.strumRndm = strumRndm.get();
         startSnapshot.strumDir = strumDir.get();
@@ -1116,6 +1125,7 @@ void polyphonicArpeggiator::updateMorph() {
     stepInterval.set((int)ofLerp(startSnapshot.stepInterval, targetSnapshot.stepInterval, progress));
     polyphony.set((int)ofLerp(startSnapshot.polyphony, targetSnapshot.polyphony, progress));
     polyInterval.set((int)ofLerp(startSnapshot.polyInterval, targetSnapshot.polyInterval, progress));
+    skipSteps.set((int)ofLerp(startSnapshot.skipSteps, targetSnapshot.skipSteps, progress));
 
     strum.set(ofLerp(startSnapshot.strum, targetSnapshot.strum, progress));
     strumRndm.set(ofLerp(startSnapshot.strumRndm, targetSnapshot.strumRndm, progress));
