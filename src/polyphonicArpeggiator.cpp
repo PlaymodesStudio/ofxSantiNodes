@@ -413,15 +413,9 @@ void polyphonicArpeggiator::processStep() {
     int patternIndex = currentStep % (int)pattern.size();
     int baseIndex = pattern[patternIndex] % sz;
 
-    // Clear previous gates at positions we'll use
-    for(int voice = 0; voice < poly; voice++) {
-        int outputIndex = (baseIndex + voice * polyInt) % sz;
-        currentGates[outputIndex] = 0;
-        stepGates[outputIndex] = false;
-    }
-
-    // Calculate duration ONCE for all voices at this step
+    // Calculate duration and velocity ONCE for all voices at this step
     int stepDuration = computeStepDuration(currentStep);
+    float stepVel = computeStepVelocity(currentStep);
 
     // Turn on gates for all polyphonic voices
     for(int voice = 0; voice < poly; voice++) {
@@ -437,40 +431,34 @@ void polyphonicArpeggiator::processStep() {
         // Pitch is already pre-calculated in the static pitch vector
         // No need to modify it here
 
-        // Calculate velocity in real-time
-        float finalVel = velBase.get();
-
-        // Add random variation if enabled
-        if(velRndm.get() > 0) {
-            finalVel += velRndm.get() * dist01(rng);
-        }
-
-        // Apply accent if on accent beat - use currentStep directly for the accent pattern
-        if(!euclideanAccents.empty()) {
-            int accentStep = currentStep % (int)euclideanAccents.size();
-            if(euclideanAccents[accentStep]) {
-                finalVel += eucAccStrength.get();
-            }
-        }
-
-        finalVel = ofClamp(finalVel, 0.0f, 1.0f);
-        currentVelocities[outputIndex] = finalVel;
+        // All voices in this step share the same velocity (accent is per-step, not per-voice)
+        currentVelocities[outputIndex] = stepVel;
 
         // Calculate strum offset for this voice
         float strumOffset = computeStrumOffset(voice, poly);
 
         // Use the shared step duration for all voices
-        noteDurationsMs[outputIndex] = stepDuration;
         currentDurations[outputIndex] = (float)stepDuration;
 
-        if(strumOffset <= 0.5f) {
-            // Turn on immediately
-            currentGates[outputIndex] = 1;
-            stepGates[outputIndex] = true;
-            noteStartTimes[outputIndex] = currentMs;
-        } else {
-            // Schedule for later (handled in update())
-            noteStartTimes[outputIndex] = currentMs + (uint64_t)strumOffset;
+        // Only retrigger this slot if it is not currently sustaining a note from a
+        // previous step (i.e. its gate-off time has not yet been reached).
+        // This prevents a new step's voices from cutting short a longer-duration
+        // note that happens to share the same output slot.
+        bool slotIsSustaining = (currentGates[outputIndex] == 1 &&
+                                 noteStartTimes[outputIndex] > 0 &&
+                                 currentMs < (int64_t)(noteStartTimes[outputIndex] + noteDurationsMs[outputIndex]));
+
+        if(!slotIsSustaining) {
+            noteDurationsMs[outputIndex] = stepDuration;
+            if(strumOffset <= 0.5f) {
+                // Turn on immediately
+                currentGates[outputIndex] = 1;
+                stepGates[outputIndex] = true;
+                noteStartTimes[outputIndex] = currentMs;
+            } else {
+                // Schedule for later (handled in update())
+                noteStartTimes[outputIndex] = currentMs + (uint64_t)strumOffset;
+            }
         }
     }
 
@@ -774,18 +762,21 @@ void polyphonicArpeggiator::generateEuclideanPattern(vector<bool>& pattern, int 
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::updateOutputs() {
+    // Set pitch, velocity and duration BEFORE gate so downstream nodes
+    // (e.g. MIDI) already have the correct values when the gate fires
     pitchOut.set(currentPitches);
-    gateOut.set(currentGates);
     velocityOut.set(currentVelocities);
     durOut.set(currentDurations);
-    
-    // Calculate gate * velocity output
+
+    // Calculate gate * velocity output before firing gate
     int sz = currentGates.size();
     vector<float> gateVel(sz, 0.0f);
     for(int i = 0; i < sz; i++) {
         gateVel[i] = currentGates[i] * currentVelocities[i];
     }
     gateVelOut.set(gateVel);
+
+    gateOut.set(currentGates);
 }
 
 // ═══════════════════════════════════════════════════════════
