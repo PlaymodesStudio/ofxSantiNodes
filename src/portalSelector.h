@@ -25,7 +25,7 @@ public:
 
 		// Add hidden parameter to store the selected portal name for presets
 		addInspectorParameter(selectedPortalName.set("Selected Portal", ""));
-		
+
 		// Add inspector parameter for global search (default: false for local scope only)
 		addInspectorParameter(globalSearch.set("Global Search", false));
 
@@ -37,6 +37,7 @@ public:
 		} else {
 			addOutputParameter(output.set("Output", defaultValue));
 		}
+		addOutputParameter(outputNames.set("Names", portalNames));
 
 		// Listen for dropdown changes
 		dropdownListener = selectedPortalIndex.newListener([this](int &index){
@@ -46,7 +47,7 @@ public:
 				updateOutputFromSelectedPortal();
 			}
 		});
-		
+
 		// Listen for global search changes
 		globalSearchListener = globalSearch.newListener([this](bool &){
 			// When global search setting changes, update the portal list
@@ -71,21 +72,21 @@ public:
 	void update(ofEventArgs &args) override {
 			// Check if we need to update the portal list
 			updatePortalList();
-			
+
 			// Handle delayed restoration from preset loading
 			if (needsDelayedRestore) {
 				// Force a fresh portal list update
 				updatePortalListOnly();
 				updatePortalList();
-				
+
 				// Try to restore the saved connection
 				maintainPortalSelectionByInstance();
 				updateOutputFromSelectedPortal();
-				
+
 				// Clear the flag
 				needsDelayedRestore = false;
 			}
-			
+
 			updateOutputFromSelectedPortal();
 		}
 		
@@ -97,6 +98,7 @@ public:
 protected:
 	ofParameter<int> selectedPortalIndex;
 	ofParameter<T> output;
+	ofParameter<vector<string>> outputNames;
 	ofParameter<string> selectedPortalName; // For preset save/load
 	ofParameter<bool> globalSearch; // Inspector parameter for global search
 	ofEventListener dropdownListener;
@@ -251,16 +253,19 @@ protected:
 
 			// Update the dropdown parameter options and range
 			getOceanodeParameter(selectedPortalIndex).setDropdownOptions(portalNames);
-			
+
 			// Update the parameter's min/max range to match the new options
 			selectedPortalIndex.setMin(0);
 			selectedPortalIndex.setMax(std::max(0, (int)portalNames.size() - 1));
+
+			// Propagate updated names to output
+			outputNames = portalNames;
 
 			// Try to maintain the same portal selection by instance
 			maintainPortalSelectionByInstance();
 		}
 	}
-	
+
 	void maintainPortalSelectionByInstance() {
 		// First try to restore from saved name (for preset loading)
 		if (!selectedPortalName.get().empty()) {
@@ -405,6 +410,7 @@ public:
 		} else {
 			addOutputParameter(output.set("Output", defaultValue));
 		}
+		addOutputParameter(outputNames.set("Names", portalNames));
 
 		// Listen for dropdown changes
 		dropdownListener = selectedPortalIndex.newListener([this](int &index){
@@ -414,7 +420,7 @@ public:
 				updateOutputFromSelectedPortal();
 			}
 		});
-		
+
 		// Listen for global search changes
 		globalSearchListener = globalSearch.newListener([this](bool &){
 			// When global search setting changes, update the portal list
@@ -465,6 +471,7 @@ public:
 protected:
 	ofParameter<int> selectedPortalIndex;
 	ofParameter<vector<T>> output;
+	ofParameter<vector<string>> outputNames;
 	ofParameter<string> selectedPortalName; // For preset save/load
 	ofParameter<bool> globalSearch; // Inspector parameter for global search
 	ofEventListener dropdownListener;
@@ -607,10 +614,13 @@ protected:
 			selectedPortalIndex.setMin(0);
 			selectedPortalIndex.setMax(std::max(0, (int)portalNames.size() - 1));
 
+			// Propagate updated names to output
+			outputNames = portalNames;
+
 			maintainPortalSelectionByInstance();
 		}
 	}
-	
+
 	void maintainPortalSelectionByInstance() {
 		// First try to restore from saved name (for preset loading)
 		if (!selectedPortalName.get().empty()) {
