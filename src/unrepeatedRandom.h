@@ -40,7 +40,7 @@ public:
         previousTriggerSource.resize(newSize, 0);
         
         for(int i = 0; i < newSize; i++) {
-            if(triggerSource[i] != previousTriggerSource[i]) {
+            if(triggerSource[i] == 1 && triggerSource[i] != previousTriggerSource[i]) {
                 generateRandom(i);
             }
         }
