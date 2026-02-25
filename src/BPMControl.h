@@ -2,28 +2,31 @@
 #define BPMControl_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeContainer.h"
 #include "ofxOsc.h"
 
 class BPMControl : public ofxOceanodeNodeModel {
 public:
     BPMControl() : ofxOceanodeNodeModel("BPM Control") {
         lastBPM=0;
-        
+        parentContainer = nullptr;
+
         addParameter(phaseReset.set("PhaseRst"));
-        addParameter(bpm.set("BPM", 120.0f, 1.0f, 999.9f)); // Assuming a range from 1 to 999 BPM
-        addParameter(port.set("Port", 12345, 1, 65535)); // Range for valid port numbers
+        addParameter(bpm.set("BPM", 120.0f, 1.0f, 999.9f));
+        addParameter(scopedMode.set("Scoped", false));
+        addParameter(port.set("Port", 12345, 1, 65535));
         addParameter(resetOnChg.set("RstPhOnChg",true));
         addParameter(phaseHasReset.set("Trig.Rst"));
 
         phaseResetListener = phaseReset.newListener([this](){
-            sendPhaseReset();
+            applyPhaseReset();
         });
-        
+
         bpmListener = bpm.newListener([this](float &newBpm){
-            sendBPM(newBpm);
+            applyBPM(newBpm);
             if(lastBPM!=bpm)
             {
-                if(resetOnChg) sendPhaseReset();
+                if(resetOnChg) applyPhaseReset();
                 lastBPM=bpm;
             }
         });
@@ -35,9 +38,13 @@ public:
         setupOscSender(port);
     }
 
+    void setContainer(ofxOceanodeContainer* container) override {
+        ofxOceanodeNodeModel::setContainer(container);
+        parentContainer = container;
+    }
+
     void resetPhase() override
     {
-        //cout << "Reset Phaseeeee" << endl;
         phaseHasReset.trigger();
     }
 private:
@@ -45,19 +52,29 @@ private:
         sender.setup("localhost", newPort);
     }
 
-    void sendBPM(float newBpm){
-        ofxOscMessage m;
-        m.setAddress("/bpm");
-        m.addFloatArg(newBpm);
-        sender.sendMessage(m, false);
+    void applyBPM(float newBpm){
+        if(scopedMode && parentContainer){
+            parentContainer->setBpm(newBpm);
+        }else{
+            ofxOscMessage m;
+            m.setAddress("/bpm");
+            m.addFloatArg(newBpm);
+            sender.sendMessage(m, false);
+        }
     }
-    void sendPhaseReset(){
-        ofxOscMessage m;
-        m.setAddress("/phaseReset");
-        sender.sendMessage(m, false);
+
+    void applyPhaseReset(){
+        if(scopedMode && parentContainer){
+            parentContainer->resetPhase();
+        }else{
+            ofxOscMessage m;
+            m.setAddress("/phaseReset");
+            sender.sendMessage(m, false);
+        }
     }
 
     ofParameter<float> bpm;
+    ofParameter<bool> scopedMode;
     ofParameter<int> port;
     ofParameter<void> phaseReset;
     ofParameter<void> phaseHasReset;
@@ -67,8 +84,9 @@ private:
     ofEventListener bpmListener;
     ofEventListener portListener;
     ofEventListener phaseResetListener;
-    
+
     float lastBPM;
+    ofxOceanodeContainer* parentContainer;
 };
 
 #endif /* BPMControl_h */
