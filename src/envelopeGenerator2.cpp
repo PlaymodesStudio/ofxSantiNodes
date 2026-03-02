@@ -12,12 +12,7 @@ envelopeGenerator2::envelopeGenerator2() : ofxOceanodeNodeModel("Envelope Genera
 	addParameter(phasor.set("Phase", {0}, {0}, {1}));
 	addParameter(gateIn.set("GateIn", {0}, {0}, {1}));
 
-	// Hold: auto-releases the envelope this many phasor-periods after gate onset,
-	// regardless of whether the gate is still high. 0 = disabled (gate controls release).
-	// Note: this is NOT an AHDSR "hold" stage between A and D — it caps the total
-	// envelope duration from the moment the gate opens.
 	addParameter(hold.set("Hold", {0}, {0}, {1}));
-
 	addParameter(attack.set("A", {0}, {0}, {1}));
 	addParameter(decay.set("D", {0}, {0}, {1}));
 	addParameter(sustain.set("S", {1}, {0}, {1}));
@@ -30,10 +25,8 @@ envelopeGenerator2::envelopeGenerator2() : ofxOceanodeNodeModel("Envelope Genera
 	addParameter(releasePow.set("R.Pow", {0}, {-1}, {1}));
 	addParameter(releaseBiPow.set("R.BiPow", {0}, {-1}, {1}));
 
-	// Poly mode: when enabled, a new gate onset at an already-active index does NOT
-	// kill the ongoing envelope. Instead a new envelope voice is spawned and its output
-	// is summed with any currently-running voices for that index.
 	addParameter(polyMode.set("Poly", false));
+	addParameter(clipOut.set("ClipOut", false));
 
 	addParameter(curvePreview.set("Curve", {0}, {0}, {1}));
 	addOutputParameter(output.set("Output", {0}, {0}, {1}));
@@ -62,48 +55,47 @@ envelopeGenerator2::envelopeGenerator2() : ofxOceanodeNodeModel("Envelope Genera
 }
 
 // ---------------------------------------------------------------------------
-// computeVoice: advances one EnvelopeVoice by one phasor frame.
-// Returns true while the voice is still alive, false when it has ended.
+// computeVoice
 // ---------------------------------------------------------------------------
 bool envelopeGenerator2::computeVoice(EnvelopeVoice &v, float f, int i, float &outSample) {
-	float phase = f - v.phasorValueOnChange;
-	if(phase < 0) phase = 1 + phase;
-	if(phase < v.lastPhase) v.reachedMax = true;
-	else v.lastPhase = phase;
+	float deltaPhase = f - v.lastPhasorForHold;
+	
+	// Robust anti-jitter for the phasor wrap
+	if(deltaPhase < -0.5f) {
+		deltaPhase += 1.0f; // Legitimate wrap around
+	} else if(deltaPhase < 0.0f) {
+		deltaPhase = 0.0f;  // Minor phasor jitter backward, discard
+	}
+	v.lastPhasorForHold = f;
 
-	// Hold timeout: auto-release after a fixed phasor duration from gate onset
+	v.accumulatedHold += deltaPhase;
+	v.stagePhase += deltaPhase;
+
+	// Hold timeout
 	if(getValueForIndex(hold, i) > 0) {
-		float holdPhase = f - v.initialPhase;
-		if(holdPhase < 0) holdPhase += 1;
-
-		if(holdPhase > getValueForIndex(hold, i) &&
+		if(v.accumulatedHold >= getValueForIndex(hold, i) &&
 		   v.stage != envelopeRelease2 &&
 		   v.stage != envelopeEnd2) {
-			v.phasorValueOnChange = f;
 			v.stage = (getValueForIndex(release, i) > 0) ? envelopeRelease2 : envelopeEnd2;
-			v.reachedMax = false;
-			v.lastPhase = 0;
-			phase = 0;
+			v.stagePhase = 0; // Reset for release
 		}
 	}
 
 	switch(v.stage) {
 		case envelopeAttack2: {
-			if(phase > getValueForIndex(attack, i) || v.reachedMax) {
-				v.phasorValueOnChange = f;
-				v.reachedMax = false;
-				v.lastPhase = 0;
+			float aTime = getValueForIndex(attack, i);
+			if(v.stagePhase >= aTime) {
+				v.stagePhase -= aTime; // Retain mathematical overshoot
 				if(getValueForIndex(decay, i) == 0) {
 					v.stage = envelopeSustain2;
 					outSample = v.maxValue * getValueForIndex(sustain, i);
-					v.lastSustainValue = outSample;
 				} else {
 					v.stage = envelopeDecay2;
 					outSample = v.maxValue;
-					v.lastSustainValue = outSample;
 				}
+				v.lastSustainValue = outSample;
 			} else {
-				float p = ofMap(phase, 0, getValueForIndex(attack, i), 0, 1, true);
+				float p = (aTime > 0) ? (v.stagePhase / aTime) : 1.0f;
 				if(getValueForIndex(attackPow, i) != 0)    customPow(p, getValueForIndex(attackPow, i));
 				if(getValueForIndex(attackBiPow, i) != 0) {
 					p = (p * 2) - 1;
@@ -117,15 +109,14 @@ bool envelopeGenerator2::computeVoice(EnvelopeVoice &v, float f, int i, float &o
 		}
 
 		case envelopeDecay2: {
-			if(phase > getValueForIndex(decay, i) || v.reachedMax) {
-				v.phasorValueOnChange = f;
+			float dTime = getValueForIndex(decay, i);
+			if(v.stagePhase >= dTime) {
+				v.stagePhase -= dTime;
 				v.stage = envelopeSustain2;
-				v.reachedMax = false;
-				v.lastPhase = 0;
 				outSample = v.maxValue * getValueForIndex(sustain, i);
 				v.lastSustainValue = outSample;
 			} else {
-				float p = ofMap(phase, 0, getValueForIndex(decay, i), 0, 1, true);
+				float p = (dTime > 0) ? (v.stagePhase / dTime) : 1.0f;
 				if(getValueForIndex(decayPow, i) != 0)    customPow(p, getValueForIndex(decayPow, i));
 				if(getValueForIndex(decayBiPow, i) != 0) {
 					p = (p * 2) - 1;
@@ -145,15 +136,13 @@ bool envelopeGenerator2::computeVoice(EnvelopeVoice &v, float f, int i, float &o
 		}
 
 		case envelopeRelease2: {
-			if(phase > getValueForIndex(release, i) || v.reachedMax) {
-				v.phasorValueOnChange = f;
+			float rTime = getValueForIndex(release, i);
+			if(v.stagePhase >= rTime) {
 				v.stage = envelopeEnd2;
-				v.reachedMax = false;
-				v.lastPhase = 0;
 				outSample = 0;
 				return false; // voice ended
 			} else {
-				float p = ofMap(phase, 0, getValueForIndex(release, i), 0, 1, true);
+				float p = (rTime > 0) ? (v.stagePhase / rTime) : 1.0f;
 				if(getValueForIndex(releasePow, i) != 0)    customPow(p, getValueForIndex(releasePow, i));
 				if(getValueForIndex(releaseBiPow, i) != 0) {
 					p = (p * 2) - 1;
@@ -175,7 +164,7 @@ bool envelopeGenerator2::computeVoice(EnvelopeVoice &v, float f, int i, float &o
 }
 
 // ---------------------------------------------------------------------------
-// phasorListener — called every frame by the phasor
+// phasorListener
 // ---------------------------------------------------------------------------
 void envelopeGenerator2::phasorListener(vector<float> &vf) {
 	int inputSize = gateIn.get().size();
@@ -183,14 +172,15 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 	if(inputSize != lastGateInSize) {
 		output = vector<float>(inputSize, 0);
 		lastInput = vector<float>(inputSize, 0);
-		phasorValueOnValueChange = vector<float>(inputSize, 0);
-		lastPhase = vector<float>(inputSize, 0);
-		reachedMax = vector<bool>(inputSize, false);
 		envelopeStage = vector<int>(inputSize, envelopeEnd2);
 		maxValue = vector<float>(inputSize, 0);
-		initialPhase = vector<float>(inputSize, 0);
 		lastSustainValue = vector<float>(inputSize, 0);
 		targetValue = vector<float>(inputSize, 0);
+		
+		accumulatedHoldVec   = vector<float>(inputSize, 0);
+		lastPhasorForHoldVec = vector<float>(inputSize, 0);
+		stagePhaseVec        = vector<float>(inputSize, 0);
+
 		voices         = vector<vector<EnvelopeVoice>>(inputSize);
 		pendingOnsets  = vector<vector<float>>(inputSize);
 		pendingRelease = vector<bool>(inputSize, false);
@@ -201,27 +191,34 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 	vector<float> tempOutput(inputSize, 0);
 
 	if(polyMode.get()) {
-		// ---------------------------------------------------------------
-		// POLY MODE: multiple simultaneous voices per index, summed.
-		//
-		// Gate onsets and releases are captured by gateInListener()
-		// (which fires on every gateIn parameter change) and stored in
-		// pendingOnsets / pendingRelease.  This way a trigger pulse that
-		// rises and falls entirely between two phasor ticks is never lost.
-		// ---------------------------------------------------------------
 		for(int i = 0; i < inputSize; i++) {
 			float f = getValueForIndex(vf, i);
 
-			// --- consume pending onsets: spawn one new voice per onset ---
+			// Consume pending release FIRST to avoid killing newly spawned voices in the same frame
+			if(pendingRelease[i]) {
+				for(auto &v : voices[i]) {
+					if(v.gated) {
+						v.gated = false;
+						if(getValueForIndex(hold, i) == 0 &&
+						  (v.stage == envelopeAttack2 || v.stage == envelopeDecay2 || v.stage == envelopeSustain2)) {
+							v.stagePhase = 0;
+							v.stage = (getValueForIndex(release, i) > 0) ? envelopeRelease2 : envelopeEnd2;
+						}
+					}
+				}
+				pendingRelease[i] = false;
+			}
+
+			// Spawn new voices after releasing old ones
 			for(float gateAmp : pendingOnsets[i]) {
 				EnvelopeVoice v;
 				v.maxValue            = gateAmp;
-				v.phasorValueOnChange = f;
-				v.initialPhase        = f;
-				v.lastPhase           = 0;
-				v.reachedMax          = false;
 				v.lastSustainValue    = gateAmp;
 				v.gated               = true;
+				
+				v.accumulatedHold     = 0;
+				v.lastPhasorForHold   = f;
+				v.stagePhase          = 0;
 
 				if(getValueForIndex(attack, i) == 0) {
 					v.stage = (getValueForIndex(decay, i) == 0) ? envelopeSustain2 : envelopeDecay2;
@@ -232,24 +229,6 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 			}
 			pendingOnsets[i].clear();
 
-			// --- consume pending release: send gated voices to release ---
-			if(pendingRelease[i]) {
-				for(auto &v : voices[i]) {
-					if(v.gated && (v.stage == envelopeAttack2 ||
-					               v.stage == envelopeDecay2  ||
-					               v.stage == envelopeSustain2)) {
-						v.phasorValueOnChange = f;
-						v.reachedMax = false;
-						v.lastPhase  = 0;
-						v.gated      = false;
-						v.stage = (getValueForIndex(release, i) > 0)
-						          ? envelopeRelease2 : envelopeEnd2;
-					}
-				}
-				pendingRelease[i] = false;
-			}
-
-			// --- advance all voices and sum ---
 			float sum = 0;
 			auto it = voices[i].begin();
 			while(it != voices[i].end()) {
@@ -262,13 +241,10 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 					++it;
 				}
 			}
-			tempOutput[i] = ofClamp(sum, 0, 1);
+			tempOutput[i] = sum;
 		}
 
 	} else {
-		// ---------------------------------------------------------------
-		// MONO MODE: original single-envelope behaviour
-		// ---------------------------------------------------------------
 		for(int i = 0; i < inputSize; i++) {
 			float currentGate = gateIn.get()[i];
 			float f = getValueForIndex(vf, i);
@@ -276,36 +252,27 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 			bool wasOff = lastInput[i] <= gateThreshold;
 			bool isOn   = currentGate > gateThreshold;
 
-			// New gate onset — restart envelope from scratch
 			if(wasOff && isOn) {
 				targetValue[i] = currentGate;
 				maxValue[i]    = currentGate;
 
 				if(getValueForIndex(attack, i) == 0) {
-					envelopeStage[i] = (getValueForIndex(decay, i) == 0)
-					                   ? envelopeSustain2 : envelopeDecay2;
+					envelopeStage[i] = (getValueForIndex(decay, i) == 0) ? envelopeSustain2 : envelopeDecay2;
 				} else {
 					envelopeStage[i] = envelopeAttack2;
 				}
 
-				phasorValueOnValueChange[i] = f;
-				reachedMax[i] = false;
-				lastPhase[i]  = 0;
-				initialPhase[i] = f;
-				lastSustainValue[i] = currentGate;
+				accumulatedHoldVec[i]   = 0;
+				lastPhasorForHoldVec[i] = f;
+				stagePhaseVec[i]        = 0;
+				lastSustainValue[i]     = currentGate;
 			}
-			// Gate off → go to release
 			else if(!wasOff && currentGate <= gateThreshold) {
 				if(getValueForIndex(hold, i) == 0) {
-					envelopeStage[i] = (getValueForIndex(release, i) > 0)
-					                   ? envelopeRelease2 : envelopeEnd2;
-					phasorValueOnValueChange[i] = f;
-					reachedMax[i] = false;
-					lastPhase[i]  = 0;
+					envelopeStage[i] = (getValueForIndex(release, i) > 0) ? envelopeRelease2 : envelopeEnd2;
+					stagePhaseVec[i] = 0;
 				}
-				// If hold > 0, the hold timeout below will handle the release transition
 			}
-			// Gate amplitude changed while active
 			else if(isOn && abs(currentGate - targetValue[i]) > gateThreshold) {
 				targetValue[i] = currentGate;
 				maxValue[i]    = currentGate;
@@ -314,30 +281,32 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 				}
 			}
 
-			// Build a temporary EnvelopeVoice from the mono per-index state
-			// so we can reuse computeVoice() without duplicating logic.
 			EnvelopeVoice v;
 			v.stage               = envelopeStage[i];
 			v.maxValue            = maxValue[i];
-			v.phasorValueOnChange = phasorValueOnValueChange[i];
-			v.lastPhase           = lastPhase[i];
-			v.reachedMax          = reachedMax[i];
 			v.lastSustainValue    = lastSustainValue[i];
-			v.initialPhase        = initialPhase[i];
+			v.accumulatedHold     = accumulatedHoldVec[i];
+			v.lastPhasorForHold   = lastPhasorForHoldVec[i];
+			v.stagePhase          = stagePhaseVec[i];
 
 			float sample = 0;
 			computeVoice(v, f, i, sample);
 			tempOutput[i] = sample;
 
-			// Write back updated state
 			envelopeStage[i]              = v.stage;
 			maxValue[i]                   = v.maxValue;
-			phasorValueOnValueChange[i]   = v.phasorValueOnChange;
-			lastPhase[i]                  = v.lastPhase;
-			reachedMax[i]                 = v.reachedMax;
 			lastSustainValue[i]           = v.lastSustainValue;
+			accumulatedHoldVec[i]         = v.accumulatedHold;
+			lastPhasorForHoldVec[i]       = v.lastPhasorForHold;
+			stagePhaseVec[i]              = v.stagePhase;
 
 			lastInput[i] = currentGate;
+		}
+	}
+
+	if(clipOut.get()) {
+		for(int i = 0; i < inputSize; i++) {
+			tempOutput[i] = ofClamp(tempOutput[i], 0.0f, 1.0f);
 		}
 	}
 
@@ -366,20 +335,13 @@ float envelopeGenerator2::smoothinterpolate(float start, float end, float pos) {
 }
 
 // ---------------------------------------------------------------------------
-// gateInListener — fires on every gateIn parameter update.
-// Records rising and falling edges into pendingOnsets / pendingRelease so
-// that phasorListener can consume them even if the gate pulsed and returned
-// to zero between two phasor ticks.
-// Also keeps lastInput up to date for mono mode (mono mode reads it directly
-// in phasorListener; poly mode uses the pending queues instead).
+// gateInListener
 // ---------------------------------------------------------------------------
 void envelopeGenerator2::gateInListener(vector<float> &vf) {
-	if(!polyMode.get()) return;   // mono mode does its own edge detection in phasorListener
+	if(!polyMode.get()) return;
 
 	int sz = (int)vf.size();
 
-	// Grow lastGate / pending queues if needed (phasorListener is the
-	// authoritative resizer, but gateInListener can fire first).
 	if(sz > (int)lastGate.size())     lastGate.resize(sz, 0);
 	if(sz > (int)pendingOnsets.size()) {
 		pendingOnsets.resize(sz);
@@ -393,11 +355,9 @@ void envelopeGenerator2::gateInListener(vector<float> &vf) {
 		bool wasOff = prev <= gateThreshold;
 		bool isOn   = cur  >  gateThreshold;
 
-		// Rising edge → queue a new voice onset with this gate amplitude
 		if(wasOff && isOn) {
 			pendingOnsets[i].push_back(cur);
 		}
-		// Falling edge → mark that gated voices should be released
 		if(!wasOff && !isOn) {
 			pendingRelease[i] = true;
 		}
@@ -407,7 +367,7 @@ void envelopeGenerator2::gateInListener(vector<float> &vf) {
 }
 
 // ---------------------------------------------------------------------------
-// Preview curve (unchanged logic, just uses index 0 of each parameter)
+// Preview curve
 // ---------------------------------------------------------------------------
 void envelopeGenerator2::recalculatePreviewCurve() {
 	int maxSize = 100;
@@ -420,7 +380,6 @@ void envelopeGenerator2::recalculatePreviewCurve() {
 		return;
 	}
 
-	// Attack
 	int attackSize = std::max(0, std::min(maxSize, static_cast<int>(attack->at(0) * maxSize)));
 	tempOutput.resize(attackSize);
 	for(int i = 0; i < attackSize; i++) {
@@ -434,7 +393,6 @@ void envelopeGenerator2::recalculatePreviewCurve() {
 		tempOutput[i] = smoothinterpolate(0, previewGateValue, phase);
 	}
 
-	// Decay
 	int decaySize = std::max(0, std::min(maxSize, static_cast<int>(decay->at(0) * maxSize)));
 	int decayPos = tempOutput.size();
 	tempOutput.resize(decayPos + decaySize);
@@ -449,13 +407,11 @@ void envelopeGenerator2::recalculatePreviewCurve() {
 		tempOutput[decayPos + i] = smoothinterpolate(previewGateValue, previewGateValue * sustain->at(0), phase);
 	}
 
-	// Sustain
 	int sustainSize = maxSize / 2;
 	int sustainPos = tempOutput.size();
 	tempOutput.resize(sustainPos + sustainSize);
 	fill(tempOutput.begin() + sustainPos, tempOutput.end(), previewGateValue * sustain->at(0));
 
-	// Release
 	int releaseSize = std::max(0, std::min(maxSize, static_cast<int>(release->at(0) * maxSize)));
 	int releasePos = tempOutput.size();
 	tempOutput.resize(releasePos + releaseSize);
@@ -473,3 +429,5 @@ void envelopeGenerator2::recalculatePreviewCurve() {
 
 	curvePreview = tempOutput;
 }
+
+
