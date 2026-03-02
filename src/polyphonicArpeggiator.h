@@ -59,6 +59,8 @@ struct ArpeggiatorSnapshot {
     float stepChance;
     float noteChance;
 
+	bool dynamicMode;
+    bool accentOnsetMode;
     bool hasData = false;
 };
 
@@ -72,7 +74,7 @@ public:
     void presetSave(ofJson &json) override;
     void presetRecallAfterSettingParameters(ofJson &json) override;
 
-private:
+private:	
     // --- Core Trigger Inputs ---
     ofParameter<void> trigger;
     ofParameter<void> reset;
@@ -125,6 +127,10 @@ private:
     ofParameter<int> eucDurHits;
     ofParameter<int> eucDurOff;
     ofParameter<int> durEucStrength;  // How much to increase duration on euclidean accent
+	
+	//--- Dynamic Mode ---
+	ofParameter<bool> dynamicMode;
+	ofParameter<bool> accentOnsetMode;
 
     // --- Output Parameters ---
     ofParameter<vector<float>> pitchOut;
@@ -150,6 +156,8 @@ private:
     // --- Internal State ---
     int currentStep;
     bool shouldReset;
+    int onsetCounter;         // increments only when a step actually fires (passes all gate checks)
+    int absoluteStepCounter;  // increments on every trigger, regardless of gates
     vector<bool> euclideanPattern;
     vector<bool> euclideanAccents;
     vector<bool> euclideanDurations;
