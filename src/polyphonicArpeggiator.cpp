@@ -12,8 +12,6 @@ polyphonicArpeggiator::polyphonicArpeggiator() : ofxOceanodeNodeModel("Polyphoni
 
     currentStep = 0;
     shouldReset = false;
-    onsetCounter = 0;
-    absoluteStepCounter = 0;
     lastTriggerTime = 0;
     highlightedStep = -1;
 
@@ -57,10 +55,6 @@ void polyphonicArpeggiator::setup() {
     uiSnapshots.set("SnapshotsUI", [this](){ drawSnapshotSlots(); });
     addCustomRegion(uiSnapshots, [this](){ drawSnapshotSlots(); });
     addParameter(morphTime.set("Morph Time", 0.0f, 0.0f, 10.0f));
-	
-	// --- MODES ----
-	addParameter(dynamicMode.set("Dynamic", false));
-	addParameter(accentOnsetMode.set("AccOnset", true));  // true = onset-based (counter only when step fires), false = step-based (counter every trigger)
 
     // ── TRIGGER & CONTROL ──
     addSeparator("Trigger", ofColor(200));
@@ -245,12 +239,6 @@ void polyphonicArpeggiator::setup() {
         // Pattern mode only affects gate traversal, not pitch vector
         // No need to rebuild pitch sequence
     }));
-    listeners.push(dynamicMode.newListener([this](bool& val){
-        if(!val) {
-            // Returning to static mode: restore the precomputed pitch sequence
-            rebuildPitchSequence();
-        }
-    }));
 
     // seqSize change
     listeners.push(seqSize.newListener([this](int& size){
@@ -275,17 +263,17 @@ void polyphonicArpeggiator::setup() {
     generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
 
     // Initialize state vectors
-	int sz = MAX_POLYPHONY;
-	currentPitches.assign(sz, 60.0f);
-	currentGates.assign(sz, 0);
-	currentVelocities.assign(sz, 0.0f);
-	currentDurations.assign(sz, 0.0f);
-	noteDurationsMs.assign(sz, 100);
-	noteStartTimes.assign(sz, 0);
-	stepVelocities.assign(sz, 0.0f);
-	stepGates.assign(sz, false);
-	deviationValues.assign(MAX_SEQUENCE_SIZE, 0.0f);
-	
+    int sz = seqSize;
+    currentPitches.resize(sz, 60.0f);
+    currentGates.resize(sz, 0);
+    currentVelocities.resize(sz, 0.0f);
+    currentDurations.resize(sz, 0.0f);
+    noteDurationsMs.resize(sz, 100);
+    noteStartTimes.resize(sz, 0);
+    stepVelocities.resize(sz, 0.0f);
+    stepGates.resize(sz, false);
+    deviationValues.resize(sz, 0.0f);
+
     rebuildExpandedScale();
     rebuildDeviations();
     rebuildPitchSequence();
@@ -301,29 +289,41 @@ void polyphonicArpeggiator::setup() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::update(ofEventArgs &e) {
-	auto currentTime = std::chrono::steady_clock::now().time_since_epoch();
-	auto currentMs = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime).count();
-	bool needsUpdate = false;
+    auto currentTime = std::chrono::steady_clock::now().time_since_epoch();
+    auto currentMs = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime).count();
 
-	// Check all possible active slots (up to 16)
-	for(int i = 0; i < MAX_POLYPHONY; i++) {
-		// Strum start
-		if(currentGates[i] == 0 && noteStartTimes[i] > 0 && currentMs >= (int64_t)noteStartTimes[i]) {
-			currentGates[i] = 1;
-			needsUpdate = true;
-		}
-		// Duration expire
-		if(currentGates[i] == 1 && noteStartTimes[i] > 0) {
-			if(currentMs >= (int64_t)(noteStartTimes[i] + noteDurationsMs[i])) {
-				currentGates[i] = 0;
-				noteStartTimes[i] = 0;
-				needsUpdate = true;
-			}
-		}
-	}
-	
-	if(isMorphing) updateMorph();
-	if(needsUpdate) updateOutputs();
+    bool needsUpdate = false;
+    int sz = seqSize;
+
+    for(int i = 0; i < sz && i < (int)currentGates.size(); i++) {
+        // Strummed notes waiting to start
+        if(currentGates[i] == 0 && noteStartTimes[i] > 0) {
+            if(currentMs >= (int64_t)noteStartTimes[i]) {
+                currentGates[i] = 1;
+                stepGates[i] = true;
+                needsUpdate = true;
+            }
+        }
+
+        // Active gates that should expire
+        if(currentGates[i] == 1 && noteStartTimes[i] > 0) {
+            if(currentMs >= (int64_t)(noteStartTimes[i] + noteDurationsMs[i])) {
+                currentGates[i] = 0;
+                noteStartTimes[i] = 0;
+                stepGates[i] = false;
+                needsUpdate = true;
+            }
+        }
+    }
+
+    // Update morphing if active
+    if(isMorphing) {
+        updateMorph();
+    }
+
+    if(needsUpdate) {
+        updateOutputs();
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -331,39 +331,23 @@ void polyphonicArpeggiator::update(ofEventArgs &e) {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::onTrigger() {
-	if(shouldReset) {
-		currentStep = 0;
-		shouldReset = false;
-		onsetCounter = 0;
-		absoluteStepCounter = 0;
-	}
+    if(shouldReset) {
+        currentStep = 0;  // Reset to beginning of sequence
+        shouldReset = false;
+    }
 
-	absoluteStepCounter++;  // Counts every trigger regardless of euclidean/stepChance gates
-	processStep();
+    processStep();
 
-	int stepAdvance = 1 + skipSteps.get();
-	
-	if (dynamicMode) {
-		// In Dynamic Mode, we don't modulo by seqSize so the 'climb'
-		// can continue through the expanded scale.
-		// We modulo by a large number or the expanded scale size to prevent overflow.
-		currentStep = (currentStep + stepAdvance);
-		
-		// Optional: Wrap only when we exceed the total available notes in the expanded scale
-		if(currentStep * stepInterval.get() >= (int)expandedScale.size()){
-			currentStep = 0;
-		}
-	} else {
-		// STANDARD MODE: Keep the original modulo behavior
-		currentStep = (currentStep + stepAdvance) % seqSize;
-	}
+    // Advance currentStep by (1 + skipSteps)
+    // skipSteps=0 means advance by 1 (normal behavior)
+    // skipSteps>0 means jump additional steps
+    int stepAdvance = 1 + skipSteps.get();
+    currentStep = (currentStep + stepAdvance) % seqSize;
 }
 
 void polyphonicArpeggiator::onReset() {
     currentStep = 0;  // Immediately reset to beginning of sequence
     shouldReset = false;  // Clear any pending resetNext
-    onsetCounter = 0;
-    absoluteStepCounter = 0;
 }
 
 void polyphonicArpeggiator::onResetNext() {
@@ -375,109 +359,111 @@ void polyphonicArpeggiator::onResetNext() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::processStep() {
-	int sz = seqSize.get();
-	if(sz <= 0) return;
+    int sz = seqSize.get();
+    if(sz <= 0) return;
 
-	if(!euclideanPattern.empty()) {
-		int eucStep = currentStep % (int)euclideanPattern.size();
-		if(!euclideanPattern[eucStep]) return;
-	}
+    // Check euclidean gate
+    if(!euclideanPattern.empty()) {
+        int eucStep = currentStep % (int)euclideanPattern.size();
+        if(!euclideanPattern[eucStep]) {
+            return;
+        }
+    }
 
-	if(stepChance.get() < 1.0f && dist01(rng) > stepChance.get()) return;
+    // Check step chance
+    if(stepChance.get() < 1.0f) {
+        if(dist01(rng) > stepChance.get()) {
+            return;
+        }
+    }
 
-	// Step has passed all gate checks — increment the onset counter
-	onsetCounter++;
+    auto currentTime = std::chrono::steady_clock::now().time_since_epoch();
+    auto currentMs = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime).count();
 
-	// Choose which counter drives velocity/duration accent indexing:
-	// AccOnset=true  → onsetCounter  (only counts actual fired steps, independent of seqSize)
-	// AccOnset=false → absoluteStepCounter (counts every trigger, independent of seqSize)
-	int accentIdx = accentOnsetMode.get() ? onsetCounter : absoluteStepCounter;
+    int poly = polyphony.get();
+    int polyInt = polyInterval.get();
 
-	auto currentTime = std::chrono::steady_clock::now().time_since_epoch();
-	auto currentMs = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime).count();
+    // Get the pattern-determined base index for this step
+    vector<int> pattern;
+    int mode = patternMode.get();
 
-	int poly = std::min((int)polyphony.get(), MAX_POLYPHONY);
-	int polyInt = polyInterval.get();
+    if(mode == 0) { // Ascending
+        pattern.clear();
+        for(int i = 0; i < sz; i++) {
+            pattern.push_back(i);
+        }
+    } else if(mode == 1) { // Descending
+        pattern.clear();
+        for(int i = sz - 1; i >= 0; i--) {
+            pattern.push_back(i);
+        }
+    } else if(mode == 2) { // Random
+        // For random mode, generate on-the-fly
+        pattern.clear();
+        for(int i = 0; i < sz; i++) {
+            std::uniform_int_distribution<int> randDist(0, sz - 1);
+            pattern.push_back(randDist(rng));
+        }
+    } else { // User
+        pattern = idxPattern.get();
+        if(pattern.empty()) pattern = {0};
+    }
 
-	if (dynamicMode) {
-		// DYNAMIC MODE: all pitch slots are recomputed each trigger from expandedScale.
-		// currentStep advances without wrapping to seqSize, so pitches keep climbing
-		// through the scale. Only poly voices are gated; remaining slots show context.
-		for(int i = 0; i < sz && i < (int)currentGates.size(); i++) {
-			currentGates[i] = 0;
-			stepGates[i] = false;
-		}
+    // Get base index from pattern
+    int patternIndex = currentStep % (int)pattern.size();
+    int baseIndex = pattern[patternIndex] % sz;
 
-		// Recompute ALL seqSize pitch slots so the whole pitch vector moves each trigger
-		int degreeStart = degStart.get();
-		int stepInt = stepInterval.get();
-		int transp = transpose.get();
-		for(int i = 0; i < sz && i < (int)currentPitches.size(); i++) {
-			int linearDegree = degreeStart + (currentStep * stepInt) + (i * polyInt);
-			currentPitches[i] = ofClamp(getScaleDegree(linearDegree) + transp, 0.0f, 127.0f);
-		}
+    // Calculate duration and velocity ONCE for all voices at this step
+    int stepDuration = computeStepDuration(currentStep);
+    float stepVel = computeStepVelocity(currentStep);
 
-		int stepDur = computeStepDuration(accentIdx);
-		float stepVel = computeStepVelocity(accentIdx);
+    // Turn on gates for all polyphonic voices
+    for(int voice = 0; voice < poly; voice++) {
+        // Check note chance per voice
+        if(noteChance.get() < 1.0f) {
+            if(dist01(rng) > noteChance.get()) {
+                continue;
+            }
+        }
 
-		for (int voice = 0; voice < poly; voice++) {
-			if (noteChance.get() < 1.0f && dist01(rng) > noteChance.get()) continue;
+        int outputIndex = (baseIndex + voice * polyInt) % sz;
 
-			int outputSlot = voice;
-			currentVelocities[outputSlot] = stepVel;
-			currentDurations[outputSlot] = (float)stepDur;
-			noteDurationsMs[outputSlot] = stepDur;
+        // Pitch is already pre-calculated in the static pitch vector
+        // No need to modify it here
 
-			float strumOffset = computeStrumOffset(voice, poly);
-			if (strumOffset <= 0.5f) {
-				currentGates[outputSlot] = 1;
-				stepGates[outputSlot] = true;
-				noteStartTimes[outputSlot] = currentMs;
-			} else {
-				noteStartTimes[outputSlot] = currentMs + (uint64_t)strumOffset;
-			}
-		}
-	} else {
-		// STANDARD MODE: Sequence-Slot (Original behavior)
-		vector<int> pattern;
-		int mode = patternMode.get();
-		if(mode == 0) { for(int i=0; i<sz; i++) pattern.push_back(i); }
-		else if(mode == 1) { for(int i=sz-1; i>=0; i--) pattern.push_back(i); }
-		else if(mode == 2) { for(int i=0; i<sz; i++) pattern.push_back(std::uniform_int_distribution<int>(0, sz-1)(rng)); }
-		else { pattern = idxPattern.get(); if(pattern.empty()) pattern = {0}; }
+        // All voices in this step share the same velocity (accent is per-step, not per-voice)
+        currentVelocities[outputIndex] = stepVel;
 
-		int patternIndex = currentStep % (int)pattern.size();
-		int baseIndex = pattern[patternIndex] % sz;
-		int stepDuration = computeStepDuration(accentIdx);
-		float stepVel = computeStepVelocity(accentIdx);
+        // Calculate strum offset for this voice
+        float strumOffset = computeStrumOffset(voice, poly);
 
-		for(int voice = 0; voice < poly; voice++) {
-			if(noteChance.get() < 1.0f && dist01(rng) > noteChance.get()) continue;
+        // Use the shared step duration for all voices
+        currentDurations[outputIndex] = (float)stepDuration;
 
-			int outputIndex = (baseIndex + voice * polyInt) % sz;
-			currentVelocities[outputIndex] = stepVel;
-			currentDurations[outputIndex] = (float)stepDuration;
+        // Only retrigger this slot if it is not currently sustaining a note from a
+        // previous step (i.e. its gate-off time has not yet been reached).
+        // This prevents a new step's voices from cutting short a longer-duration
+        // note that happens to share the same output slot.
+        bool slotIsSustaining = (currentGates[outputIndex] == 1 &&
+                                 noteStartTimes[outputIndex] > 0 &&
+                                 currentMs < (int64_t)(noteStartTimes[outputIndex] + noteDurationsMs[outputIndex]));
 
-			bool slotIsSustaining = (currentGates[outputIndex] == 1 &&
-									 noteStartTimes[outputIndex] > 0 &&
-									 currentMs < (int64_t)(noteStartTimes[outputIndex] + noteDurationsMs[outputIndex]));
+        if(!slotIsSustaining) {
+            noteDurationsMs[outputIndex] = stepDuration;
+            if(strumOffset <= 0.5f) {
+                // Turn on immediately
+                currentGates[outputIndex] = 1;
+                stepGates[outputIndex] = true;
+                noteStartTimes[outputIndex] = currentMs;
+            } else {
+                // Schedule for later (handled in update())
+                noteStartTimes[outputIndex] = currentMs + (uint64_t)strumOffset;
+            }
+        }
+    }
 
-			if(!slotIsSustaining) {
-				noteDurationsMs[outputIndex] = stepDuration;
-				float strumOffset = computeStrumOffset(voice, poly);
-				if(strumOffset <= 0.5f) {
-					currentGates[outputIndex] = 1;
-					stepGates[outputIndex] = true;
-					noteStartTimes[outputIndex] = currentMs;
-				} else {
-					noteStartTimes[outputIndex] = currentMs + (uint64_t)strumOffset;
-				}
-			}
-		}
-	}
-
-	highlightedStep = currentStep;
-	updateOutputs();
+    highlightedStep = currentStep;
+    updateOutputs();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -565,9 +551,6 @@ void polyphonicArpeggiator::rebuildDeviations() {
 }
 
 void polyphonicArpeggiator::rebuildPitchSequence() {
-    // In dynamic mode pitches are recomputed on every trigger; skip the static rebuild
-    if(dynamicMode.get()) return;
-
     int sz = seqSize.get();
     if(sz <= 0) return;
 
@@ -864,9 +847,6 @@ void polyphonicArpeggiator::saveSnapshotToDisk(int slot) {
 
     json["stepChance"] = snap.stepChance;
     json["noteChance"] = snap.noteChance;
-	
-	json["dynamicMode"] = snap.dynamicMode;
-    json["accentOnsetMode"] = snap.accentOnsetMode;
 
     ofSavePrettyJson(getSnapshotFilePath(slot), json);
 }
@@ -929,9 +909,6 @@ void polyphonicArpeggiator::loadSnapshotFromDisk(int slot) {
 
     snap.stepChance = json.value("stepChance", 1.0f);
     snap.noteChance = json.value("noteChance", 1.0f);
-	
-	snap.dynamicMode = json.value("dynamicMode", false);
-    snap.accentOnsetMode = json.value("accentOnsetMode", true);
 
     snap.hasData = true;
     snapshotSlots[slot] = snap;
@@ -1009,8 +986,6 @@ void polyphonicArpeggiator::storeToSlot(int slot) {
 
     snap.stepChance = stepChance.get();
     snap.noteChance = noteChance.get();
-	snap.dynamicMode = dynamicMode.get();
-    snap.accentOnsetMode = accentOnsetMode.get();
 
     snap.hasData = true;
     snapshotSlots[slot] = snap;
@@ -1070,12 +1045,9 @@ void polyphonicArpeggiator::recallSlot(int slot) {
         eucDurLen.set(snap.eucDurLen);
         eucDurHits.set(snap.eucDurHits);
         eucDurOff.set(snap.eucDurOff);
+
         stepChance.set(snap.stepChance);
         noteChance.set(snap.noteChance);
-
-		dynamicMode.set(snap.dynamicMode);
-        accentOnsetMode.set(snap.accentOnsetMode);
-
     } else {
         // Morphing recall
         // Capture start state
@@ -1179,10 +1151,6 @@ void polyphonicArpeggiator::updateMorph() {
 
     // At the end, set discrete values
     if(progress >= 1.0f) {
-		progress = 1.0f;
-		isMorphing = false;
-		dynamicMode.set(targetSnapshot.dynamicMode);
-        accentOnsetMode.set(targetSnapshot.accentOnsetMode);
         scale.set(targetSnapshot.scale);
         patternMode.set(targetSnapshot.patternMode);
         idxPattern.set(targetSnapshot.idxPattern);
@@ -1234,44 +1202,82 @@ void polyphonicArpeggiator::presetRecallAfterSettingParameters(ofJson &json) {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::drawPatternDisplay() {
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	ImVec2 p = ImGui::GetCursorScreenPos();
-	float width = guiWidth.get();
-	float height = patternHeight.get();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float width = guiWidth.get();
+    float height = patternHeight.get();
 
-	ImGui::InvisibleButton("##pattern", ImVec2(width, height));
-	drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(30, 30, 30, 255));
+    ImGui::InvisibleButton("##pattern", ImVec2(width, height));
 
-	// Determine count and labels based on mode
-	int displayCount = dynamicMode ? MAX_POLYPHONY : (int)seqSize;
-	if(displayCount <= 0) return;
-	float stepWidth = width / displayCount;
+    // Background
+    drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(30, 30, 30, 255));
+    drawList->AddRect(p, ImVec2(p.x + width, p.y + height), IM_COL32(80, 80, 80, 255));
 
-	for(int i = 0; i < displayCount; i++) {
-		float x = p.x + i * stepWidth;
-		if(i > 0) drawList->AddLine(ImVec2(x, p.y), ImVec2(x, p.y + height), IM_COL32(50, 50, 55, 255));
+    int sz = seqSize;
+    if(sz <= 0) return;
+    float stepWidth = width / sz;
 
-		// In Standard mode, highlight the playhead step
-		if(!dynamicMode && i == highlightedStep) {
-			drawList->AddRectFilled(ImVec2(x, p.y), ImVec2(x + stepWidth, p.y + height), IM_COL32(80, 80, 40, 80));
-		}
+    // Find pitch range
+    float minPitch = 127.0f, maxPitch = 0.0f;
+    for(int i = 0; i < sz && i < (int)currentPitches.size(); i++) {
+        minPitch = std::min(minPitch, currentPitches[i]);
+        maxPitch = std::max(maxPitch, currentPitches[i]);
+    }
+    if(maxPitch <= minPitch) { minPitch = 48; maxPitch = 84; }
+    float pitchRange = std::max(12.0f, maxPitch - minPitch);
 
-		// Draw Pitch Bars
-		if(i < (int)currentPitches.size()) {
-			float normalizedPitch = ofMap(currentPitches[i], 0, 127, 0, 1, true);
-			float barHeight = normalizedPitch * height * 0.8f;
-			float barY = p.y + height - barHeight - height * 0.05f;
+    for(int i = 0; i < sz; i++) {
+        float x = p.x + i * stepWidth;
 
-			bool gateOn = (i < (int)currentGates.size() && currentGates[i] == 1);
-			ImU32 barColor = gateOn ? IM_COL32(100, 220, 120, 255) : IM_COL32(60, 100, 80, 140);
+        // Step divider
+        if(i > 0) {
+            drawList->AddLine(ImVec2(x, p.y), ImVec2(x, p.y + height), IM_COL32(50, 50, 55, 255));
+        }
 
-			drawList->AddRectFilled(ImVec2(x + 1, barY), ImVec2(x + stepWidth - 1, p.y + height - height * 0.05f), barColor);
-		}
-	}
+        // Highlight current step position
+        if(i == highlightedStep) {
+            drawList->AddRectFilled(ImVec2(x, p.y), ImVec2(x + stepWidth, p.y + height),
+                                   IM_COL32(80, 80, 40, 80));
+        }
 
-	// Labeling
-	const char* modeLabel = dynamicMode ? "MODE: DYNAMIC (Voices 1-16)" : "MODE: STANDARD (Sequence Steps)";
-	drawList->AddText(ImVec2(p.x + 4, p.y + 2), IM_COL32(200, 200, 200, 200), modeLabel);
+        // Pitch bar
+        if(i < (int)currentPitches.size()) {
+            float normalizedPitch = (currentPitches[i] - minPitch) / pitchRange;
+            normalizedPitch = ofClamp(normalizedPitch, 0.0f, 1.0f);
+            float barHeight = normalizedPitch * height * 0.8f;
+            float barY = p.y + height - barHeight - height * 0.05f;
+
+            bool gateOn = (i < (int)currentGates.size() && currentGates[i] == 1);
+
+            ImU32 barColor;
+            if(gateOn) {
+                barColor = IM_COL32(100, 220, 120, 255);
+            } else {
+                barColor = IM_COL32(60, 100, 80, 140);
+            }
+
+            drawList->AddRectFilled(ImVec2(x + 1, barY),
+                                   ImVec2(x + stepWidth - 1, p.y + height - height * 0.05f),
+                                   barColor);
+        }
+
+        // Step number every 4 steps
+        if(i % 4 == 0) {
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%d", i);
+            drawList->AddText(ImVec2(x + 2, p.y + 2), IM_COL32(140, 140, 140, 200), buf);
+        }
+    }
+
+    // Info
+    char info[80];
+    snprintf(info, sizeof(info), "Step %d/%d | Poly %d | Trsp %d",
+        currentStep,
+        (int)idxPattern.get().size(),
+        (int)polyphony, (int)transpose);
+    ImVec2 infoSize = ImGui::CalcTextSize(info);
+    drawList->AddText(ImVec2(p.x + width - infoSize.x - 4, p.y + height - infoSize.y - 2),
+                     IM_COL32(160, 160, 170, 200), info);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1354,29 +1360,40 @@ void polyphonicArpeggiator::drawEuclideanDisplay() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::drawVelocityDisplay() {
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	ImVec2 p = ImGui::GetCursorScreenPos();
-	float width = guiWidth.get();
-	float height = 60.0f;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float width = guiWidth.get();
+    float height = 60.0f;
 
-	ImGui::InvisibleButton("##velocity", ImVec2(width, height));
-	drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(30, 30, 30, 255));
+    ImGui::InvisibleButton("##velocity", ImVec2(width, height));
 
-	int displayCount = dynamicMode ? MAX_POLYPHONY : (int)seqSize;
-	float stepWidth = width / displayCount;
+    drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(30, 30, 30, 255));
+    drawList->AddRect(p, ImVec2(p.x + width, p.y + height), IM_COL32(80, 80, 80, 255));
 
-	for(int i = 0; i < displayCount; i++) {
-		bool gateOn = (i < (int)currentGates.size() && currentGates[i] == 1);
-		float vel = (i < (int)currentVelocities.size()) ? currentVelocities[i] : 0.0f;
-		float barH = vel * (height - 6);
-		float barY = p.y + height - barH - 3;
+    int sz = seqSize;
+    if(sz <= 0) return;
+    float stepWidth = width / sz;
 
-		ImU32 color = gateOn ? IM_COL32(200, 200, 80, 220) : IM_COL32(80, 80, 40, 80);
-		if(vel > 0.0f) {
-			drawList->AddRectFilled(ImVec2(p.x + i * stepWidth + 1, barY),
-									ImVec2(p.x + (i + 1) * stepWidth - 1, p.y + height - 3), color);
-		}
-	}
+    for(int i = 0; i < sz; i++) {
+        bool gateOn = (i < (int)currentGates.size() && currentGates[i] == 1);
+        float vel = (i < (int)currentVelocities.size()) ? currentVelocities[i] : 0.0f;
+        float barH = vel * (height - 6);
+        float barY = p.y + height - barH - 3;
+
+        if(gateOn) {
+            drawList->AddRectFilled(
+                ImVec2(p.x + i * stepWidth + 1, barY),
+                ImVec2(p.x + (i + 1) * stepWidth - 1, p.y + height - 3),
+                IM_COL32(200, 200, 80, 220));
+        } else if(vel > 0.0f) {
+            drawList->AddRectFilled(
+                ImVec2(p.x + i * stepWidth + 1, barY),
+                ImVec2(p.x + (i + 1) * stepWidth - 1, p.y + height - 3),
+                IM_COL32(80, 80, 40, 80));
+        }
+    }
+
+    drawList->AddText(ImVec2(p.x + 2, p.y + 2), IM_COL32(255, 255, 255, 180), "Velocity");
 }
 
 // ═══════════════════════════════════════════════════════════
