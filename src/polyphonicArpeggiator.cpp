@@ -307,6 +307,7 @@ void polyphonicArpeggiator::update(ofEventArgs &e) {
 
 	// Check all possible active slots (up to 16)
 	for(int i = 0; i < MAX_POLYPHONY; i++) {
+		if(i>=currentGates.size()) continue;
 		// Strum start
 		if(currentGates[i] == 0 && noteStartTimes[i] > 0 && currentMs >= (int64_t)noteStartTimes[i]) {
 			currentGates[i] = 1;
