@@ -7,37 +7,37 @@
 // ═══════════════════════════════════════════════════════════
 
 polyphonicArpeggiator::polyphonicArpeggiator() : ofxOceanodeNodeModel("Polyphonic Arpeggiator") {
-    rng = std::mt19937(std::chrono::steady_clock::now().time_since_epoch().count());
-    dist01 = std::uniform_real_distribution<float>(0.0f, 1.0f);
+	rng = std::mt19937(std::chrono::steady_clock::now().time_since_epoch().count());
+	dist01 = std::uniform_real_distribution<float>(0.0f, 1.0f);
 
-    currentStep = 0;
-    shouldReset = false;
-    onsetCounter = 0;
-    absoluteStepCounter = 0;
-    lastTriggerTime = 0;
-    highlightedStep = -1;
+	currentStep = 0;
+	shouldReset = false;
+	onsetCounter = 0;
+	absoluteStepCounter = 0;
+	lastTriggerTime = 0;
+	highlightedStep = -1;
 
-    euclideanPattern.reserve(MAX_SEQUENCE_SIZE);
-    euclideanAccents.reserve(MAX_SEQUENCE_SIZE);
-    euclideanDurations.reserve(MAX_SEQUENCE_SIZE);
-    expandedScale.reserve(128);
-    currentPitches.reserve(MAX_SEQUENCE_SIZE);
-    currentGates.reserve(MAX_SEQUENCE_SIZE);
-    currentVelocities.reserve(MAX_SEQUENCE_SIZE);
-    currentDurations.reserve(MAX_SEQUENCE_SIZE);
-    noteDurationsMs.reserve(MAX_SEQUENCE_SIZE);
-    noteStartTimes.reserve(MAX_SEQUENCE_SIZE);
-    stepVelocities.reserve(MAX_SEQUENCE_SIZE);
-    stepGates.reserve(MAX_SEQUENCE_SIZE);
-    deviationValues.reserve(MAX_SEQUENCE_SIZE);
+	euclideanPattern.reserve(MAX_SEQUENCE_SIZE);
+	euclideanAccents.reserve(MAX_SEQUENCE_SIZE);
+	euclideanDurations.reserve(MAX_SEQUENCE_SIZE);
+	expandedScale.reserve(128);
+	currentPitches.reserve(MAX_SEQUENCE_SIZE);
+	currentGates.reserve(MAX_SEQUENCE_SIZE);
+	currentVelocities.reserve(MAX_SEQUENCE_SIZE);
+	currentDurations.reserve(MAX_SEQUENCE_SIZE);
+	noteDurationsMs.reserve(MAX_SEQUENCE_SIZE);
+	noteStartTimes.reserve(MAX_SEQUENCE_SIZE);
+	stepVelocities.reserve(MAX_SEQUENCE_SIZE);
+	stepGates.reserve(MAX_SEQUENCE_SIZE);
+	deviationValues.reserve(MAX_SEQUENCE_SIZE);
 
-    snapshotSlots.resize(16);
-    activeSnapshotSlot = -1;
-    isMorphing = false;
+	snapshotSlots.resize(16);
+	activeSnapshotSlot = -1;
+	isMorphing = false;
 }
 
 polyphonicArpeggiator::~polyphonicArpeggiator() {
-    listeners.unsubscribeAll();
+	listeners.unsubscribeAll();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -45,236 +45,236 @@ polyphonicArpeggiator::~polyphonicArpeggiator() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::setup() {
-    description = "Polyphonic arpeggiator with euclidean gating, strum, "
-                  "positive-only deviations (octave, index, chromatic), "
-                  "euclidean accent and duration patterns. "
-                  "Pitch sequence is precomputed from scale and pattern. "
-                  "Each trigger advances one step, toggling gates at the "
-                  "current position with per-voice strum and duration.";
+	description = "Polyphonic arpeggiator with euclidean gating, strum, "
+				  "positive-only deviations (octave, index, chromatic), "
+				  "euclidean accent and duration patterns. "
+				  "Pitch sequence is precomputed from scale and pattern. "
+				  "Each trigger advances one step, toggling gates at the "
+				  "current position with per-voice strum and duration.";
 
-    // ── SNAPSHOTS ──
-    addSeparator("Snapshots", ofColor(200));
-    uiSnapshots.set("SnapshotsUI", [this](){ drawSnapshotSlots(); });
-    addCustomRegion(uiSnapshots, [this](){ drawSnapshotSlots(); });
-    addParameter(morphTime.set("Morph Time", 0.0f, 0.0f, 10.0f));
+	// ── SNAPSHOTS ──
+	addSeparator("Snapshots", ofColor(200));
+	uiSnapshots.set("SnapshotsUI", [this](){ drawSnapshotSlots(); });
+	addCustomRegion(uiSnapshots, [this](){ drawSnapshotSlots(); });
+	addParameter(morphTime.set("Morph Time", 0.0f, 0.0f, 10.0f));
 	
 	// --- MODES ----
 	addParameter(dynamicMode.set("Dynamic", false));
 	addParameter(accentOnsetMode.set("AccOnset", true));  // true = onset-based (counter only when step fires), false = step-based (counter every trigger)
 
-    // ── TRIGGER & CONTROL ──
-    addSeparator("Trigger", ofColor(200));
-    addParameter(trigger.set("Trigger"));
-    addParameter(reset.set("Reset"));
-    addParameter(resetNext.set("ResetNext"));
-    addParameter(eucLen.set("EucLen", 8, 1, 64));
-    addParameter(eucHits.set("EucHits", 8, 0, 64));
-    addParameter(eucOff.set("EucOff", 0, 0, 63));
-    addParameter(stepChance.set("Step%", 1.0f, 0.0f, 1.0f));
-    addParameter(noteChance.set("Note%", 1.0f, 0.0f, 1.0f));
+	// ── TRIGGER & CONTROL ──
+	addSeparator("Trigger", ofColor(200));
+	addParameter(trigger.set("Trigger"));
+	addParameter(reset.set("Reset"));
+	addParameter(resetNext.set("ResetNext"));
+	addParameter(eucLen.set("EucLen", 8, 1, 64));
+	addParameter(eucHits.set("EucHits", 8, 0, 64));
+	addParameter(eucOff.set("EucOff", 0, 0, 63));
+	addParameter(stepChance.set("Step%", 1.0f, 0.0f, 1.0f));
+	addParameter(noteChance.set("Note%", 1.0f, 0.0f, 1.0f));
 
-    // ── PITCH ──
-    addSeparator("Pitch", ofColor(200));
-    addParameter(scale.set("Scale", {0, 2, 4, 5, 7, 9, 11}, {-24}, {127}));
-    addParameterDropdown(patternMode, "Pattern", 0, {"Ascending", "Descending", "Random", "User"});
-    addParameter(idxPattern.set("IdxPatt", {0, 1, 2, 3}, {0}, {127}));
-    addParameter(seqSize.set("SeqSize", 16, 1, MAX_SEQUENCE_SIZE));
-    addParameter(degStart.set("IdxStart", 0, 0, 127));
-    addParameter(stepInterval.set("StepInterval", 1, 1, 12));
-    addParameter(transpose.set("Transpose", 0, 0, 96));
+	// ── PITCH ──
+	addSeparator("Pitch", ofColor(200));
+	addParameter(scale.set("Scale", {0, 2, 4, 5, 7, 9, 11}, {-24}, {127}));
+	addParameterDropdown(patternMode, "Pattern", 0, {"Ascending", "Descending", "Random", "User"});
+	addParameter(idxPattern.set("IdxPatt", {0, 1, 2, 3}, {0}, {127}));
+	addParameter(seqSize.set("SeqSize", 16, 1, MAX_SEQUENCE_SIZE));
+	addParameter(degStart.set("IdxStart", 0, 0, 127));
+	addParameter(stepInterval.set("StepInterval", 1, 1, 12));
+	addParameter(transpose.set("Transpose", 0, 0, 96));
 
-    // ── POLYPHONY ──
-    addSeparator("Polyphony", ofColor(200));
-    addParameter(polyphony.set("Polyphony", 1, 1, MAX_POLYPHONY));
-    addParameter(polyInterval.set("PolyInterval", 2, 1, 12));
-    addParameter(skipSteps.set("SkipSteps", 0, 0, 32));
-    addParameter(strum.set("Strum", 0.0f, 0.0f, 500.0f));
-    addParameter(strumRndm.set("StrumRndm", 0.0f, 0.0f, 200.0f));
-    addParameterDropdown(strumDir, "StrumDir", 0, {"Ascending", "Descending", "Random"});
+	// ── POLYPHONY ──
+	addSeparator("Polyphony", ofColor(200));
+	addParameter(polyphony.set("Polyphony", 1, 1, MAX_POLYPHONY));
+	addParameter(polyInterval.set("PolyInterval", 2, 1, 12));
+	addParameter(skipSteps.set("SkipSteps", 0, 0, 32));
+	addParameter(strum.set("Strum", 0.0f, 0.0f, 500.0f));
+	addParameter(strumRndm.set("StrumRndm", 0.0f, 0.0f, 200.0f));
+	addParameterDropdown(strumDir, "StrumDir", 0, {"Ascending", "Descending", "Random"});
 
-    // ── DEVIATION (all positive-only) ──
-    addSeparator("Deviation", ofColor(200));
-    addParameter(octaveDev.set("OctDev", 0.0f, 0.0f, 1.0f));
-    addParameter(octaveDevRng.set("OctDevRng", 1, 1, 4));
-    addParameter(idxDev.set("IdxDev", 0.0f, 0.0f, 1.0f));
-    addParameter(idxDevRng.set("IdxDevRng", 2, 1, 12));
-    addParameter(pitchDev.set("PitchDev", 0.0f, 0.0f, 1.0f));
-    addParameter(pitchDevRng.set("PitchDevRng", 2, 1, 12));
+	// ── DEVIATION (all positive-only) ──
+	addSeparator("Deviation", ofColor(200));
+	addParameter(octaveDev.set("OctDev", 0.0f, 0.0f, 1.0f));
+	addParameter(octaveDevRng.set("OctDevRng", 1, 1, 4));
+	addParameter(idxDev.set("IdxDev", 0.0f, 0.0f, 1.0f));
+	addParameter(idxDevRng.set("IdxDevRng", 2, 1, 12));
+	addParameter(pitchDev.set("PitchDev", 0.0f, 0.0f, 1.0f));
+	addParameter(pitchDevRng.set("PitchDevRng", 2, 1, 12));
 
-    // ── VELOCITY ──
-    addSeparator("Velocity", ofColor(200));
-    addParameter(velBase.set("VelBase", 0.8f, 0.0f, 1.0f));
-    addParameter(velRndm.set("VelRndm", 0.1f, 0.0f, 1.0f));
-    addParameter(eucAccLen.set("AccLen", 4, 1, 64));
-    addParameter(eucAccHits.set("AccHits", 1, 0, 64));
-    addParameter(eucAccOff.set("AccOff", 0, 0, 63));
-    addParameter(eucAccStrength.set("AccStr", 0.2f, 0.0f, 1.0f));
+	// ── VELOCITY ──
+	addSeparator("Velocity", ofColor(200));
+	addParameter(velBase.set("VelBase", 0.8f, 0.0f, 1.0f));
+	addParameter(velRndm.set("VelRndm", 0.1f, 0.0f, 1.0f));
+	addParameter(eucAccLen.set("AccLen", 4, 1, 64));
+	addParameter(eucAccHits.set("AccHits", 1, 0, 64));
+	addParameter(eucAccOff.set("AccOff", 0, 0, 63));
+	addParameter(eucAccStrength.set("AccStr", 0.2f, 0.0f, 1.0f));
 
-    // ── DURATION ──
-    addSeparator("Duration", ofColor(200));
-    addParameter(durBase.set("DurBase", 100, 1, 5000));
-    addParameter(durRndm.set("DurRndm", 20, 0, 1000));
-    addParameter(eucDurLen.set("DurEucLen", 4, 1, 64));
-    addParameter(eucDurHits.set("DurEucHits", 4, 0, 64));
-    addParameter(eucDurOff.set("DurEucOff", 0, 0, 63));
-    addParameter(durEucStrength.set("DurEucStr", 50, -5000, 5000));  // Milliseconds to add on euclidean accent (can be negative)
+	// ── DURATION ──
+	addSeparator("Duration", ofColor(200));
+	addParameter(durBase.set("DurBase", 100, 1, 5000));
+	addParameter(durRndm.set("DurRndm", 20, 0, 1000));
+	addParameter(eucDurLen.set("DurEucLen", 4, 1, 64));
+	addParameter(eucDurHits.set("DurEucHits", 4, 0, 64));
+	addParameter(eucDurOff.set("DurEucOff", 0, 0, 63));
+	addParameter(durEucStrength.set("DurEucStr", 50, -5000, 5000));  // Milliseconds to add on euclidean accent (can be negative)
 
-    // ── OUTPUT ──
-    addSeparator("Output", ofColor(200));
-    addOutputParameter(pitchOut.set("PitchOut",
-        vector<float>(16, 60.0f), vector<float>(1, 0.0f), vector<float>(1, 127.0f)));
-    addOutputParameter(gateOut.set("GateOut",
-        vector<int>(16, 0), vector<int>(1, 0), vector<int>(1, 1)));
-    addOutputParameter(velocityOut.set("VelOut",
-        vector<float>(16, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 1.0f)));
-    addOutputParameter(durOut.set("DurOut",
-        vector<float>(16, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 60000.0f)));
-    addOutputParameter(gateVelOut.set("GateVelOut",
-        vector<float>(16, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 1.0f)));
-    addOutputParameter(eucGateOut.set("EucGateOut",
-        vector<int>(16, 0), vector<int>(1, 0), vector<int>(1, 1)));
-    addOutputParameter(eucAccOut.set("EucAccOut",
-        vector<int>(16, 0), vector<int>(1, 0), vector<int>(1, 1)));
-    addOutputParameter(eucDurOut.set("EucDurOut",
-        vector<int>(16, 0), vector<int>(1, 0), vector<int>(1, 1)));
+	// ── OUTPUT ──
+	addSeparator("Output", ofColor(200));
+	addOutputParameter(pitchOut.set("PitchOut",
+		vector<float>(16, 60.0f), vector<float>(1, 0.0f), vector<float>(1, 127.0f)));
+	addOutputParameter(gateOut.set("GateOut",
+		vector<int>(16, 0), vector<int>(1, 0), vector<int>(1, 1)));
+	addOutputParameter(velocityOut.set("VelOut",
+		vector<float>(16, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 1.0f)));
+	addOutputParameter(durOut.set("DurOut",
+		vector<float>(16, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 60000.0f)));
+	addOutputParameter(gateVelOut.set("GateVelOut",
+		vector<float>(16, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 1.0f)));
+	addOutputParameter(eucGateOut.set("EucGateOut",
+		vector<int>(16, 0), vector<int>(1, 0), vector<int>(1, 1)));
+	addOutputParameter(eucAccOut.set("EucAccOut",
+		vector<int>(16, 0), vector<int>(1, 0), vector<int>(1, 1)));
+	addOutputParameter(eucDurOut.set("EucDurOut",
+		vector<int>(16, 0), vector<int>(1, 0), vector<int>(1, 1)));
 
-    // ── DISPLAY ──
-    addSeparator("Display", ofColor(200));
-    addInspectorParameter(guiWidth.set("GUI Width", 300.0f, 200.0f, 600.0f));
-    addInspectorParameter(patternHeight.set("Pattern Height", 100.0f, 50.0f, 200.0f));
-    addInspectorParameter(euclideanHeight.set("Euclidean Height", 80.0f, 40.0f, 150.0f));
+	// ── DISPLAY ──
+	addSeparator("Display", ofColor(200));
+	addInspectorParameter(guiWidth.set("GUI Width", 300.0f, 200.0f, 600.0f));
+	addInspectorParameter(patternHeight.set("Pattern Height", 100.0f, 50.0f, 200.0f));
+	addInspectorParameter(euclideanHeight.set("Euclidean Height", 80.0f, 40.0f, 150.0f));
 
-    uiPattern.set("Pattern Display", [this](){ drawPatternDisplay(); });
-    addCustomRegion(uiPattern, [this](){ drawPatternDisplay(); });
+	uiPattern.set("Pattern Display", [this](){ drawPatternDisplay(); });
+	addCustomRegion(uiPattern, [this](){ drawPatternDisplay(); });
 
-    uiEuclidean.set("Euclidean Display", [this](){ drawEuclideanDisplay(); });
-    addCustomRegion(uiEuclidean, [this](){ drawEuclideanDisplay(); });
+	uiEuclidean.set("Euclidean Display", [this](){ drawEuclideanDisplay(); });
+	addCustomRegion(uiEuclidean, [this](){ drawEuclideanDisplay(); });
 
-    uiVelocity.set("Velocity Display", [this](){ drawVelocityDisplay(); });
-    addCustomRegion(uiVelocity, [this](){ drawVelocityDisplay(); });
+	uiVelocity.set("Velocity Display", [this](){ drawVelocityDisplay(); });
+	addCustomRegion(uiVelocity, [this](){ drawVelocityDisplay(); });
 
-    // ── EVENT LISTENERS ──
-    listeners.push(trigger.newListener([this](void){ onTrigger(); }));
-    listeners.push(reset.newListener([this](void){ onReset(); }));
-    listeners.push(resetNext.newListener([this](void){ onResetNext(); }));
+	// ── EVENT LISTENERS ──
+	listeners.push(trigger.newListener([this](void){ onTrigger(); }));
+	listeners.push(reset.newListener([this](void){ onReset(); }));
+	listeners.push(resetNext.newListener([this](void){ onResetNext(); }));
 
-    // Euclidean patterns
-    listeners.push(eucLen.newListener([this](int&){
-        generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
-        rebuildEuclideanOutputs();
-    }));
-    listeners.push(eucHits.newListener([this](int&){
-        generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
-        rebuildEuclideanOutputs();
-    }));
-    listeners.push(eucOff.newListener([this](int&){
-        generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
-        rebuildEuclideanOutputs();
-    }));
+	// Euclidean patterns
+	listeners.push(eucLen.newListener([this](int&){
+		generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
+		rebuildEuclideanOutputs();
+	}));
+	listeners.push(eucHits.newListener([this](int&){
+		generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
+		rebuildEuclideanOutputs();
+	}));
+	listeners.push(eucOff.newListener([this](int&){
+		generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
+		rebuildEuclideanOutputs();
+	}));
 
-    listeners.push(eucAccLen.newListener([this](int&){
-        generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
-        rebuildEuclideanOutputs();
-    }));
-    listeners.push(eucAccHits.newListener([this](int&){
-        generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
-        rebuildEuclideanOutputs();
-    }));
-    listeners.push(eucAccOff.newListener([this](int&){
-        generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
-        rebuildEuclideanOutputs();
-    }));
+	listeners.push(eucAccLen.newListener([this](int&){
+		generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
+		rebuildEuclideanOutputs();
+	}));
+	listeners.push(eucAccHits.newListener([this](int&){
+		generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
+		rebuildEuclideanOutputs();
+	}));
+	listeners.push(eucAccOff.newListener([this](int&){
+		generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
+		rebuildEuclideanOutputs();
+	}));
 
-    listeners.push(eucDurLen.newListener([this](int&){
-        generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
-        rebuildEuclideanOutputs();
-    }));
-    listeners.push(eucDurHits.newListener([this](int&){
-        generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
-        rebuildEuclideanOutputs();
-    }));
-    listeners.push(eucDurOff.newListener([this](int&){
-        generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
-        rebuildEuclideanOutputs();
-    }));
+	listeners.push(eucDurLen.newListener([this](int&){
+		generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
+		rebuildEuclideanOutputs();
+	}));
+	listeners.push(eucDurHits.newListener([this](int&){
+		generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
+		rebuildEuclideanOutputs();
+	}));
+	listeners.push(eucDurOff.newListener([this](int&){
+		generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
+		rebuildEuclideanOutputs();
+	}));
 
-    // Pitch rebuild triggers
-    listeners.push(scale.newListener([this](vector<float>&){
-        rebuildExpandedScale();
-        rebuildPitchSequence();
-    }));
-    listeners.push(idxPattern.newListener([this](vector<int>&){
-        rebuildPitchSequence();
-    }));
-    listeners.push(degStart.newListener([this](int&){
-        rebuildPitchSequence();
-    }));
-    listeners.push(stepInterval.newListener([this](int&){
-        rebuildPitchSequence();
-    }));
-    listeners.push(transpose.newListener([this](int&){
-        rebuildPitchSequence();
-    }));
-    
-    // Deviation parameter listeners - regenerate deviations and rebuild pitch sequence
-    listeners.push(octaveDev.newListener([this](float&){
-        rebuildDeviations();
-        rebuildPitchSequence();
-    }));
-    listeners.push(octaveDevRng.newListener([this](int&){
-        rebuildDeviations();
-        rebuildPitchSequence();
-    }));
-    listeners.push(idxDev.newListener([this](float&){
-        rebuildDeviations();
-        rebuildPitchSequence();
-    }));
-    listeners.push(idxDevRng.newListener([this](int&){
-        rebuildDeviations();
-        rebuildPitchSequence();
-    }));
-    listeners.push(pitchDev.newListener([this](float&){
-        rebuildDeviations();
-        rebuildPitchSequence();
-    }));
-    listeners.push(pitchDevRng.newListener([this](int&){
-        rebuildDeviations();
-        rebuildPitchSequence();
-    }));
-    listeners.push(patternMode.newListener([this](int&){
-        // Pattern mode only affects gate traversal, not pitch vector
-        // No need to rebuild pitch sequence
-    }));
-    listeners.push(dynamicMode.newListener([this](bool& val){
-        if(!val) {
-            // Returning to static mode: restore the precomputed pitch sequence
-            rebuildPitchSequence();
-        }
-    }));
+	// Pitch rebuild triggers
+	listeners.push(scale.newListener([this](vector<float>&){
+		rebuildExpandedScale();
+		rebuildPitchSequence();
+	}));
+	listeners.push(idxPattern.newListener([this](vector<int>&){
+		rebuildPitchSequence();
+	}));
+	listeners.push(degStart.newListener([this](int&){
+		rebuildPitchSequence();
+	}));
+	listeners.push(stepInterval.newListener([this](int&){
+		rebuildPitchSequence();
+	}));
+	listeners.push(transpose.newListener([this](int&){
+		rebuildPitchSequence();
+	}));
+	
+	// Deviation parameter listeners - regenerate deviations and rebuild pitch sequence
+	listeners.push(octaveDev.newListener([this](float&){
+		rebuildDeviations();
+		rebuildPitchSequence();
+	}));
+	listeners.push(octaveDevRng.newListener([this](int&){
+		rebuildDeviations();
+		rebuildPitchSequence();
+	}));
+	listeners.push(idxDev.newListener([this](float&){
+		rebuildDeviations();
+		rebuildPitchSequence();
+	}));
+	listeners.push(idxDevRng.newListener([this](int&){
+		rebuildDeviations();
+		rebuildPitchSequence();
+	}));
+	listeners.push(pitchDev.newListener([this](float&){
+		rebuildDeviations();
+		rebuildPitchSequence();
+	}));
+	listeners.push(pitchDevRng.newListener([this](int&){
+		rebuildDeviations();
+		rebuildPitchSequence();
+	}));
+	listeners.push(patternMode.newListener([this](int&){
+		// Pattern mode only affects gate traversal, not pitch vector
+		// No need to rebuild pitch sequence
+	}));
+	listeners.push(dynamicMode.newListener([this](bool& val){
+		if(!val) {
+			// Returning to static mode: restore the precomputed pitch sequence
+			rebuildPitchSequence();
+		}
+	}));
 
-    // seqSize change
-    listeners.push(seqSize.newListener([this](int& size){
-        currentPitches.resize(size, 60.0f);
-        currentGates.resize(size, 0);
-        currentVelocities.resize(size, 0.0f);
-        currentDurations.resize(size, 0.0f);
-        noteDurationsMs.resize(size, 100);
-        noteStartTimes.resize(size, 0);
-        stepVelocities.resize(size, 0.0f);
-        stepGates.resize(size, false);
-        deviationValues.resize(size, 0.0f);
-        rebuildDeviations();
-        rebuildPitchSequence();
-        rebuildEuclideanOutputs();
-        updateOutputs();
-    }));
+	// seqSize change
+	listeners.push(seqSize.newListener([this](int& size){
+		currentPitches.resize(size, 60.0f);
+		currentGates.resize(size, 0);
+		currentVelocities.resize(size, 0.0f);
+		currentDurations.resize(size, 0.0f);
+		noteDurationsMs.resize(size, 100);
+		noteStartTimes.resize(size, 0);
+		stepVelocities.resize(size, 0.0f);
+		stepGates.resize(size, false);
+		deviationValues.resize(size, 0.0f);
+		rebuildDeviations();
+		rebuildPitchSequence();
+		rebuildEuclideanOutputs();
+		updateOutputs();
+	}));
 
-    // Initialize euclidean patterns
-    generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
-    generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
-    generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
+	// Initialize euclidean patterns
+	generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
+	generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
+	generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
 
-    // Initialize state vectors
+	// Initialize state vectors
 	int sz = MAX_POLYPHONY;
 	currentPitches.assign(sz, 60.0f);
 	currentGates.assign(sz, 0);
@@ -286,14 +286,14 @@ void polyphonicArpeggiator::setup() {
 	stepGates.assign(sz, false);
 	deviationValues.assign(MAX_SEQUENCE_SIZE, 0.0f);
 	
-    rebuildExpandedScale();
-    rebuildDeviations();
-    rebuildPitchSequence();
-    rebuildVelocitySequence();
-    rebuildEuclideanOutputs();
+	rebuildExpandedScale();
+	rebuildDeviations();
+	rebuildPitchSequence();
+	rebuildVelocitySequence();
+	rebuildEuclideanOutputs();
 
-    // Load all snapshots from disk
-    loadAllSnapshotsFromDisk();
+	// Load all snapshots from disk
+	loadAllSnapshotsFromDisk();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -308,9 +308,14 @@ void polyphonicArpeggiator::update(ofEventArgs &e) {
 	// Check all possible active slots (up to 16)
 	for(int i = 0; i < MAX_POLYPHONY; i++) {
 		if(i>=currentGates.size()) continue;
-		// Strum start
+		// Strum start: gate was scheduled to fire at noteStartTimes[i].
+		// Reset noteStartTimes[i] to actual fire time so the duration-expiry
+		// check below measures from when the note truly started, not when it
+		// was scheduled. Without this, a delayed voice can turn on and
+		// immediately expire in the same update() frame.
 		if(currentGates[i] == 0 && noteStartTimes[i] > 0 && currentMs >= (int64_t)noteStartTimes[i]) {
 			currentGates[i] = 1;
+			noteStartTimes[i] = currentMs;
 			needsUpdate = true;
 		}
 		// Duration expire
@@ -361,14 +366,14 @@ void polyphonicArpeggiator::onTrigger() {
 }
 
 void polyphonicArpeggiator::onReset() {
-    currentStep = 0;  // Immediately reset to beginning of sequence
-    shouldReset = false;  // Clear any pending resetNext
-    onsetCounter = 0;
-    absoluteStepCounter = 0;
+	currentStep = 0;  // Immediately reset to beginning of sequence
+	shouldReset = false;  // Clear any pending resetNext
+	onsetCounter = 0;
+	absoluteStepCounter = 0;
 }
 
 void polyphonicArpeggiator::onResetNext() {
-    shouldReset = true;
+	shouldReset = true;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -492,168 +497,168 @@ void polyphonicArpeggiator::processStep() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::rebuildExpandedScale() {
-    expandedScale.clear();
+	expandedScale.clear();
 
-    if(scale->empty()) {
-        expandedScale.push_back(60.0f);
-        return;
-    }
+	if(scale->empty()) {
+		expandedScale.push_back(60.0f);
+		return;
+	}
 
-    for(int octave = -2; octave <= 8; octave++) {
-        for(float note : scale.get()) {
-            float expandedNote = note + (octave * 12);
-            if(expandedNote >= 0 && expandedNote <= 127) {
-                expandedScale.push_back(expandedNote);
-            }
-        }
-    }
+	for(int octave = -2; octave <= 8; octave++) {
+		for(float note : scale.get()) {
+			float expandedNote = note + (octave * 12);
+			if(expandedNote >= 0 && expandedNote <= 127) {
+				expandedScale.push_back(expandedNote);
+			}
+		}
+	}
 
-    std::sort(expandedScale.begin(), expandedScale.end());
+	std::sort(expandedScale.begin(), expandedScale.end());
 }
 
 float polyphonicArpeggiator::getScaleDegree(int index) {
-    if(expandedScale.empty()) {
-        rebuildExpandedScale();
-        if(expandedScale.empty()) return 60.0f;
-    }
+	if(expandedScale.empty()) {
+		rebuildExpandedScale();
+		if(expandedScale.empty()) return 60.0f;
+	}
 
-    int sz = (int)expandedScale.size();
-    int wrappedIndex = index % sz;
-    if(wrappedIndex < 0) wrappedIndex += sz;
+	int sz = (int)expandedScale.size();
+	int wrappedIndex = index % sz;
+	if(wrappedIndex < 0) wrappedIndex += sz;
 
-    return expandedScale[wrappedIndex];
+	return expandedScale[wrappedIndex];
 }
 
 // Generate random deviation values for the entire sequence
 // This is only called when deviation parameters change
 void polyphonicArpeggiator::rebuildDeviations() {
-    int sz = seqSize.get();
-    if(sz <= 0) return;
+	int sz = seqSize.get();
+	if(sz <= 0) return;
 
-    deviationValues.resize(sz, 0.0f);
+	deviationValues.resize(sz, 0.0f);
 
-    for(int i = 0; i < sz; i++) {
-        // Start with no deviation
-        float deviation = 0.0f;
+	for(int i = 0; i < sz; i++) {
+		// Start with no deviation
+		float deviation = 0.0f;
 
-        // Calculate the base noteIndex for this position
-        int noteIndex = degStart.get() + (i * stepInterval.get());
+		// Calculate the base noteIndex for this position
+		int noteIndex = degStart.get() + (i * stepInterval.get());
 
-        // Octave deviation: probability of transposing up by 1 to octaveDevRng octaves
-        if(octaveDev.get() > 0 && dist01(rng) < octaveDev.get()) {
-            if(octaveDevRng.get() > 0) {
-                std::uniform_int_distribution<int> octDist(1, octaveDevRng.get());
-                deviation += octDist(rng) * 12;
-            }
-        }
+		// Octave deviation: probability of transposing up by 1 to octaveDevRng octaves
+		if(octaveDev.get() > 0 && dist01(rng) < octaveDev.get()) {
+			if(octaveDevRng.get() > 0) {
+				std::uniform_int_distribution<int> octDist(1, octaveDevRng.get());
+				deviation += octDist(rng) * 12;
+			}
+		}
 
-        // Index deviation: probability of shifting up by 1 to idxDevRng scale degrees
-        if(idxDev.get() > 0 && dist01(rng) < idxDev.get()) {
-            if(idxDevRng.get() > 0) {
-                std::uniform_int_distribution<int> idxDist(1, idxDevRng.get());
-                int shift = idxDist(rng);
-                // Calculate the pitch difference from shifting scale degrees
-                float basePitch = getScaleDegree(noteIndex);
-                float shiftedPitch = getScaleDegree(noteIndex + shift);
-                deviation += (shiftedPitch - basePitch);
-            }
-        }
+		// Index deviation: probability of shifting up by 1 to idxDevRng scale degrees
+		if(idxDev.get() > 0 && dist01(rng) < idxDev.get()) {
+			if(idxDevRng.get() > 0) {
+				std::uniform_int_distribution<int> idxDist(1, idxDevRng.get());
+				int shift = idxDist(rng);
+				// Calculate the pitch difference from shifting scale degrees
+				float basePitch = getScaleDegree(noteIndex);
+				float shiftedPitch = getScaleDegree(noteIndex + shift);
+				deviation += (shiftedPitch - basePitch);
+			}
+		}
 
-        // Chromatic pitch deviation: probability of adding 1 to pitchDevRng semitones
-        if(pitchDev.get() > 0 && dist01(rng) < pitchDev.get()) {
-            if(pitchDevRng.get() > 0) {
-                std::uniform_int_distribution<int> chromDist(1, pitchDevRng.get());
-                deviation += chromDist(rng);
-            }
-        }
+		// Chromatic pitch deviation: probability of adding 1 to pitchDevRng semitones
+		if(pitchDev.get() > 0 && dist01(rng) < pitchDev.get()) {
+			if(pitchDevRng.get() > 0) {
+				std::uniform_int_distribution<int> chromDist(1, pitchDevRng.get());
+				deviation += chromDist(rng);
+			}
+		}
 
-        deviationValues[i] = deviation;
-    }
+		deviationValues[i] = deviation;
+	}
 }
 
 void polyphonicArpeggiator::rebuildPitchSequence() {
-    // In dynamic mode pitches are recomputed on every trigger; skip the static rebuild
-    if(dynamicMode.get()) return;
+	// In dynamic mode pitches are recomputed on every trigger; skip the static rebuild
+	if(dynamicMode.get()) return;
 
-    int sz = seqSize.get();
-    if(sz <= 0) return;
+	int sz = seqSize.get();
+	if(sz <= 0) return;
 
-    currentPitches.resize(sz, 60.0f);
+	currentPitches.resize(sz, 60.0f);
 
-    int stepInt = stepInterval.get();
-    int degreeStart = degStart.get();
-    int transp = transpose.get();
+	int stepInt = stepInterval.get();
+	int degreeStart = degStart.get();
+	int transp = transpose.get();
 
-    // Build a simple linear pitch vector
-    // Each index i gets the pitch at scale degree (degStart + i * stepInterval)
-    for(int i = 0; i < sz; i++) {
-        int noteIndex = degreeStart + (i * stepInt);
+	// Build a simple linear pitch vector
+	// Each index i gets the pitch at scale degree (degStart + i * stepInterval)
+	for(int i = 0; i < sz; i++) {
+		int noteIndex = degreeStart + (i * stepInt);
 
-        // Get pitch from expanded scale
-        float pitch = getScaleDegree(noteIndex);
+		// Get pitch from expanded scale
+		float pitch = getScaleDegree(noteIndex);
 
-        // Apply pre-calculated deviation (only regenerated when deviation params change)
-        if(i < (int)deviationValues.size()) {
-            pitch += deviationValues[i];
-        }
+		// Apply pre-calculated deviation (only regenerated when deviation params change)
+		if(i < (int)deviationValues.size()) {
+			pitch += deviationValues[i];
+		}
 
-        pitch += transp;
-        pitch = ofClamp(pitch, 0.0f, 127.0f);
+		pitch += transp;
+		pitch = ofClamp(pitch, 0.0f, 127.0f);
 
-        currentPitches[i] = pitch;
-    }
+		currentPitches[i] = pitch;
+	}
 
-    pitchOut.set(currentPitches);
+	pitchOut.set(currentPitches);
 }
 
 // Initialize velocity sequence (actual calculation happens in real-time)
 void polyphonicArpeggiator::rebuildVelocitySequence() {
-    int sz = seqSize.get();
-    if(sz <= 0) return;
+	int sz = seqSize.get();
+	if(sz <= 0) return;
 
-    // Just initialize to zero - actual velocities calculated per-trigger
-    currentVelocities.resize(sz, 0.0f);
-    velocityOut.set(currentVelocities);
+	// Just initialize to zero - actual velocities calculated per-trigger
+	currentVelocities.resize(sz, 0.0f);
+	velocityOut.set(currentVelocities);
 }
 
 // Rebuild euclidean pattern output vectors
 // Maps euclidean patterns to seqSize using modulo
 void polyphonicArpeggiator::rebuildEuclideanOutputs() {
-    int sz = seqSize.get();
-    if(sz <= 0) return;
+	int sz = seqSize.get();
+	if(sz <= 0) return;
 
-    // Build euclidean gate output
-    vector<int> eucGate(sz, 0);
-    if(!euclideanPattern.empty()) {
-        int eucLen = (int)euclideanPattern.size();
-        for(int i = 0; i < sz; i++) {
-            int eucIndex = i % eucLen;
-            eucGate[i] = euclideanPattern[eucIndex] ? 1 : 0;
-        }
-    }
-    eucGateOut.set(eucGate);
+	// Build euclidean gate output
+	vector<int> eucGate(sz, 0);
+	if(!euclideanPattern.empty()) {
+		int eucLen = (int)euclideanPattern.size();
+		for(int i = 0; i < sz; i++) {
+			int eucIndex = i % eucLen;
+			eucGate[i] = euclideanPattern[eucIndex] ? 1 : 0;
+		}
+	}
+	eucGateOut.set(eucGate);
 
-    // Build euclidean accent output
-    vector<int> eucAcc(sz, 0);
-    if(!euclideanAccents.empty()) {
-        int accLen = (int)euclideanAccents.size();
-        for(int i = 0; i < sz; i++) {
-            int accIndex = i % accLen;
-            eucAcc[i] = euclideanAccents[accIndex] ? 1 : 0;
-        }
-    }
-    eucAccOut.set(eucAcc);
+	// Build euclidean accent output
+	vector<int> eucAcc(sz, 0);
+	if(!euclideanAccents.empty()) {
+		int accLen = (int)euclideanAccents.size();
+		for(int i = 0; i < sz; i++) {
+			int accIndex = i % accLen;
+			eucAcc[i] = euclideanAccents[accIndex] ? 1 : 0;
+		}
+	}
+	eucAccOut.set(eucAcc);
 
-    // Build euclidean duration output
-    vector<int> eucDur(sz, 0);
-    if(!euclideanDurations.empty()) {
-        int durLen = (int)euclideanDurations.size();
-        for(int i = 0; i < sz; i++) {
-            int durIndex = i % durLen;
-            eucDur[i] = euclideanDurations[durIndex] ? 1 : 0;
-        }
-    }
-    eucDurOut.set(eucDur);
+	// Build euclidean duration output
+	vector<int> eucDur(sz, 0);
+	if(!euclideanDurations.empty()) {
+		int durLen = (int)euclideanDurations.size();
+		for(int i = 0; i < sz; i++) {
+			int durIndex = i % durLen;
+			eucDur[i] = euclideanDurations[durIndex] ? 1 : 0;
+		}
+	}
+	eucDurOut.set(eucDur);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -661,34 +666,34 @@ void polyphonicArpeggiator::rebuildEuclideanOutputs() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::applyPitchDeviations(float& pitch, int scaleIndex) {
-    // Octave deviation: transposes UP by 1..octaveDevRng octaves
-    if(octaveDev > 0 && dist01(rng) < octaveDev) {
-        int range = octaveDevRng;
-        if(range > 0) {
-            std::uniform_int_distribution<int> octDist(1, range);
-            pitch += octDist(rng) * 12;
-        }
-    }
+	// Octave deviation: transposes UP by 1..octaveDevRng octaves
+	if(octaveDev > 0 && dist01(rng) < octaveDev) {
+		int range = octaveDevRng;
+		if(range > 0) {
+			std::uniform_int_distribution<int> octDist(1, range);
+			pitch += octDist(rng) * 12;
+		}
+	}
 
-    // Index deviation: shifts UP by 1..idxDevRng scale degrees
-    if(idxDev > 0 && dist01(rng) < idxDev) {
-        int range = idxDevRng;
-        if(range > 0) {
-            std::uniform_int_distribution<int> idxDistrib(1, range);
-            int shift = idxDistrib(rng);
-            pitch = getScaleDegree(scaleIndex + shift);
-            pitch += transpose;
-        }
-    }
+	// Index deviation: shifts UP by 1..idxDevRng scale degrees
+	if(idxDev > 0 && dist01(rng) < idxDev) {
+		int range = idxDevRng;
+		if(range > 0) {
+			std::uniform_int_distribution<int> idxDistrib(1, range);
+			int shift = idxDistrib(rng);
+			pitch = getScaleDegree(scaleIndex + shift);
+			pitch += transpose;
+		}
+	}
 
-    // Chromatic pitch deviation: shifts UP by 1..pitchDevRng semitones
-    if(pitchDev > 0 && dist01(rng) < pitchDev) {
-        int range = pitchDevRng;
-        if(range > 0) {
-            std::uniform_int_distribution<int> chromDist(1, range);
-            pitch += chromDist(rng);
-        }
-    }
+	// Chromatic pitch deviation: shifts UP by 1..pitchDevRng semitones
+	if(pitchDev > 0 && dist01(rng) < pitchDev) {
+		int range = pitchDevRng;
+		if(range > 0) {
+			std::uniform_int_distribution<int> chromDist(1, range);
+			pitch += chromDist(rng);
+		}
+	}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -696,20 +701,20 @@ void polyphonicArpeggiator::applyPitchDeviations(float& pitch, int scaleIndex) {
 // ═══════════════════════════════════════════════════════════
 
 float polyphonicArpeggiator::computeStepVelocity(int stepIndex) {
-    float velocity = velBase;
+	float velocity = velBase;
 
-    if(velRndm > 0) {
-        velocity += velRndm * dist01(rng);
-    }
+	if(velRndm > 0) {
+		velocity += velRndm * dist01(rng);
+	}
 
-    if(!euclideanAccents.empty()) {
-        int accentStep = stepIndex % (int)euclideanAccents.size();
-        if(euclideanAccents[accentStep]) {
-            velocity += eucAccStrength;
-        }
-    }
+	if(!euclideanAccents.empty()) {
+		int accentStep = stepIndex % (int)euclideanAccents.size();
+		if(euclideanAccents[accentStep]) {
+			velocity += eucAccStrength;
+		}
+	}
 
-    return ofClamp(velocity, 0.0f, 1.0f);
+	return ofClamp(velocity, 0.0f, 1.0f);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -717,23 +722,23 @@ float polyphonicArpeggiator::computeStepVelocity(int stepIndex) {
 // ═══════════════════════════════════════════════════════════
 
 int polyphonicArpeggiator::computeStepDuration(int stepIndex) {
-    int baseDur = durBase.get();
-    int duration = baseDur;
+	int baseDur = durBase.get();
+	int duration = baseDur;
 
-    // Apply euclidean duration accent - add durEucStrength ms to the duration
-    if(!euclideanDurations.empty()) {
-        int durStep = stepIndex % (int)euclideanDurations.size();
-        if(euclideanDurations[durStep]) {
-            duration += durEucStrength.get();
-        }
-    }
+	// Apply euclidean duration accent - add durEucStrength ms to the duration
+	if(!euclideanDurations.empty()) {
+		int durStep = stepIndex % (int)euclideanDurations.size();
+		if(euclideanDurations[durStep]) {
+			duration += durEucStrength.get();
+		}
+	}
 
-    // Add randomization after euclidean accent
-    if(durRndm.get() > 0) {
-        duration += (int)(durRndm.get() * dist01(rng));
-    }
+	// Add randomization after euclidean accent
+	if(durRndm.get() > 0) {
+		duration += (int)(durRndm.get() * dist01(rng));
+	}
 
-    return ofClamp(duration, 1, 60000);
+	return ofClamp(duration, 1, 60000);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -741,24 +746,24 @@ int polyphonicArpeggiator::computeStepDuration(int stepIndex) {
 // ═══════════════════════════════════════════════════════════
 
 float polyphonicArpeggiator::computeStrumOffset(int voiceIndex, int totalVoices) {
-    if(totalVoices <= 1 || strum <= 0.0f) return 0.0f;
+	if(totalVoices <= 1 || strum <= 0.0f) return 0.0f;
 
-    float baseStrum = strum;
+	float baseStrum = strum;
 
-    if(strumRndm > 0.0f) {
-        float rndOffset = (dist01(rng) * 2.0f - 1.0f) * strumRndm;
-        baseStrum += rndOffset;
-        baseStrum = std::max(0.0f, baseStrum);
-    }
+	if(strumRndm > 0.0f) {
+		float rndOffset = (dist01(rng) * 2.0f - 1.0f) * strumRndm;
+		baseStrum += rndOffset;
+		baseStrum = std::max(0.0f, baseStrum);
+	}
 
-    int dir = strumDir;
-    if(dir == 0) {
-        return voiceIndex * baseStrum;
-    } else if(dir == 1) {
-        return (totalVoices - 1 - voiceIndex) * baseStrum;
-    } else {
-        return dist01(rng) * (totalVoices - 1) * baseStrum;
-    }
+	int dir = strumDir;
+	if(dir == 0) {
+		return voiceIndex * baseStrum;
+	} else if(dir == 1) {
+		return (totalVoices - 1 - voiceIndex) * baseStrum;
+	} else {
+		return dist01(rng) * (totalVoices - 1) * baseStrum;
+	}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -768,17 +773,17 @@ float polyphonicArpeggiator::computeStrumOffset(int voiceIndex, int totalVoices)
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::generateEuclideanPattern(vector<bool>& pattern, int length, int hits, int offset) {
-    pattern.clear();
-    pattern.resize(length, false);
+	pattern.clear();
+	pattern.resize(length, false);
 
-    if(hits <= 0 || length <= 0) return;
-    if(hits > length) hits = length;
+	if(hits <= 0 || length <= 0) return;
+	if(hits > length) hits = length;
 
-    for(int j = 0; j < hits; j++) {
-        int index = ((j * length) / hits + offset) % length;
-        if(index < 0) index += length;
-        pattern[index] = true;
-    }
+	for(int j = 0; j < hits; j++) {
+		int index = ((j * length) / hits + offset) % length;
+		if(index < 0) index += length;
+		pattern[index] = true;
+	}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -786,21 +791,21 @@ void polyphonicArpeggiator::generateEuclideanPattern(vector<bool>& pattern, int 
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::updateOutputs() {
-    // Set pitch, velocity and duration BEFORE gate so downstream nodes
-    // (e.g. MIDI) already have the correct values when the gate fires
-    pitchOut.set(currentPitches);
-    velocityOut.set(currentVelocities);
-    durOut.set(currentDurations);
+	// Set pitch, velocity and duration BEFORE gate so downstream nodes
+	// (e.g. MIDI) already have the correct values when the gate fires
+	pitchOut.set(currentPitches);
+	velocityOut.set(currentVelocities);
+	durOut.set(currentDurations);
 
-    // Calculate gate * velocity output before firing gate
-    int sz = currentGates.size();
-    vector<float> gateVel(sz, 0.0f);
-    for(int i = 0; i < sz; i++) {
-        gateVel[i] = currentGates[i] * currentVelocities[i];
-    }
-    gateVelOut.set(gateVel);
+	// Calculate gate * velocity output before firing gate
+	int sz = currentGates.size();
+	vector<float> gateVel(sz, 0.0f);
+	for(int i = 0; i < sz; i++) {
+		gateVel[i] = currentGates[i] * currentVelocities[i];
+	}
+	gateVelOut.set(gateVel);
 
-    gateOut.set(currentGates);
+	gateOut.set(currentGates);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -808,393 +813,393 @@ void polyphonicArpeggiator::updateOutputs() {
 // ═══════════════════════════════════════════════════════════
 
 string polyphonicArpeggiator::getSnapshotsFolderPath() {
-    return ofToDataPath("nodeSnapshots/PolyphonicArpeggiator/", true);
+	return ofToDataPath("nodeSnapshots/PolyphonicArpeggiator/", true);
 }
 
 string polyphonicArpeggiator::getSnapshotFilePath(int slot) {
-    return getSnapshotsFolderPath() + "snapshot_" + ofToString(slot) + ".json";
+	return getSnapshotsFolderPath() + "snapshot_" + ofToString(slot) + ".json";
 }
 
 void polyphonicArpeggiator::saveSnapshotToDisk(int slot) {
-    if(slot < 0 || slot >= 16) return;
-    if(!snapshotSlots[slot].hasData) return;
+	if(slot < 0 || slot >= 16) return;
+	if(!snapshotSlots[slot].hasData) return;
 
-    // Ensure directory exists
-    ofDirectory dir(getSnapshotsFolderPath());
-    if(!dir.exists()) {
-        dir.create(true);
-    }
+	// Ensure directory exists
+	ofDirectory dir(getSnapshotsFolderPath());
+	if(!dir.exists()) {
+		dir.create(true);
+	}
 
-    ArpeggiatorSnapshot snap = snapshotSlots[slot];
-    ofJson json;
+	ArpeggiatorSnapshot snap = snapshotSlots[slot];
+	ofJson json;
 
-    json["seqSize"] = snap.seqSize;
+	json["seqSize"] = snap.seqSize;
 
-    json["scale"] = snap.scale;
-    json["patternMode"] = snap.patternMode;
-    json["idxPattern"] = snap.idxPattern;
-    json["degStart"] = snap.degStart;
-    json["stepInterval"] = snap.stepInterval;
-    json["transpose"] = snap.transpose;
+	json["scale"] = snap.scale;
+	json["patternMode"] = snap.patternMode;
+	json["idxPattern"] = snap.idxPattern;
+	json["degStart"] = snap.degStart;
+	json["stepInterval"] = snap.stepInterval;
+	json["transpose"] = snap.transpose;
 
-    json["polyphony"] = snap.polyphony;
-    json["polyInterval"] = snap.polyInterval;
-    json["skipSteps"] = snap.skipSteps;
-    json["strum"] = snap.strum;
-    json["strumRndm"] = snap.strumRndm;
-    json["strumDir"] = snap.strumDir;
+	json["polyphony"] = snap.polyphony;
+	json["polyInterval"] = snap.polyInterval;
+	json["skipSteps"] = snap.skipSteps;
+	json["strum"] = snap.strum;
+	json["strumRndm"] = snap.strumRndm;
+	json["strumDir"] = snap.strumDir;
 
-    json["octaveDev"] = snap.octaveDev;
-    json["octaveDevRng"] = snap.octaveDevRng;
-    json["idxDev"] = snap.idxDev;
-    json["idxDevRng"] = snap.idxDevRng;
-    json["pitchDev"] = snap.pitchDev;
-    json["pitchDevRng"] = snap.pitchDevRng;
+	json["octaveDev"] = snap.octaveDev;
+	json["octaveDevRng"] = snap.octaveDevRng;
+	json["idxDev"] = snap.idxDev;
+	json["idxDevRng"] = snap.idxDevRng;
+	json["pitchDev"] = snap.pitchDev;
+	json["pitchDevRng"] = snap.pitchDevRng;
 
-    json["velBase"] = snap.velBase;
-    json["velRndm"] = snap.velRndm;
-    json["eucAccStrength"] = snap.eucAccStrength;
+	json["velBase"] = snap.velBase;
+	json["velRndm"] = snap.velRndm;
+	json["eucAccStrength"] = snap.eucAccStrength;
 
-    json["durBase"] = snap.durBase;
-    json["durRndm"] = snap.durRndm;
-    json["durEucStrength"] = snap.durEucStrength;
+	json["durBase"] = snap.durBase;
+	json["durRndm"] = snap.durRndm;
+	json["durEucStrength"] = snap.durEucStrength;
 
-    json["eucLen"] = snap.eucLen;
-    json["eucHits"] = snap.eucHits;
-    json["eucOff"] = snap.eucOff;
-    json["eucAccLen"] = snap.eucAccLen;
-    json["eucAccHits"] = snap.eucAccHits;
-    json["eucAccOff"] = snap.eucAccOff;
-    json["eucDurLen"] = snap.eucDurLen;
-    json["eucDurHits"] = snap.eucDurHits;
-    json["eucDurOff"] = snap.eucDurOff;
+	json["eucLen"] = snap.eucLen;
+	json["eucHits"] = snap.eucHits;
+	json["eucOff"] = snap.eucOff;
+	json["eucAccLen"] = snap.eucAccLen;
+	json["eucAccHits"] = snap.eucAccHits;
+	json["eucAccOff"] = snap.eucAccOff;
+	json["eucDurLen"] = snap.eucDurLen;
+	json["eucDurHits"] = snap.eucDurHits;
+	json["eucDurOff"] = snap.eucDurOff;
 
-    json["stepChance"] = snap.stepChance;
-    json["noteChance"] = snap.noteChance;
+	json["stepChance"] = snap.stepChance;
+	json["noteChance"] = snap.noteChance;
 	
 	json["dynamicMode"] = snap.dynamicMode;
-    json["accentOnsetMode"] = snap.accentOnsetMode;
+	json["accentOnsetMode"] = snap.accentOnsetMode;
 
-    ofSavePrettyJson(getSnapshotFilePath(slot), json);
+	ofSavePrettyJson(getSnapshotFilePath(slot), json);
 }
 
 void polyphonicArpeggiator::loadSnapshotFromDisk(int slot) {
-    if(slot < 0 || slot >= 16) return;
+	if(slot < 0 || slot >= 16) return;
 
-    string filePath = getSnapshotFilePath(slot);
-    ofFile file(filePath);
+	string filePath = getSnapshotFilePath(slot);
+	ofFile file(filePath);
 
-    if(!file.exists()) {
-        return;
-    }
+	if(!file.exists()) {
+		return;
+	}
 
-    ofJson json = ofLoadJson(filePath);
-    if(json.empty()) return;
+	ofJson json = ofLoadJson(filePath);
+	if(json.empty()) return;
 
-    ArpeggiatorSnapshot snap;
+	ArpeggiatorSnapshot snap;
 
-    snap.seqSize = json.value("seqSize", 16);
+	snap.seqSize = json.value("seqSize", 16);
 
-    snap.scale = json.value("scale", vector<float>{0, 2, 4, 5, 7, 9, 11});
-    snap.patternMode = json.value("patternMode", 0);
-    snap.idxPattern = json.value("idxPattern", vector<int>{0, 1, 2, 3});
-    snap.degStart = json.value("degStart", 0);
-    snap.stepInterval = json.value("stepInterval", 1);
-    snap.transpose = json.value("transpose", 0);
+	snap.scale = json.value("scale", vector<float>{0, 2, 4, 5, 7, 9, 11});
+	snap.patternMode = json.value("patternMode", 0);
+	snap.idxPattern = json.value("idxPattern", vector<int>{0, 1, 2, 3});
+	snap.degStart = json.value("degStart", 0);
+	snap.stepInterval = json.value("stepInterval", 1);
+	snap.transpose = json.value("transpose", 0);
 
-    snap.polyphony = json.value("polyphony", 1);
-    snap.polyInterval = json.value("polyInterval", 2);
-    snap.skipSteps = json.value("skipSteps", 0);
-    snap.strum = json.value("strum", 0.0f);
-    snap.strumRndm = json.value("strumRndm", 0.0f);
-    snap.strumDir = json.value("strumDir", 0);
+	snap.polyphony = json.value("polyphony", 1);
+	snap.polyInterval = json.value("polyInterval", 2);
+	snap.skipSteps = json.value("skipSteps", 0);
+	snap.strum = json.value("strum", 0.0f);
+	snap.strumRndm = json.value("strumRndm", 0.0f);
+	snap.strumDir = json.value("strumDir", 0);
 
-    snap.octaveDev = json.value("octaveDev", 0.0f);
-    snap.octaveDevRng = json.value("octaveDevRng", 1);
-    snap.idxDev = json.value("idxDev", 0.0f);
-    snap.idxDevRng = json.value("idxDevRng", 2);
-    snap.pitchDev = json.value("pitchDev", 0.0f);
-    snap.pitchDevRng = json.value("pitchDevRng", 2);
+	snap.octaveDev = json.value("octaveDev", 0.0f);
+	snap.octaveDevRng = json.value("octaveDevRng", 1);
+	snap.idxDev = json.value("idxDev", 0.0f);
+	snap.idxDevRng = json.value("idxDevRng", 2);
+	snap.pitchDev = json.value("pitchDev", 0.0f);
+	snap.pitchDevRng = json.value("pitchDevRng", 2);
 
-    snap.velBase = json.value("velBase", 0.8f);
-    snap.velRndm = json.value("velRndm", 0.1f);
-    snap.eucAccStrength = json.value("eucAccStrength", 0.2f);
+	snap.velBase = json.value("velBase", 0.8f);
+	snap.velRndm = json.value("velRndm", 0.1f);
+	snap.eucAccStrength = json.value("eucAccStrength", 0.2f);
 
-    snap.durBase = json.value("durBase", 100);
-    snap.durRndm = json.value("durRndm", 20);
-    snap.durEucStrength = json.value("durEucStrength", 50);
+	snap.durBase = json.value("durBase", 100);
+	snap.durRndm = json.value("durRndm", 20);
+	snap.durEucStrength = json.value("durEucStrength", 50);
 
-    snap.eucLen = json.value("eucLen", 8);
-    snap.eucHits = json.value("eucHits", 8);
-    snap.eucOff = json.value("eucOff", 0);
-    snap.eucAccLen = json.value("eucAccLen", 4);
-    snap.eucAccHits = json.value("eucAccHits", 1);
-    snap.eucAccOff = json.value("eucAccOff", 0);
-    snap.eucDurLen = json.value("eucDurLen", 4);
-    snap.eucDurHits = json.value("eucDurHits", 4);
-    snap.eucDurOff = json.value("eucDurOff", 0);
+	snap.eucLen = json.value("eucLen", 8);
+	snap.eucHits = json.value("eucHits", 8);
+	snap.eucOff = json.value("eucOff", 0);
+	snap.eucAccLen = json.value("eucAccLen", 4);
+	snap.eucAccHits = json.value("eucAccHits", 1);
+	snap.eucAccOff = json.value("eucAccOff", 0);
+	snap.eucDurLen = json.value("eucDurLen", 4);
+	snap.eucDurHits = json.value("eucDurHits", 4);
+	snap.eucDurOff = json.value("eucDurOff", 0);
 
-    snap.stepChance = json.value("stepChance", 1.0f);
-    snap.noteChance = json.value("noteChance", 1.0f);
+	snap.stepChance = json.value("stepChance", 1.0f);
+	snap.noteChance = json.value("noteChance", 1.0f);
 	
 	snap.dynamicMode = json.value("dynamicMode", false);
-    snap.accentOnsetMode = json.value("accentOnsetMode", true);
+	snap.accentOnsetMode = json.value("accentOnsetMode", true);
 
-    snap.hasData = true;
-    snapshotSlots[slot] = snap;
+	snap.hasData = true;
+	snapshotSlots[slot] = snap;
 }
 
 void polyphonicArpeggiator::loadAllSnapshotsFromDisk() {
-    for(int i = 0; i < 16; i++) {
-        loadSnapshotFromDisk(i);
-    }
+	for(int i = 0; i < 16; i++) {
+		loadSnapshotFromDisk(i);
+	}
 }
 
 void polyphonicArpeggiator::deleteSnapshotFromDisk(int slot) {
-    if(slot < 0 || slot >= 16) return;
+	if(slot < 0 || slot >= 16) return;
 
-    string filePath = getSnapshotFilePath(slot);
-    ofFile file(filePath);
+	string filePath = getSnapshotFilePath(slot);
+	ofFile file(filePath);
 
-    if(file.exists()) {
-        file.remove();
-    }
+	if(file.exists()) {
+		file.remove();
+	}
 
-    // Clear from memory
-    snapshotSlots[slot].hasData = false;
-    if(activeSnapshotSlot == slot) {
-        activeSnapshotSlot = -1;
-    }
+	// Clear from memory
+	snapshotSlots[slot].hasData = false;
+	if(activeSnapshotSlot == slot) {
+		activeSnapshotSlot = -1;
+	}
 }
 
 void polyphonicArpeggiator::storeToSlot(int slot) {
-    if(slot < 0 || slot >= 16) return;
+	if(slot < 0 || slot >= 16) return;
 
-    ArpeggiatorSnapshot snap;
+	ArpeggiatorSnapshot snap;
 
-    // Store current parameter values
-    snap.seqSize = seqSize.get();
+	// Store current parameter values
+	snap.seqSize = seqSize.get();
 
-    snap.scale = scale.get();
-    snap.patternMode = patternMode.get();
-    snap.idxPattern = idxPattern.get();
-    snap.degStart = degStart.get();
-    snap.stepInterval = stepInterval.get();
-    snap.transpose = transpose.get();
+	snap.scale = scale.get();
+	snap.patternMode = patternMode.get();
+	snap.idxPattern = idxPattern.get();
+	snap.degStart = degStart.get();
+	snap.stepInterval = stepInterval.get();
+	snap.transpose = transpose.get();
 
-    snap.polyphony = polyphony.get();
-    snap.polyInterval = polyInterval.get();
-    snap.skipSteps = skipSteps.get();
-    snap.strum = strum.get();
-    snap.strumRndm = strumRndm.get();
-    snap.strumDir = strumDir.get();
+	snap.polyphony = polyphony.get();
+	snap.polyInterval = polyInterval.get();
+	snap.skipSteps = skipSteps.get();
+	snap.strum = strum.get();
+	snap.strumRndm = strumRndm.get();
+	snap.strumDir = strumDir.get();
 
-    snap.octaveDev = octaveDev.get();
-    snap.octaveDevRng = octaveDevRng.get();
-    snap.idxDev = idxDev.get();
-    snap.idxDevRng = idxDevRng.get();
-    snap.pitchDev = pitchDev.get();
-    snap.pitchDevRng = pitchDevRng.get();
+	snap.octaveDev = octaveDev.get();
+	snap.octaveDevRng = octaveDevRng.get();
+	snap.idxDev = idxDev.get();
+	snap.idxDevRng = idxDevRng.get();
+	snap.pitchDev = pitchDev.get();
+	snap.pitchDevRng = pitchDevRng.get();
 
-    snap.velBase = velBase.get();
-    snap.velRndm = velRndm.get();
-    snap.eucAccStrength = eucAccStrength.get();
+	snap.velBase = velBase.get();
+	snap.velRndm = velRndm.get();
+	snap.eucAccStrength = eucAccStrength.get();
 
-    snap.durBase = durBase.get();
-    snap.durRndm = durRndm.get();
-    snap.durEucStrength = durEucStrength.get();
+	snap.durBase = durBase.get();
+	snap.durRndm = durRndm.get();
+	snap.durEucStrength = durEucStrength.get();
 
-    snap.eucLen = eucLen.get();
-    snap.eucHits = eucHits.get();
-    snap.eucOff = eucOff.get();
-    snap.eucAccLen = eucAccLen.get();
-    snap.eucAccHits = eucAccHits.get();
-    snap.eucAccOff = eucAccOff.get();
-    snap.eucDurLen = eucDurLen.get();
-    snap.eucDurHits = eucDurHits.get();
-    snap.eucDurOff = eucDurOff.get();
+	snap.eucLen = eucLen.get();
+	snap.eucHits = eucHits.get();
+	snap.eucOff = eucOff.get();
+	snap.eucAccLen = eucAccLen.get();
+	snap.eucAccHits = eucAccHits.get();
+	snap.eucAccOff = eucAccOff.get();
+	snap.eucDurLen = eucDurLen.get();
+	snap.eucDurHits = eucDurHits.get();
+	snap.eucDurOff = eucDurOff.get();
 
-    snap.stepChance = stepChance.get();
-    snap.noteChance = noteChance.get();
+	snap.stepChance = stepChance.get();
+	snap.noteChance = noteChance.get();
 	snap.dynamicMode = dynamicMode.get();
-    snap.accentOnsetMode = accentOnsetMode.get();
+	snap.accentOnsetMode = accentOnsetMode.get();
 
-    snap.hasData = true;
-    snapshotSlots[slot] = snap;
-    activeSnapshotSlot = slot;
+	snap.hasData = true;
+	snapshotSlots[slot] = snap;
+	activeSnapshotSlot = slot;
 
-    // Save to disk immediately
-    saveSnapshotToDisk(slot);
+	// Save to disk immediately
+	saveSnapshotToDisk(slot);
 }
 
 void polyphonicArpeggiator::recallSlot(int slot) {
-    if(slot < 0 || slot >= 16) return;
-    if(!snapshotSlots[slot].hasData) return;
+	if(slot < 0 || slot >= 16) return;
+	if(!snapshotSlots[slot].hasData) return;
 
-    activeSnapshotSlot = slot;
+	activeSnapshotSlot = slot;
 
-    if(morphTime.get() <= 0.001f) {
-        // Instant recall
-        ArpeggiatorSnapshot snap = snapshotSlots[slot];
+	if(morphTime.get() <= 0.001f) {
+		// Instant recall
+		ArpeggiatorSnapshot snap = snapshotSlots[slot];
 
-        seqSize.set(snap.seqSize);
+		seqSize.set(snap.seqSize);
 
-        scale.set(snap.scale);
-        patternMode.set(snap.patternMode);
-        idxPattern.set(snap.idxPattern);
-        degStart.set(snap.degStart);
-        stepInterval.set(snap.stepInterval);
-        transpose.set(snap.transpose);
+		scale.set(snap.scale);
+		patternMode.set(snap.patternMode);
+		idxPattern.set(snap.idxPattern);
+		degStart.set(snap.degStart);
+		stepInterval.set(snap.stepInterval);
+		transpose.set(snap.transpose);
 
-        polyphony.set(snap.polyphony);
-        polyInterval.set(snap.polyInterval);
-        skipSteps.set(snap.skipSteps);
-        strum.set(snap.strum);
-        strumRndm.set(snap.strumRndm);
-        strumDir.set(snap.strumDir);
+		polyphony.set(snap.polyphony);
+		polyInterval.set(snap.polyInterval);
+		skipSteps.set(snap.skipSteps);
+		strum.set(snap.strum);
+		strumRndm.set(snap.strumRndm);
+		strumDir.set(snap.strumDir);
 
-        octaveDev.set(snap.octaveDev);
-        octaveDevRng.set(snap.octaveDevRng);
-        idxDev.set(snap.idxDev);
-        idxDevRng.set(snap.idxDevRng);
-        pitchDev.set(snap.pitchDev);
-        pitchDevRng.set(snap.pitchDevRng);
+		octaveDev.set(snap.octaveDev);
+		octaveDevRng.set(snap.octaveDevRng);
+		idxDev.set(snap.idxDev);
+		idxDevRng.set(snap.idxDevRng);
+		pitchDev.set(snap.pitchDev);
+		pitchDevRng.set(snap.pitchDevRng);
 
-        velBase.set(snap.velBase);
-        velRndm.set(snap.velRndm);
-        eucAccStrength.set(snap.eucAccStrength);
+		velBase.set(snap.velBase);
+		velRndm.set(snap.velRndm);
+		eucAccStrength.set(snap.eucAccStrength);
 
-        durBase.set(snap.durBase);
-        durRndm.set(snap.durRndm);
-        durEucStrength.set(snap.durEucStrength);
+		durBase.set(snap.durBase);
+		durRndm.set(snap.durRndm);
+		durEucStrength.set(snap.durEucStrength);
 
-        eucLen.set(snap.eucLen);
-        eucHits.set(snap.eucHits);
-        eucOff.set(snap.eucOff);
-        eucAccLen.set(snap.eucAccLen);
-        eucAccHits.set(snap.eucAccHits);
-        eucAccOff.set(snap.eucAccOff);
-        eucDurLen.set(snap.eucDurLen);
-        eucDurHits.set(snap.eucDurHits);
-        eucDurOff.set(snap.eucDurOff);
-        stepChance.set(snap.stepChance);
-        noteChance.set(snap.noteChance);
+		eucLen.set(snap.eucLen);
+		eucHits.set(snap.eucHits);
+		eucOff.set(snap.eucOff);
+		eucAccLen.set(snap.eucAccLen);
+		eucAccHits.set(snap.eucAccHits);
+		eucAccOff.set(snap.eucAccOff);
+		eucDurLen.set(snap.eucDurLen);
+		eucDurHits.set(snap.eucDurHits);
+		eucDurOff.set(snap.eucDurOff);
+		stepChance.set(snap.stepChance);
+		noteChance.set(snap.noteChance);
 
 		dynamicMode.set(snap.dynamicMode);
-        accentOnsetMode.set(snap.accentOnsetMode);
+		accentOnsetMode.set(snap.accentOnsetMode);
 
-    } else {
-        // Morphing recall
-        // Capture start state
-        startSnapshot.seqSize = seqSize.get();
+	} else {
+		// Morphing recall
+		// Capture start state
+		startSnapshot.seqSize = seqSize.get();
 
-        startSnapshot.scale = scale.get();
-        startSnapshot.patternMode = patternMode.get();
-        startSnapshot.idxPattern = idxPattern.get();
-        startSnapshot.degStart = degStart.get();
-        startSnapshot.stepInterval = stepInterval.get();
-        startSnapshot.transpose = transpose.get();
+		startSnapshot.scale = scale.get();
+		startSnapshot.patternMode = patternMode.get();
+		startSnapshot.idxPattern = idxPattern.get();
+		startSnapshot.degStart = degStart.get();
+		startSnapshot.stepInterval = stepInterval.get();
+		startSnapshot.transpose = transpose.get();
 
-        startSnapshot.polyphony = polyphony.get();
-        startSnapshot.polyInterval = polyInterval.get();
-        startSnapshot.skipSteps = skipSteps.get();
-        startSnapshot.strum = strum.get();
-        startSnapshot.strumRndm = strumRndm.get();
-        startSnapshot.strumDir = strumDir.get();
+		startSnapshot.polyphony = polyphony.get();
+		startSnapshot.polyInterval = polyInterval.get();
+		startSnapshot.skipSteps = skipSteps.get();
+		startSnapshot.strum = strum.get();
+		startSnapshot.strumRndm = strumRndm.get();
+		startSnapshot.strumDir = strumDir.get();
 
-        startSnapshot.octaveDev = octaveDev.get();
-        startSnapshot.octaveDevRng = octaveDevRng.get();
-        startSnapshot.idxDev = idxDev.get();
-        startSnapshot.idxDevRng = idxDevRng.get();
-        startSnapshot.pitchDev = pitchDev.get();
-        startSnapshot.pitchDevRng = pitchDevRng.get();
+		startSnapshot.octaveDev = octaveDev.get();
+		startSnapshot.octaveDevRng = octaveDevRng.get();
+		startSnapshot.idxDev = idxDev.get();
+		startSnapshot.idxDevRng = idxDevRng.get();
+		startSnapshot.pitchDev = pitchDev.get();
+		startSnapshot.pitchDevRng = pitchDevRng.get();
 
-        startSnapshot.velBase = velBase.get();
-        startSnapshot.velRndm = velRndm.get();
-        startSnapshot.eucAccStrength = eucAccStrength.get();
+		startSnapshot.velBase = velBase.get();
+		startSnapshot.velRndm = velRndm.get();
+		startSnapshot.eucAccStrength = eucAccStrength.get();
 
-        startSnapshot.durBase = durBase.get();
-        startSnapshot.durRndm = durRndm.get();
-        startSnapshot.durEucStrength = durEucStrength.get();
+		startSnapshot.durBase = durBase.get();
+		startSnapshot.durRndm = durRndm.get();
+		startSnapshot.durEucStrength = durEucStrength.get();
 
-        startSnapshot.eucLen = eucLen.get();
-        startSnapshot.eucHits = eucHits.get();
-        startSnapshot.eucOff = eucOff.get();
-        startSnapshot.eucAccLen = eucAccLen.get();
-        startSnapshot.eucAccHits = eucAccHits.get();
-        startSnapshot.eucAccOff = eucAccOff.get();
-        startSnapshot.eucDurLen = eucDurLen.get();
-        startSnapshot.eucDurHits = eucDurHits.get();
-        startSnapshot.eucDurOff = eucDurOff.get();
+		startSnapshot.eucLen = eucLen.get();
+		startSnapshot.eucHits = eucHits.get();
+		startSnapshot.eucOff = eucOff.get();
+		startSnapshot.eucAccLen = eucAccLen.get();
+		startSnapshot.eucAccHits = eucAccHits.get();
+		startSnapshot.eucAccOff = eucAccOff.get();
+		startSnapshot.eucDurLen = eucDurLen.get();
+		startSnapshot.eucDurHits = eucDurHits.get();
+		startSnapshot.eucDurOff = eucDurOff.get();
 
-        startSnapshot.stepChance = stepChance.get();
-        startSnapshot.noteChance = noteChance.get();
+		startSnapshot.stepChance = stepChance.get();
+		startSnapshot.noteChance = noteChance.get();
 
-        targetSnapshot = snapshotSlots[slot];
-        morphStartTime = ofGetElapsedTimef();
-        isMorphing = true;
-    }
+		targetSnapshot = snapshotSlots[slot];
+		morphStartTime = ofGetElapsedTimef();
+		isMorphing = true;
+	}
 }
 
 void polyphonicArpeggiator::updateMorph() {
-    float now = ofGetElapsedTimef();
-    float progress = (now - morphStartTime) / std::max(morphTime.get(), 0.001f);
-    if(progress >= 1.0f) {
-        progress = 1.0f;
-        isMorphing = false;
-    }
+	float now = ofGetElapsedTimef();
+	float progress = (now - morphStartTime) / std::max(morphTime.get(), 0.001f);
+	if(progress >= 1.0f) {
+		progress = 1.0f;
+		isMorphing = false;
+	}
 
-    // Lerp integer values
-    seqSize.set((int)ofLerp(startSnapshot.seqSize, targetSnapshot.seqSize, progress));
-    transpose.set((int)ofLerp(startSnapshot.transpose, targetSnapshot.transpose, progress));
-    degStart.set((int)ofLerp(startSnapshot.degStart, targetSnapshot.degStart, progress));
-    stepInterval.set((int)ofLerp(startSnapshot.stepInterval, targetSnapshot.stepInterval, progress));
-    polyphony.set((int)ofLerp(startSnapshot.polyphony, targetSnapshot.polyphony, progress));
-    polyInterval.set((int)ofLerp(startSnapshot.polyInterval, targetSnapshot.polyInterval, progress));
-    skipSteps.set((int)ofLerp(startSnapshot.skipSteps, targetSnapshot.skipSteps, progress));
+	// Lerp integer values
+	seqSize.set((int)ofLerp(startSnapshot.seqSize, targetSnapshot.seqSize, progress));
+	transpose.set((int)ofLerp(startSnapshot.transpose, targetSnapshot.transpose, progress));
+	degStart.set((int)ofLerp(startSnapshot.degStart, targetSnapshot.degStart, progress));
+	stepInterval.set((int)ofLerp(startSnapshot.stepInterval, targetSnapshot.stepInterval, progress));
+	polyphony.set((int)ofLerp(startSnapshot.polyphony, targetSnapshot.polyphony, progress));
+	polyInterval.set((int)ofLerp(startSnapshot.polyInterval, targetSnapshot.polyInterval, progress));
+	skipSteps.set((int)ofLerp(startSnapshot.skipSteps, targetSnapshot.skipSteps, progress));
 
-    strum.set(ofLerp(startSnapshot.strum, targetSnapshot.strum, progress));
-    strumRndm.set(ofLerp(startSnapshot.strumRndm, targetSnapshot.strumRndm, progress));
+	strum.set(ofLerp(startSnapshot.strum, targetSnapshot.strum, progress));
+	strumRndm.set(ofLerp(startSnapshot.strumRndm, targetSnapshot.strumRndm, progress));
 
-    octaveDev.set(ofLerp(startSnapshot.octaveDev, targetSnapshot.octaveDev, progress));
-    octaveDevRng.set((int)ofLerp(startSnapshot.octaveDevRng, targetSnapshot.octaveDevRng, progress));
-    idxDev.set(ofLerp(startSnapshot.idxDev, targetSnapshot.idxDev, progress));
-    idxDevRng.set((int)ofLerp(startSnapshot.idxDevRng, targetSnapshot.idxDevRng, progress));
-    pitchDev.set(ofLerp(startSnapshot.pitchDev, targetSnapshot.pitchDev, progress));
-    pitchDevRng.set((int)ofLerp(startSnapshot.pitchDevRng, targetSnapshot.pitchDevRng, progress));
+	octaveDev.set(ofLerp(startSnapshot.octaveDev, targetSnapshot.octaveDev, progress));
+	octaveDevRng.set((int)ofLerp(startSnapshot.octaveDevRng, targetSnapshot.octaveDevRng, progress));
+	idxDev.set(ofLerp(startSnapshot.idxDev, targetSnapshot.idxDev, progress));
+	idxDevRng.set((int)ofLerp(startSnapshot.idxDevRng, targetSnapshot.idxDevRng, progress));
+	pitchDev.set(ofLerp(startSnapshot.pitchDev, targetSnapshot.pitchDev, progress));
+	pitchDevRng.set((int)ofLerp(startSnapshot.pitchDevRng, targetSnapshot.pitchDevRng, progress));
 
-    velBase.set(ofLerp(startSnapshot.velBase, targetSnapshot.velBase, progress));
-    velRndm.set(ofLerp(startSnapshot.velRndm, targetSnapshot.velRndm, progress));
-    eucAccStrength.set(ofLerp(startSnapshot.eucAccStrength, targetSnapshot.eucAccStrength, progress));
+	velBase.set(ofLerp(startSnapshot.velBase, targetSnapshot.velBase, progress));
+	velRndm.set(ofLerp(startSnapshot.velRndm, targetSnapshot.velRndm, progress));
+	eucAccStrength.set(ofLerp(startSnapshot.eucAccStrength, targetSnapshot.eucAccStrength, progress));
 
-    durBase.set((int)ofLerp(startSnapshot.durBase, targetSnapshot.durBase, progress));
-    durRndm.set((int)ofLerp(startSnapshot.durRndm, targetSnapshot.durRndm, progress));
-    durEucStrength.set((int)ofLerp(startSnapshot.durEucStrength, targetSnapshot.durEucStrength, progress));
+	durBase.set((int)ofLerp(startSnapshot.durBase, targetSnapshot.durBase, progress));
+	durRndm.set((int)ofLerp(startSnapshot.durRndm, targetSnapshot.durRndm, progress));
+	durEucStrength.set((int)ofLerp(startSnapshot.durEucStrength, targetSnapshot.durEucStrength, progress));
 
-    eucLen.set((int)ofLerp(startSnapshot.eucLen, targetSnapshot.eucLen, progress));
-    eucHits.set((int)ofLerp(startSnapshot.eucHits, targetSnapshot.eucHits, progress));
-    eucOff.set((int)ofLerp(startSnapshot.eucOff, targetSnapshot.eucOff, progress));
-    eucAccLen.set((int)ofLerp(startSnapshot.eucAccLen, targetSnapshot.eucAccLen, progress));
-    eucAccHits.set((int)ofLerp(startSnapshot.eucAccHits, targetSnapshot.eucAccHits, progress));
-    eucAccOff.set((int)ofLerp(startSnapshot.eucAccOff, targetSnapshot.eucAccOff, progress));
-    eucDurLen.set((int)ofLerp(startSnapshot.eucDurLen, targetSnapshot.eucDurLen, progress));
-    eucDurHits.set((int)ofLerp(startSnapshot.eucDurHits, targetSnapshot.eucDurHits, progress));
-    eucDurOff.set((int)ofLerp(startSnapshot.eucDurOff, targetSnapshot.eucDurOff, progress));
+	eucLen.set((int)ofLerp(startSnapshot.eucLen, targetSnapshot.eucLen, progress));
+	eucHits.set((int)ofLerp(startSnapshot.eucHits, targetSnapshot.eucHits, progress));
+	eucOff.set((int)ofLerp(startSnapshot.eucOff, targetSnapshot.eucOff, progress));
+	eucAccLen.set((int)ofLerp(startSnapshot.eucAccLen, targetSnapshot.eucAccLen, progress));
+	eucAccHits.set((int)ofLerp(startSnapshot.eucAccHits, targetSnapshot.eucAccHits, progress));
+	eucAccOff.set((int)ofLerp(startSnapshot.eucAccOff, targetSnapshot.eucAccOff, progress));
+	eucDurLen.set((int)ofLerp(startSnapshot.eucDurLen, targetSnapshot.eucDurLen, progress));
+	eucDurHits.set((int)ofLerp(startSnapshot.eucDurHits, targetSnapshot.eucDurHits, progress));
+	eucDurOff.set((int)ofLerp(startSnapshot.eucDurOff, targetSnapshot.eucDurOff, progress));
 
-    stepChance.set(ofLerp(startSnapshot.stepChance, targetSnapshot.stepChance, progress));
-    noteChance.set(ofLerp(startSnapshot.noteChance, targetSnapshot.noteChance, progress));
+	stepChance.set(ofLerp(startSnapshot.stepChance, targetSnapshot.stepChance, progress));
+	noteChance.set(ofLerp(startSnapshot.noteChance, targetSnapshot.noteChance, progress));
 
-    // At the end, set discrete values
-    if(progress >= 1.0f) {
+	// At the end, set discrete values
+	if(progress >= 1.0f) {
 		progress = 1.0f;
 		isMorphing = false;
 		dynamicMode.set(targetSnapshot.dynamicMode);
-        accentOnsetMode.set(targetSnapshot.accentOnsetMode);
-        scale.set(targetSnapshot.scale);
-        patternMode.set(targetSnapshot.patternMode);
-        idxPattern.set(targetSnapshot.idxPattern);
-        strumDir.set(targetSnapshot.strumDir);
-    }
+		accentOnsetMode.set(targetSnapshot.accentOnsetMode);
+		scale.set(targetSnapshot.scale);
+		patternMode.set(targetSnapshot.patternMode);
+		idxPattern.set(targetSnapshot.idxPattern);
+		strumDir.set(targetSnapshot.strumDir);
+	}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1202,36 +1207,36 @@ void polyphonicArpeggiator::updateMorph() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::presetSave(ofJson &json) {
-    json["currentStep"] = currentStep;
-    json["activeSnapshotSlot"] = activeSnapshotSlot;
-    // Note: Snapshots are saved to disk independently, not in presets
+	json["currentStep"] = currentStep;
+	json["activeSnapshotSlot"] = activeSnapshotSlot;
+	// Note: Snapshots are saved to disk independently, not in presets
 }
 
 void polyphonicArpeggiator::presetRecallAfterSettingParameters(ofJson &json) {
-    if(json.contains("currentStep")) currentStep = json["currentStep"];
-    if(json.contains("activeSnapshotSlot")) activeSnapshotSlot = json["activeSnapshotSlot"];
+	if(json.contains("currentStep")) currentStep = json["currentStep"];
+	if(json.contains("activeSnapshotSlot")) activeSnapshotSlot = json["activeSnapshotSlot"];
 
-    // Snapshots are loaded from disk in setup(), not from presets
+	// Snapshots are loaded from disk in setup(), not from presets
 
-    generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
-    generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
-    generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
+	generateEuclideanPattern(euclideanPattern, eucLen, eucHits, eucOff);
+	generateEuclideanPattern(euclideanAccents, eucAccLen, eucAccHits, eucAccOff);
+	generateEuclideanPattern(euclideanDurations, eucDurLen, eucDurHits, eucDurOff);
 
-    int sz = seqSize;
-    currentPitches.resize(sz, 60.0f);
-    currentGates.resize(sz, 0);
-    currentVelocities.resize(sz, 0.0f);
-    currentDurations.resize(sz, 0.0f);
-    noteDurationsMs.resize(sz, 100);
-    noteStartTimes.resize(sz, 0);
-    stepVelocities.resize(sz, 0.0f);
-    stepGates.resize(sz, false);
-    deviationValues.resize(sz, 0.0f);
+	int sz = seqSize;
+	currentPitches.resize(sz, 60.0f);
+	currentGates.resize(sz, 0);
+	currentVelocities.resize(sz, 0.0f);
+	currentDurations.resize(sz, 0.0f);
+	noteDurationsMs.resize(sz, 100);
+	noteStartTimes.resize(sz, 0);
+	stepVelocities.resize(sz, 0.0f);
+	stepGates.resize(sz, false);
+	deviationValues.resize(sz, 0.0f);
 
-    rebuildExpandedScale();
-    rebuildDeviations();
-    rebuildPitchSequence();
-    rebuildEuclideanOutputs();
+	rebuildExpandedScale();
+	rebuildDeviations();
+	rebuildPitchSequence();
+	rebuildEuclideanOutputs();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1289,70 +1294,70 @@ void polyphonicArpeggiator::drawPatternDisplay() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::drawEuclideanDisplay() {
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    ImVec2 p = ImGui::GetCursorScreenPos();
-    float width = guiWidth.get();
-    float height = euclideanHeight.get();
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	ImVec2 p = ImGui::GetCursorScreenPos();
+	float width = guiWidth.get();
+	float height = euclideanHeight.get();
 
-    ImGui::InvisibleButton("##euclidean", ImVec2(width, height));
+	ImGui::InvisibleButton("##euclidean", ImVec2(width, height));
 
-    drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(30, 30, 30, 255));
-    drawList->AddRect(p, ImVec2(p.x + width, p.y + height), IM_COL32(80, 80, 80, 255));
+	drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(30, 30, 30, 255));
+	drawList->AddRect(p, ImVec2(p.x + width, p.y + height), IM_COL32(80, 80, 80, 255));
 
-    float rowHeight = height / 3.0f;
+	float rowHeight = height / 3.0f;
 
-    // Row 1: Gate euclidean
-    {
-        int len = std::max(1, (int)eucLen);
-        float stepW = width / len;
-        int eucPos = currentStep % len;
-        for(int i = 0; i < len && i < (int)euclideanPattern.size(); i++) {
-            float x = p.x + i * stepW;
-            if(euclideanPattern[i]) {
-                drawList->AddRectFilled(ImVec2(x + 1, p.y + 2),
-                    ImVec2(x + stepW - 1, p.y + rowHeight - 2),
-                    IM_COL32(200, 100, 100, 255));
-            }
-            if(i == eucPos) {
-                drawList->AddRect(ImVec2(x, p.y + 1),
-                    ImVec2(x + stepW, p.y + rowHeight - 1),
-                    IM_COL32(255, 255, 200, 200), 0.0f, 0, 2.0f);
-            }
-        }
-        drawList->AddText(ImVec2(p.x + 2, p.y + 2), IM_COL32(255, 255, 255, 180), "Gates");
-    }
+	// Row 1: Gate euclidean
+	{
+		int len = std::max(1, (int)eucLen);
+		float stepW = width / len;
+		int eucPos = currentStep % len;
+		for(int i = 0; i < len && i < (int)euclideanPattern.size(); i++) {
+			float x = p.x + i * stepW;
+			if(euclideanPattern[i]) {
+				drawList->AddRectFilled(ImVec2(x + 1, p.y + 2),
+					ImVec2(x + stepW - 1, p.y + rowHeight - 2),
+					IM_COL32(200, 100, 100, 255));
+			}
+			if(i == eucPos) {
+				drawList->AddRect(ImVec2(x, p.y + 1),
+					ImVec2(x + stepW, p.y + rowHeight - 1),
+					IM_COL32(255, 255, 200, 200), 0.0f, 0, 2.0f);
+			}
+		}
+		drawList->AddText(ImVec2(p.x + 2, p.y + 2), IM_COL32(255, 255, 255, 180), "Gates");
+	}
 
-    // Row 2: Accent euclidean
-    {
-        float rowY = p.y + rowHeight;
-        int len = std::max(1, (int)eucAccLen);
-        float stepW = width / len;
-        for(int i = 0; i < len && i < (int)euclideanAccents.size(); i++) {
-            float x = p.x + i * stepW;
-            if(euclideanAccents[i]) {
-                drawList->AddRectFilled(ImVec2(x + 1, rowY + 2),
-                    ImVec2(x + stepW - 1, rowY + rowHeight - 2),
-                    IM_COL32(100, 200, 100, 255));
-            }
-        }
-        drawList->AddText(ImVec2(p.x + 2, rowY + 2), IM_COL32(255, 255, 255, 180), "Accents");
-    }
+	// Row 2: Accent euclidean
+	{
+		float rowY = p.y + rowHeight;
+		int len = std::max(1, (int)eucAccLen);
+		float stepW = width / len;
+		for(int i = 0; i < len && i < (int)euclideanAccents.size(); i++) {
+			float x = p.x + i * stepW;
+			if(euclideanAccents[i]) {
+				drawList->AddRectFilled(ImVec2(x + 1, rowY + 2),
+					ImVec2(x + stepW - 1, rowY + rowHeight - 2),
+					IM_COL32(100, 200, 100, 255));
+			}
+		}
+		drawList->AddText(ImVec2(p.x + 2, rowY + 2), IM_COL32(255, 255, 255, 180), "Accents");
+	}
 
-    // Row 3: Duration euclidean
-    {
-        float rowY = p.y + 2 * rowHeight;
-        int len = std::max(1, (int)eucDurLen);
-        float stepW = width / len;
-        for(int i = 0; i < len && i < (int)euclideanDurations.size(); i++) {
-            float x = p.x + i * stepW;
-            if(euclideanDurations[i]) {
-                drawList->AddRectFilled(ImVec2(x + 1, rowY + 2),
-                    ImVec2(x + stepW - 1, rowY + rowHeight - 2),
-                    IM_COL32(100, 100, 200, 255));
-            }
-        }
-        drawList->AddText(ImVec2(p.x + 2, rowY + 2), IM_COL32(255, 255, 255, 180), "Duration");
-    }
+	// Row 3: Duration euclidean
+	{
+		float rowY = p.y + 2 * rowHeight;
+		int len = std::max(1, (int)eucDurLen);
+		float stepW = width / len;
+		for(int i = 0; i < len && i < (int)euclideanDurations.size(); i++) {
+			float x = p.x + i * stepW;
+			if(euclideanDurations[i]) {
+				drawList->AddRectFilled(ImVec2(x + 1, rowY + 2),
+					ImVec2(x + stepW - 1, rowY + rowHeight - 2),
+					IM_COL32(100, 100, 200, 255));
+			}
+		}
+		drawList->AddText(ImVec2(p.x + 2, rowY + 2), IM_COL32(255, 255, 255, 180), "Duration");
+	}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1393,93 +1398,93 @@ void polyphonicArpeggiator::drawVelocityDisplay() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::drawSnapshotSlots() {
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    ImVec2 p = ImGui::GetCursorScreenPos();
-    float width = guiWidth.get();
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	ImVec2 p = ImGui::GetCursorScreenPos();
+	float width = guiWidth.get();
 
-    float slotSize = width / 8.0f;
-    float height = slotSize * 2.0f;
+	float slotSize = width / 8.0f;
+	float height = slotSize * 2.0f;
 
-    ImGui::InvisibleButton("##Snapshots", ImVec2(width, height));
-    bool isActive = ImGui::IsItemActive();
-    ImVec2 mouse = ImGui::GetIO().MousePos;
-    bool leftClick = ImGui::IsMouseClicked(0);
-    bool rightClick = ImGui::IsMouseClicked(1);
-    bool shift = ImGui::GetIO().KeyShift;
-    bool ctrl = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;  // Ctrl or Cmd
+	ImGui::InvisibleButton("##Snapshots", ImVec2(width, height));
+	bool isActive = ImGui::IsItemActive();
+	ImVec2 mouse = ImGui::GetIO().MousePos;
+	bool leftClick = ImGui::IsMouseClicked(0);
+	bool rightClick = ImGui::IsMouseClicked(1);
+	bool shift = ImGui::GetIO().KeyShift;
+	bool ctrl = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;  // Ctrl or Cmd
 
-    // Background
-    drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(25, 25, 25, 255));
-    drawList->AddRect(p, ImVec2(p.x + width, p.y + height), IM_COL32(80, 80, 80, 255));
+	// Background
+	drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(25, 25, 25, 255));
+	drawList->AddRect(p, ImVec2(p.x + width, p.y + height), IM_COL32(80, 80, 80, 255));
 
-    for(int i = 0; i < 16; i++) {
-        int row = i / 8;
-        int column = i % 8;
-        ImVec2 slotPos = ImVec2(p.x + column * slotSize, p.y + row * slotSize);
-        ImVec2 slotMax = ImVec2(slotPos.x + slotSize - 2, slotPos.y + slotSize - 2);
+	for(int i = 0; i < 16; i++) {
+		int row = i / 8;
+		int column = i % 8;
+		ImVec2 slotPos = ImVec2(p.x + column * slotSize, p.y + row * slotSize);
+		ImVec2 slotMax = ImVec2(slotPos.x + slotSize - 2, slotPos.y + slotSize - 2);
 
-        bool hasData = snapshotSlots[i].hasData;
-        bool hovered = (mouse.x >= slotPos.x && mouse.x < slotMax.x &&
-                       mouse.y >= slotPos.y && mouse.y < slotMax.y);
+		bool hasData = snapshotSlots[i].hasData;
+		bool hovered = (mouse.x >= slotPos.x && mouse.x < slotMax.x &&
+					   mouse.y >= slotPos.y && mouse.y < slotMax.y);
 
-        if(hovered && isActive) {
-            if(leftClick) {
-                if(shift) {
-                    storeToSlot(i);
-                } else {
-                    recallSlot(i);
-                }
-            } else if(rightClick && hasData) {
-                deleteSnapshotFromDisk(i);
-            }
-        }
+		if(hovered && isActive) {
+			if(leftClick) {
+				if(shift) {
+					storeToSlot(i);
+				} else {
+					recallSlot(i);
+				}
+			} else if(rightClick && hasData) {
+				deleteSnapshotFromDisk(i);
+			}
+		}
 
-        // Determine color
-        ImU32 slotColor;
-        if(i == activeSnapshotSlot) {
-            slotColor = IM_COL32(180, 220, 255, 255);  // Active slot - light blue
-        } else if(hasData) {
-            slotColor = IM_COL32(100, 150, 180, 255);  // Has data - blue
-        } else {
-            slotColor = IM_COL32(50, 50, 50, 255);     // Empty - dark gray
-        }
+		// Determine color
+		ImU32 slotColor;
+		if(i == activeSnapshotSlot) {
+			slotColor = IM_COL32(180, 220, 255, 255);  // Active slot - light blue
+		} else if(hasData) {
+			slotColor = IM_COL32(100, 150, 180, 255);  // Has data - blue
+		} else {
+			slotColor = IM_COL32(50, 50, 50, 255);     // Empty - dark gray
+		}
 
-        // Brighten on hover
-        if(hovered) {
-            int r = (int)(slotColor & 0xFF) + 30;
-            int g = (int)((slotColor >> 8) & 0xFF) + 30;
-            int b = (int)((slotColor >> 16) & 0xFF) + 30;
-            slotColor = IM_COL32(std::min(r, 255), std::min(g, 255), std::min(b, 255), 255);
-        }
+		// Brighten on hover
+		if(hovered) {
+			int r = (int)(slotColor & 0xFF) + 30;
+			int g = (int)((slotColor >> 8) & 0xFF) + 30;
+			int b = (int)((slotColor >> 16) & 0xFF) + 30;
+			slotColor = IM_COL32(std::min(r, 255), std::min(g, 255), std::min(b, 255), 255);
+		}
 
-        drawList->AddRectFilled(slotPos, slotMax, slotColor);
-        drawList->AddRect(slotPos, slotMax, IM_COL32(100, 100, 100, 200));
+		drawList->AddRectFilled(slotPos, slotMax, slotColor);
+		drawList->AddRect(slotPos, slotMax, IM_COL32(100, 100, 100, 200));
 
-        // Draw slot number
-        char buf[8];
-        sprintf(buf, "%d", i + 1);
-        drawList->AddText(ImVec2(slotPos.x + 3, slotPos.y + 3), IM_COL32(255, 255, 255, 200), buf);
+		// Draw slot number
+		char buf[8];
+		sprintf(buf, "%d", i + 1);
+		drawList->AddText(ImVec2(slotPos.x + 3, slotPos.y + 3), IM_COL32(255, 255, 255, 200), buf);
 
-        // Show "S" indicator when shift-hovering
-        if(shift && hovered) {
-            drawList->AddText(ImVec2(slotPos.x + slotSize - 15, slotPos.y + slotSize - 15),
-                            IM_COL32(255, 100, 100, 255), "S");
-        }
-        // Show "X" indicator when right-click-hovering on filled slot
-        else if(hovered && hasData) {
-            drawList->AddText(ImVec2(slotPos.x + slotSize - 15, slotPos.y + slotSize - 15),
-                            IM_COL32(255, 80, 80, 180), "X");
-        }
-    }
+		// Show "S" indicator when shift-hovering
+		if(shift && hovered) {
+			drawList->AddText(ImVec2(slotPos.x + slotSize - 15, slotPos.y + slotSize - 15),
+							IM_COL32(255, 100, 100, 255), "S");
+		}
+		// Show "X" indicator when right-click-hovering on filled slot
+		else if(hovered && hasData) {
+			drawList->AddText(ImVec2(slotPos.x + slotSize - 15, slotPos.y + slotSize - 15),
+							IM_COL32(255, 80, 80, 180), "X");
+		}
+	}
 
-    // Info text
+	// Info text
 	/*
-    const char* info;
-    if(shift) {
-        info = "Shift+Click: Store | Right-Click: Delete";
-    } else {
-        info = "Click: Recall | Right-Click: Delete";
-    }
-    drawList->AddText(ImVec2(p.x + 4, p.y + height - 16), IM_COL32(180, 180, 180, 200), info);
+	const char* info;
+	if(shift) {
+		info = "Shift+Click: Store | Right-Click: Delete";
+	} else {
+		info = "Click: Recall | Right-Click: Delete";
+	}
+	drawList->AddText(ImVec2(p.x + 4, p.y + height - 16), IM_COL32(180, 180, 180, 200), info);
 	 */
 }
