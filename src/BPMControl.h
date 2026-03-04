@@ -10,6 +10,8 @@ public:
     BPMControl() : ofxOceanodeNodeModel("BPM Control") {
         lastBPM=0;
         parentContainer = nullptr;
+        updatingBpm = false;
+        updateBpmInNextCycle = false;
 
         addParameter(phaseReset.set("PhaseRst"));
         addParameter(bpm.set("BPM", 120.0f, 1.0f, 999.9f));
@@ -37,24 +39,53 @@ public:
 
         setupOscSender(port);
     }
+    
+    void update(ofEventArgs &a) override{
+        if(scopedMode && updateBpmInNextCycle){
+            if(parentContainer == nullptr) return;
+            updatingBpm = true;
+            parentContainer->setBpm(bpm);
+            updatingBpm = false;
+            updateBpmInNextCycle = false;
+        }
+    }
 
     void setContainer(ofxOceanodeContainer* container) override {
         ofxOceanodeNodeModel::setContainer(container);
         parentContainer = container;
+        if(scopedMode){
+            updatingBpm = true;
+            parentContainer->setBpm(bpm);
+            updatingBpm = false;
+        }
     }
 
     void resetPhase() override
     {
         phaseHasReset.trigger();
     }
+    
+    void presetRecallBeforeSettingParameters(ofJson &json) override{
+        deserializeParameter(json, scopedMode);
+    }
+    
+    //Listens for setBpm messages from container discard is called by itself
+    void setBpm(float _bpm) override{
+        if(updatingBpm) return;
+        if(scopedMode) updateBpmInNextCycle = true;
+    }
+    
 private:
     void setupOscSender(int newPort){
         sender.setup("localhost", newPort);
     }
 
     void applyBPM(float newBpm){
-        if(scopedMode && parentContainer){
+        if(scopedMode){
+            if(parentContainer == nullptr) return;
+            updatingBpm = true;
             parentContainer->setBpm(newBpm);
+            updatingBpm = false;
         }else{
             ofxOscMessage m;
             m.setAddress("/bpm");
@@ -64,7 +95,8 @@ private:
     }
 
     void applyPhaseReset(){
-        if(scopedMode && parentContainer){
+        if(scopedMode){
+            if(parentContainer == nullptr) return;
             parentContainer->resetPhase();
         }else{
             ofxOscMessage m;
@@ -87,6 +119,9 @@ private:
 
     float lastBPM;
     ofxOceanodeContainer* parentContainer;
+    
+    bool updatingBpm;
+    bool updateBpmInNextCycle;
 };
 
 #endif /* BPMControl_h */
