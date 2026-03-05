@@ -173,7 +173,9 @@ void rotoControlConfig::setup() {
 	}
 	
 	addInspectorParameter(retriggerMidiBounds.set("Retrigger MIDI Bounds", false));
-
+	
+	// Add ACTIVE toggle at the top - NOT saved in presets
+	addParameter(deviceActive.set("ACTIVE", false));
 	
 	// Page selection
 	addParameter(selectedPage.set("Page", 0, 0, NUM_PAGES - 1));
@@ -298,7 +300,10 @@ void rotoControlConfig::setup() {
 									if (setupIndex >= 0 && setupIndex < MAX_SETUPS && idx >= 0 && idx < TOTAL_KNOBS) {
 										allKnobConfigs[setupIndex][idx].color = i;
 										storeCurrentKnobSettings();
-										applyKnobConfiguration(idx);
+										// Only apply to device if active
+										if (deviceActive.get()) {
+											applyKnobConfiguration(idx);
+										}
 									}
 								}
 								if (isSelected) ImGui::SetItemDefaultFocus();
@@ -428,7 +433,10 @@ void rotoControlConfig::setup() {
 									if (setupIndex >= 0 && setupIndex < MAX_SETUPS && idx >= 0 && idx < TOTAL_SWITCHES) {
 										allSwitchConfigs[setupIndex][idx].color = i;
 										storeCurrentSwitchSettings();
-										applySwitchConfiguration(idx);
+										// Only apply to device if active
+										if (deviceActive.get()) {
+											applySwitchConfiguration(idx);
+										}
 									}
 								}
 								if (isSelected) ImGui::SetItemDefaultFocus();
@@ -509,62 +517,62 @@ void rotoControlConfig::setup() {
 	
 	// Listen for knob parameter changes
 	listeners.push(knobName.newListener([this](string &){
-		if (ignoreListeners || isLoadingPreset) return;
+		if (ignoreListeners || !deviceActive.get()) return;
 		storeCurrentKnobSettings();
 		applyKnobConfiguration(getAbsoluteKnobIndex());
 	}));
 	
 	listeners.push(knobMidiChannel.newListener([this](int &){
-		if (ignoreListeners || isLoadingPreset) return;
+		if (ignoreListeners || !deviceActive.get()) return;
 		storeCurrentKnobSettings();
 		applyKnobConfiguration(getAbsoluteKnobIndex());
 	}));
 	
 	listeners.push(knobMidiCC.newListener([this](int &){
-		if (ignoreListeners || isLoadingPreset) return;
+		if (ignoreListeners || !deviceActive.get()) return;
 		storeCurrentKnobSettings();
 		applyKnobConfiguration(getAbsoluteKnobIndex());
 	}));
 	
 	listeners.push(knobSteps.newListener([this](int &){
-		if (ignoreListeners || isLoadingPreset) return;
+		if (ignoreListeners || !deviceActive.get()) return;
 		storeCurrentKnobSettings();
 		applyKnobConfiguration(getAbsoluteKnobIndex());
 	}));
 	
 	listeners.push(knobIndentPos1.newListener([this](int &){
-		if (ignoreListeners || isLoadingPreset) return;
+		if (ignoreListeners || !deviceActive.get()) return;
 		storeCurrentKnobSettings();
 		applyKnobConfiguration(getAbsoluteKnobIndex());
 	}));
 	
 	listeners.push(knobIndentPos2.newListener([this](int &){
-		if (ignoreListeners || isLoadingPreset) return;
+		if (ignoreListeners || !deviceActive.get()) return;
 		storeCurrentKnobSettings();
 		applyKnobConfiguration(getAbsoluteKnobIndex());
 	}));
 	
 	// Listen for switch parameter changes
 	listeners.push(switchName.newListener([this](string &){
-		if (ignoreListeners || isLoadingPreset) return;
+		if (ignoreListeners || !deviceActive.get()) return;
 		storeCurrentSwitchSettings();
 		applySwitchConfiguration(getAbsoluteSwitchIndex());
 	}));
 	
 	listeners.push(switchMomentary.newListener([this](bool &){
-		if (ignoreListeners || isLoadingPreset) return;
+		if (ignoreListeners || !deviceActive.get()) return;
 		storeCurrentSwitchSettings();
 		applySwitchConfiguration(getAbsoluteSwitchIndex());
 	}));
 	
 	listeners.push(switchMidiChannel.newListener([this](int &){
-		if (ignoreListeners || isLoadingPreset) return;
+		if (ignoreListeners || !deviceActive.get()) return;
 		storeCurrentSwitchSettings();
 		applySwitchConfiguration(getAbsoluteSwitchIndex());
 	}));
 	
 	listeners.push(switchMidiCC.newListener([this](int &){
-		if (ignoreListeners || isLoadingPreset) return;
+		if (ignoreListeners || !deviceActive.get()) return;
 		storeCurrentSwitchSettings();
 		applySwitchConfiguration(getAbsoluteSwitchIndex());
 	}));
@@ -594,6 +602,12 @@ void rotoControlConfig::update(ofEventArgs &args) {
 }
 
 void rotoControlConfig::setupSerialPort() {
+	// Don't reconnect if device is not active
+	if (!deviceActive.get()) {
+		ofLogNotice("rotoControlConfig") << "Skipping serial port setup - device not active";
+		return;
+	}
+	
 	// If we already had a serial connection, close it first
 	if(serialConnected) {
 		serial.close();
@@ -1075,14 +1089,17 @@ void rotoControlConfig::setHardwarePage(int page) {
 }
 
 void rotoControlConfig::onPageChanged() {
+	// Don't send to device if not active
+	if (!deviceActive.get()) return;
+	
 	// Update hardware page when GUI page changes
 	setHardwarePage(selectedPage);
 	
 	// Only sync bound parameters if retrigger option is enabled
-		if (retriggerMidiBounds.get()) {
-			ofSleepMillis(50); // Give page change time to complete
-			syncBoundParametersToHardware();
-		}
+	if (retriggerMidiBounds.get()) {
+		ofSleepMillis(50); // Give page change time to complete
+		syncBoundParametersToHardware();
+	}
 }
 
 int rotoControlConfig::getAbsoluteKnobIndex() {
@@ -1107,6 +1124,9 @@ void rotoControlConfig::updateSelectedKnobParameters() {
 		ofLogError("rotoControlConfig") << "Invalid knob index: " << index;
 		return;
 	}
+	
+	// Save current listener state and temporarily disable
+	bool wasIgnoringListeners = ignoreListeners;
 	ignoreListeners = true;
 	
 	auto &kc = allKnobConfigs[selectedSetupIndex.get()][index];
@@ -1117,7 +1137,8 @@ void rotoControlConfig::updateSelectedKnobParameters() {
 	knobIndentPos1 = kc.indentPos1;
 	knobIndentPos2 = kc.indentPos2;
 	
-	ignoreListeners = false;
+	// Restore previous listener state
+	ignoreListeners = wasIgnoringListeners;
 }
 
 void rotoControlConfig::updateSelectedSwitchParameters() {
@@ -1135,6 +1156,8 @@ void rotoControlConfig::updateSelectedSwitchParameters() {
 		return;
 	}
 	
+	// Save current listener state and temporarily disable
+	bool wasIgnoringListeners = ignoreListeners;
 	ignoreListeners = true;
 	
 	auto &sc = allSwitchConfigs[selectedSetupIndex.get()][index];
@@ -1143,7 +1166,8 @@ void rotoControlConfig::updateSelectedSwitchParameters() {
 	switchMidiCC = sc.midiCC;
 	switchMomentary = sc.momentary;
 	
-	ignoreListeners = false;
+	// Restore previous listener state
+	ignoreListeners = wasIgnoringListeners;
 }
 
 void rotoControlConfig::storeCurrentKnobSettings() {
@@ -1384,6 +1408,12 @@ void rotoControlConfig::refreshAvailableSetups() {
 		return;
 	}
 	
+	// Don't refresh if device is not active
+	if (!deviceActive.get()) {
+		ofLogNotice("rotoControlConfig") << "Skipping setup refresh - device not active";
+		return;
+	}
+	
 	ofLogNotice("rotoControlConfig") << "Refreshing available setups...";
 	
 	// Query each setup to see if it exists and get its name
@@ -1399,6 +1429,12 @@ void rotoControlConfig::refreshAvailableSetups() {
 void rotoControlConfig::getCurrentSetup() {
 	if (!serialConnected) {
 		ofLogWarning("rotoControlConfig") << "Cannot get current setup: Serial device not connected";
+		return;
+	}
+	
+	// Don't query if device is not active
+	if (!deviceActive.get()) {
+		ofLogNotice("rotoControlConfig") << "Skipping getCurrentSetup - device not active";
 		return;
 	}
 	
@@ -1473,23 +1509,26 @@ void rotoControlConfig::loadSelectedSetup() {
 	
 	ofLogNotice("rotoControlConfig") << "Loading setup slot: " << setupIndex;
 	
-	// Enviem SET SETUP per indicar al dispositiu que canviï de slot
-	setCurrentSetup(static_cast<unsigned char>(setupIndex));
-	ofSleepMillis(100); // Deixem temps al dispositiu per processar
-	
-	// Demanem el CURRENT SETUP per refrescar nom i existència
-	std::vector<unsigned char> payload;
-	payload.push_back(static_cast<unsigned char>(setupIndex));
-	sendSerialCommand(CMD_MIDI, 0x02 /* GET_SETUP */, payload);
+	// Don't send to device if not active
+	if (deviceActive.get()) {
+		// Enviem SET SETUP per indicar al dispositiu que canviï de slot
+		setCurrentSetup(static_cast<unsigned char>(setupIndex));
+		ofSleepMillis(100); // Deixem temps al dispositiu per processar
+		
+		// Demanem el CURRENT SETUP per refrescar nom i existència
+		std::vector<unsigned char> payload;
+		payload.push_back(static_cast<unsigned char>(setupIndex));
+		sendSerialCommand(CMD_MIDI, 0x02 /* GET_SETUP */, payload);
+	}
 	
 	updateSelectedKnobParameters();
 	updateSelectedSwitchParameters();
 	
-	// Only sync bound parameters if retrigger option is enabled
-		if (retriggerMidiBounds.get()) {
-			ofSleepMillis(50); // Give setup change time to complete
-			syncBoundParametersToHardware();
-		}
+	// Only sync bound parameters if retrigger option is enabled AND device is active
+	if (retriggerMidiBounds.get() && deviceActive.get()) {
+		ofSleepMillis(50); // Give setup change time to complete
+		syncBoundParametersToHardware();
+	}
 }
 
 
@@ -1626,7 +1665,11 @@ void rotoControlConfig::presetRecallAfterSettingParameters(ofJson &json) {
 	// 4) Update the UI immediately - NO BLOCKING OPERATIONS HERE
 	updateSelectedKnobParameters();
 	updateSelectedSwitchParameters();
-	setHardwarePage(selectedPage.get());
+	
+	// Only update hardware page if device is active
+	if (deviceActive.get()) {
+		setHardwarePage(selectedPage.get());
+	}
 	
 	// 5) REMOVED ALL BLOCKING SERIAL OPERATIONS
 	// The threaded hardware configuration will handle this instead
@@ -1691,15 +1734,15 @@ void rotoControlConfig::presetSave(ofJson &json) {
 }
 
 void rotoControlConfig::presetWillBeLoaded() {
-	// Set flag to prevent sending configuration to device during preset load
-	isLoadingPreset = true;
-	ofLogNotice("rotoControlConfig") << "Preset loading started - configuration sending disabled";
+	// Temporarily disable listeners during preset loading
+	ignoreListeners = true;
+	ofLogNotice("rotoControlConfig") << "Preset loading started";
 }
 
 void rotoControlConfig::presetHasLoaded() {
-	// Clear flag to allow sending configuration to device after preset load
-	isLoadingPreset = false;
-	ofLogNotice("rotoControlConfig") << "Preset loading completed - configuration sending enabled";
+	// Re-enable listeners after preset loading
+	ignoreListeners = false;
+	ofLogNotice("rotoControlConfig") << "Preset loading completed";
 }
 
 void rotoControlConfig::setContainer(ofxOceanodeContainer* container) {

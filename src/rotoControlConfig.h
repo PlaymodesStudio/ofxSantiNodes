@@ -117,6 +117,10 @@ private:
 	// MIDI retrigger option
 	ofParameter<bool> retriggerMidiBounds;
 	
+	// Active toggle - controls whether node communicates with device
+	// NOT saved in presets - must be manually enabled after loading
+	ofParameter<bool> deviceActive;
+	
 	// Threading for non-blocking serial operations
 	std::thread configThread;
 	std::atomic<bool> isConfiguring{false};
