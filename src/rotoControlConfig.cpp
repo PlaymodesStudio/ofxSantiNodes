@@ -59,42 +59,45 @@ void rotoControlConfig::setup() {
 		allSwitchConfigs[s].resize(TOTAL_SWITCHES);
 		
 		// Calculate MIDI channel for this setup (1-16)
-		// Every 4 setups get a new channel: setups 0-3=ch1, 4-7=ch2, etc.
-		int midiChannel = (s / 4) + 1;
+		// With 4 pages (64 CCs per setup), we can fit 2 setups per MIDI channel
+		// Setups 0-1=ch1, 2-3=ch2, 4-5=ch3, etc. Maximum 32 setups (16 channels × 2)
+		int midiChannel = (s / 2) + 1;
 		
 		// Calculate base CC for this setup within its channel
-		// Each setup gets 32 CCs: setup 0=CCs 0-31, setup 1=CCs 32-63, etc.
-		// But within each channel, we cycle: setup 0&4&8...=CCs 0-31, setup 1&5&9...=CCs 32-63
-		int baseCCForSetup = (s % 4) * 32;
+		// With 4 pages: Each setup uses 64 CCs (4 pages × 16 CCs per page)
+		// Setup 0 uses CCs 0-63, Setup 1 uses CCs 64-127
+		// This means we can only have 2 setups per MIDI channel before running out of CCs
+		// So: setups 0-1 on channel 1, setups 2-3 on channel 2, etc.
+		int baseCCForSetup = (s % 2) * 64;
 		
-		// Initialize knobs (32 total: 16 per page)
+		// Initialize knobs (64 total: 8 per page × 4 pages)
 		for (int i = 0; i < TOTAL_KNOBS; i++) {
-			int page = i / NUM_KNOBS_PER_PAGE;           // Which page (0-1)
+			int page = i / NUM_KNOBS_PER_PAGE;           // Which page (0-3)
 			int knobOnPage = i % NUM_KNOBS_PER_PAGE;     // Which knob on that page (0-7)
 			
-			// Page 0: knobs get CCs 0-7, Page 1: knobs get CCs 16-23
-			int pageOffset = page * 16;                  // Page 0=0, Page 1=16
+			// Page 0: knobs get CCs 0-7, Page 1: CCs 16-23, Page 2: CCs 32-39, Page 3: CCs 48-55
+			int pageOffset = page * 16;                  // Page 0=0, Page 1=16, Page 2=32, Page 3=48
 			int midiCC = baseCCForSetup + pageOffset + knobOnPage;
 			
-			//allKnobConfigs[s][i].name = "Knob " + ofToString(knobOnPage + 1);
 			allKnobConfigs[s][i].name = "";
 			allKnobConfigs[s][i].color = 70;
 			allKnobConfigs[s][i].midiChannel = midiChannel;
 			allKnobConfigs[s][i].midiCC = midiCC;
 			allKnobConfigs[s][i].steps = 0;
+			allKnobConfigs[s][i].indentPos1 = 0xFF;
+			allKnobConfigs[s][i].indentPos2 = 0xFF;
 			allKnobConfigs[s][i].configured = false;
 		}
 		
-		// Initialize switches (32 total: 16 per page)
+		// Initialize switches (64 total: 8 per page × 4 pages)
 		for (int i = 0; i < TOTAL_SWITCHES; i++) {
-			int page = i / NUM_SWITCHES_PER_PAGE;        // Which page (0-1)
+			int page = i / NUM_SWITCHES_PER_PAGE;        // Which page (0-3)
 			int switchOnPage = i % NUM_SWITCHES_PER_PAGE; // Which switch on that page (0-7)
 			
-			// Page 0: switches get CCs 8-15, Page 1: switches get CCs 24-31
-			int pageOffset = page * 16;                  // Page 0=0, Page 1=16
+			// Page 0: switches get CCs 8-15, Page 1: CCs 24-31, Page 2: CCs 40-47, Page 3: CCs 56-63
+			int pageOffset = page * 16;                  // Page 0=0, Page 1=16, Page 2=32, Page 3=48
 			int midiCC = baseCCForSetup + pageOffset + 8 + switchOnPage;
 			
-			//allSwitchConfigs[s][i].name = "Switch " + ofToString(switchOnPage + 1);
 			allSwitchConfigs[s][i].name = "";
 			allSwitchConfigs[s][i].momentary = true;
 			allSwitchConfigs[s][i].color = 70;
@@ -187,6 +190,8 @@ void rotoControlConfig::setup() {
 	addParameter(knobMidiChannel.set("K MIDI Ch", 1, 1, 16));
 	addParameter(knobMidiCC.set("K MIDI CC", 0, 0, 127));
 	addParameter(knobSteps.set("K Steps", 0, 0, 10));
+	addParameter(knobIndentPos1.set("K Indent 1", 255, 0, 255));
+	addParameter(knobIndentPos2.set("K Indent 2", 255, 0, 255));
 	
 	// Knob color dropdown at end of knob block
 	addCustomRegion(
@@ -437,23 +442,34 @@ void rotoControlConfig::setup() {
 					);
 	
 	// Add configuration save/load controls at the end
-	   addCustomRegion(
-		   ofParameter<std::function<void()>>().set("", [](){ drawThickSeparator(); }),
-		   ofParameter<std::function<void()>>().set("", [](){ drawThickSeparator(); })
-	   );
-	   
-		addParameter(configStatus.set("Status", "Ready"));
-	   addParameter(saveConfigButton.set("Save Config"));
-	   addParameter(loadConfigButton.set("Load Config"));
-	   
-	   // Setup listeners for save/load buttons
-	   listeners.push(saveConfigButton.newListener([this](void){
-		   saveConfigurationFile();
-	   }));
-	   
-	   listeners.push(loadConfigButton.newListener([this](void){
-		   loadConfigurationFile();
-	   }));
+	addCustomRegion(
+		ofParameter<std::function<void()>>().set("", [](){ drawThickSeparator(); }),
+		ofParameter<std::function<void()>>().set("", [](){ drawThickSeparator(); })
+	);
+	
+	addParameter(configStatus.set("Status", "Ready"));
+	addParameter(saveConfigButton.set("Save Config"));
+	addParameter(loadConfigButton.set("Load Config"));
+	addParameter(sendConfigToDevice.set("SEND"));
+	addParameter(receiveConfigFromDevice.set("RECEIVE"));
+	
+	// Setup listeners for save/load buttons
+	listeners.push(saveConfigButton.newListener([this](void){
+		saveConfigurationFile();
+	}));
+	
+	listeners.push(loadConfigButton.newListener([this](void){
+		loadConfigurationFile();
+	}));
+	
+	// Setup listeners for send/receive triggers
+	listeners.push(sendConfigToDevice.newListener([this](void){
+		sendCurrentConfigurationToDevice();
+	}));
+	
+	listeners.push(receiveConfigFromDevice.newListener([this](void){
+		receiveCurrentConfigurationFromDevice();
+	}));
 	
 	
 	// Setup name change listener
@@ -493,50 +509,62 @@ void rotoControlConfig::setup() {
 	
 	// Listen for knob parameter changes
 	listeners.push(knobName.newListener([this](string &){
-		if (ignoreListeners) return;
+		if (ignoreListeners || isLoadingPreset) return;
 		storeCurrentKnobSettings();
 		applyKnobConfiguration(getAbsoluteKnobIndex());
 	}));
 	
 	listeners.push(knobMidiChannel.newListener([this](int &){
-		if (ignoreListeners) return;
+		if (ignoreListeners || isLoadingPreset) return;
 		storeCurrentKnobSettings();
 		applyKnobConfiguration(getAbsoluteKnobIndex());
 	}));
 	
 	listeners.push(knobMidiCC.newListener([this](int &){
-		if (ignoreListeners) return;
+		if (ignoreListeners || isLoadingPreset) return;
 		storeCurrentKnobSettings();
 		applyKnobConfiguration(getAbsoluteKnobIndex());
 	}));
 	
 	listeners.push(knobSteps.newListener([this](int &){
-		if (ignoreListeners) return;
+		if (ignoreListeners || isLoadingPreset) return;
+		storeCurrentKnobSettings();
+		applyKnobConfiguration(getAbsoluteKnobIndex());
+	}));
+	
+	listeners.push(knobIndentPos1.newListener([this](int &){
+		if (ignoreListeners || isLoadingPreset) return;
+		storeCurrentKnobSettings();
+		applyKnobConfiguration(getAbsoluteKnobIndex());
+	}));
+	
+	listeners.push(knobIndentPos2.newListener([this](int &){
+		if (ignoreListeners || isLoadingPreset) return;
 		storeCurrentKnobSettings();
 		applyKnobConfiguration(getAbsoluteKnobIndex());
 	}));
 	
 	// Listen for switch parameter changes
 	listeners.push(switchName.newListener([this](string &){
-		if (ignoreListeners) return;
+		if (ignoreListeners || isLoadingPreset) return;
 		storeCurrentSwitchSettings();
 		applySwitchConfiguration(getAbsoluteSwitchIndex());
 	}));
 	
 	listeners.push(switchMomentary.newListener([this](bool &){
-		if (ignoreListeners) return;
+		if (ignoreListeners || isLoadingPreset) return;
 		storeCurrentSwitchSettings();
 		applySwitchConfiguration(getAbsoluteSwitchIndex());
 	}));
 	
 	listeners.push(switchMidiChannel.newListener([this](int &){
-		if (ignoreListeners) return;
+		if (ignoreListeners || isLoadingPreset) return;
 		storeCurrentSwitchSettings();
 		applySwitchConfiguration(getAbsoluteSwitchIndex());
 	}));
 	
 	listeners.push(switchMidiCC.newListener([this](int &){
-		if (ignoreListeners) return;
+		if (ignoreListeners || isLoadingPreset) return;
 		storeCurrentSwitchSettings();
 		applySwitchConfiguration(getAbsoluteSwitchIndex());
 	}));
@@ -697,64 +725,217 @@ void rotoControlConfig::readSerialResponses() {
 				}
 				
 				// ────────────────────────────────────────────────────────────────────
-				// 1b) TRY TO PARSE GET_SETUP reply:
-				//     A5 <RC> <SI> <SN:0D>  (no length field) :contentReference[oaicite:1]{index=1}
+				// 1b) TRY TO PARSE GET_KNOB_CONTROL_CONFIG reply:
+				//     A5 <RC SI CI CM CC CP NA:2 MN:2 MX:2 CN:0D CS HM IP1 IP2 HS SN:10*0D>
+				//     Minimum size without step names: 1+1+1+1+1+1+2+2+2+13+1+1+1+1+1 = 30 bytes
+				// ────────────────────────────────────────────────────────────────────
+				if ((i + 31) <= numBytes) {  // Check for 31 bytes to safely peek at switch-specific fields
+					unsigned char rc = buffer[i + 1];
+					
+					if (rc == RESP_SUCCESS) {
+						unsigned char setupIdx = buffer[i + 2];
+						unsigned char controlIdx = buffer[i + 3];
+						
+						// Validate indices to avoid false positives from GET_SETUP responses
+						// Setup index must be < MAX_SETUPS (64), control index must be < 32
+						if (setupIdx < MAX_SETUPS && controlIdx < 32) {
+							// Distinguish between knob and switch responses by checking the structure
+							// Knobs: CS(26) HM(27) IP1(28) IP2(29) HS(30)
+							// Switches: CS(26) LN(27) LF(28) HM(29) HS(30)
+							// If byte 27 and 28 look like LED colors (0-82) and byte 29 is 0 or 1, it's likely a switch
+							unsigned char byte27 = buffer[i + 27];
+							unsigned char byte28 = buffer[i + 28];
+							unsigned char byte29 = buffer[i + 29];
+							
+							// Heuristic: If byte27 and byte28 are both <= 82 (valid color range)
+							// and byte29 is 0 or 1 (valid switch haptic mode), it's probably a switch response
+							bool looksLikeSwitch = (byte27 <= 82 && byte28 <= 82 && (byte29 == 0 || byte29 == 1));
+							
+							// Only parse as knob if it doesn't look like a switch
+							if (!looksLikeSwitch) {
+								unsigned char controlMode = buffer[i + 4];
+								unsigned char midiChan = buffer[i + 5];
+								unsigned char midiCCParam = buffer[i + 6];
+								// Skip NRPN address (2 bytes) at i+7, i+8
+								unsigned short minVal = (static_cast<unsigned short>(buffer[i + 9]) << 8) | buffer[i + 10];
+								unsigned short maxVal = (static_cast<unsigned short>(buffer[i + 11]) << 8) | buffer[i + 12];
+								
+								// Extract control name (13 bytes)
+								std::string controlName;
+								controlName.reserve(13);
+								for (int j = 0; j < 13; ++j) {
+									unsigned char c = buffer[i + 13 + j];
+									if (c != 0) controlName.push_back(static_cast<char>(c));
+								}
+								
+								unsigned char colorScheme = buffer[i + 26];
+								unsigned char hapticMode = buffer[i + 27];
+								unsigned char indentPos1 = buffer[i + 28];
+								unsigned char indentPos2 = buffer[i + 29];
+								unsigned char hapticSteps = buffer[i + 30];
+								
+								// Update our internal config
+								auto &kc = allKnobConfigs[setupIdx][controlIdx];
+								kc.name = controlName;
+								kc.color = colorScheme;
+								kc.midiChannel = midiChan;
+								kc.midiCC = midiCCParam;
+								kc.steps = (hapticMode == 1) ? hapticSteps : 0; // 1 = KNOB_N_STEP
+								kc.indentPos1 = indentPos1;
+								kc.indentPos2 = indentPos2;
+								kc.configured = true;
+								
+								// If this is the currently selected knob, update GUI
+								if (setupIdx == selectedSetupIndex.get() && controlIdx == getAbsoluteKnobIndex()) {
+									updateSelectedKnobParameters();
+								}
+								
+								ofLogNotice("rotoControlConfig")
+									<< "GET_KNOB_CONTROL_CONFIG: Setup=" << (int)setupIdx
+									<< " Knob=" << (int)controlIdx
+									<< " Name=\"" << controlName << "\""
+									<< " CC=" << (int)midiCCParam;
+								
+								// Calculate total message size and skip
+								int totalSize = 31 + (hapticSteps * 13); // Base + step names
+								if ((i + totalSize) <= numBytes) {
+									i += totalSize - 1;
+									continue;
+								}
+							}
+						}
+					}
+				}
+				
+				// ────────────────────────────────────────────────────────────────────
+				// 1c) TRY TO PARSE GET_SWITCH_CONTROL_CONFIG reply:
+				//     A5 <RC SI CI CM CC CP NA:2 MN:2 MX:2 CN:0D CS LN LF HM HS SN:10*0D>
+				//     Minimum size without step names: 1+1+1+1+1+1+2+2+2+13+1+1+1+1+1 = 31 bytes
+				// ────────────────────────────────────────────────────────────────────
+				if ((i + 31) <= numBytes) {
+					unsigned char rc = buffer[i + 1];
+					
+					if (rc == RESP_SUCCESS) {
+						unsigned char setupIdx = buffer[i + 2];
+						unsigned char controlIdx = buffer[i + 3];
+						
+						// Validate indices to avoid false positives from GET_SETUP responses
+						if (setupIdx < MAX_SETUPS && controlIdx < 32) {
+							unsigned char controlMode = buffer[i + 4];
+							unsigned char midiChan = buffer[i + 5];
+							unsigned char midiCCParam = buffer[i + 6];
+							// Skip NRPN address (2 bytes) at i+7, i+8
+							unsigned short minVal = (static_cast<unsigned short>(buffer[i + 9]) << 8) | buffer[i + 10];
+							unsigned short maxVal = (static_cast<unsigned short>(buffer[i + 11]) << 8) | buffer[i + 12];
+							
+							// Extract control name (13 bytes)
+							std::string controlName;
+							controlName.reserve(13);
+							for (int j = 0; j < 13; ++j) {
+								unsigned char c = buffer[i + 13 + j];
+								if (c != 0) controlName.push_back(static_cast<char>(c));
+							}
+							
+							unsigned char colorScheme = buffer[i + 26];
+							unsigned char ledOnColor = buffer[i + 27];
+							unsigned char ledOffColor = buffer[i + 28];
+							unsigned char hapticMode = buffer[i + 29];
+							unsigned char hapticSteps = buffer[i + 30];
+							
+							// Update our internal config
+							auto &sc = allSwitchConfigs[setupIdx][controlIdx];
+							sc.name = controlName;
+							sc.color = ledOnColor; // Use LED ON color
+							sc.midiChannel = midiChan;
+							sc.midiCC = midiCCParam;
+							sc.momentary = (hapticMode == 0); // 0 = PUSH (momentary), 1 = TOGGLE
+							sc.configured = true;
+							
+							// If this is the currently selected switch, update GUI
+							if (setupIdx == selectedSetupIndex.get() && controlIdx == getAbsoluteSwitchIndex()) {
+								updateSelectedSwitchParameters();
+							}
+							
+							ofLogNotice("rotoControlConfig")
+								<< "GET_SWITCH_CONTROL_CONFIG: Setup=" << (int)setupIdx
+								<< " Switch=" << (int)controlIdx
+								<< " Name=\"" << controlName << "\""
+								<< " CC=" << (int)midiCCParam;
+							
+							// Calculate total message size and skip
+							int totalSize = 31 + (hapticSteps * 13); // Base + step names
+							if ((i + totalSize) <= numBytes) {
+								i += totalSize - 1;
+								continue;
+							}
+						}
+					}
+				}
+				
+				// ────────────────────────────────────────────────────────────────────
+				// 1d) TRY TO PARSE GET_SETUP reply (LAST - most ambiguous):
+				//     A5 <RC> <SI> <SN:0D>  (no length field)
 				//     RC = Response code (00 = SUCCESS)
 				//     SI = Setup index (00–3F)
 				//     SN = 13-byte NULL-terminated ASCII name
 				// ────────────────────────────────────────────────────────────────────
 				// We need at least: [A5][RC][SI] + 13 bytes of name = 1 + 1 + 1 + 13 = 16 bytes
+				// IMPORTANT: This must be checked LAST because it has no length field and could
+				// incorrectly match other response types
 				if ((i + 1 + 1 + 13) < numBytes) {
 					unsigned char rc    = buffer[i + 1];
 					unsigned char slot  = buffer[i + 2];
 					
-					// CRITICAL: Add bounds checking for setup slot
-					if (slot >= MAX_SETUPS) {
-						ofLogError("rotoControlConfig") << "Invalid setup slot received: " << (int)slot << " (max: " << (MAX_SETUPS-1) << ")";
-						i += 1 + 1 + 1 + 13 - 1;
-						continue;
-					}
+					// Only process if this looks like a valid GET_SETUP response:
+					// - RC should be 0x00 (SUCCESS) or a known error code
+					// - Slot should be < MAX_SETUPS
+					// - The data after slot should look like ASCII text (not binary control data)
 					
-					// If the RC is non-zero, it’s an error—skip it (still consume 2 bytes + 13 name bytes)
-					// Otherwise, read the 13-byte name
-					if (rc == RESP_SUCCESS) {
-						std::string nameFromDevice;
-						nameFromDevice.reserve(13);
-						for (int j = 0; j < 13; ++j) {
+					if (slot < MAX_SETUPS && (rc == RESP_SUCCESS || rc < 0x10)) {
+						// Check if the next bytes look like ASCII text (heuristic)
+						bool looksLikeText = true;
+						for (int j = 0; j < 5 && (i + 3 + j) < numBytes; ++j) {
 							unsigned char c = buffer[i + 3 + j];
-							if (c != 0) nameFromDevice.push_back(static_cast<char>(c));
+							// Check if it's printable ASCII or null
+							if (c != 0 && (c < 0x20 || c > 0x7E)) {
+								looksLikeText = false;
+								break;
+							}
 						}
 						
-						// 1) Store into our local array
-						if (slot < availableSetups.size()) {
-							availableSetups[slot].name   = nameFromDevice;
-							availableSetups[slot].exists = true;
-						}
-						
-						// 2) If this is the currently selected slot in the GUI, update the text field
-						if (slot == selectedSetupIndex.get()) {
-							ignoreListeners = true;
-							setupName = nameFromDevice;
-							ignoreListeners = false;
+						if (looksLikeText && rc == RESP_SUCCESS) {
+							std::string nameFromDevice;
+							nameFromDevice.reserve(13);
+							for (int j = 0; j < 13; ++j) {
+								unsigned char c = buffer[i + 3 + j];
+								if (c != 0) nameFromDevice.push_back(static_cast<char>(c));
+							}
 							
-							updateSelectedKnobParameters();
-							updateSelectedSwitchParameters();
+							// 1) Store into our local array
+							if (slot < availableSetups.size()) {
+								availableSetups[slot].name   = nameFromDevice;
+								availableSetups[slot].exists = true;
+							}
+							
+							// 2) If this is the currently selected slot in the GUI, update the text field
+							if (slot == selectedSetupIndex.get()) {
+								ignoreListeners = true;
+								setupName = nameFromDevice;
+								ignoreListeners = false;
+								
+								updateSelectedKnobParameters();
+								updateSelectedSwitchParameters();
+							}
+							
+							ofLogNotice("rotoControlConfig")
+							<< "GET_SETUP reply: slot=" << (int)slot
+							<< ", name=\"" << nameFromDevice << "\"";
+							
+							// Skip exactly 16 bytes: [A5][RC][SI][13-byte SN]
+							i += 1 + 1 + 1 + 13 - 1;
+							continue;
 						}
-						
-						ofLogNotice("rotoControlConfig")
-						<< "GET_SETUP reply: slot=" << (int)slot
-						<< ", name=\"" << nameFromDevice << "\"";
-					} else {
-						ofLogWarning("rotoControlConfig")
-						<< "GET_SETUP reply returned error code: " << (int)rc;
 					}
-					
-					// Skip exactly 16 bytes: [A5][RC][SI][13-byte SN]
-					i += 1 + 1 + 1 + 13 - 1;
-					continue;
-				} else {
-					// Not enough bytes yet; wait for more on next update()
-					break;
 				}
 			}
 			
@@ -933,6 +1114,8 @@ void rotoControlConfig::updateSelectedKnobParameters() {
 	knobMidiChannel = kc.midiChannel;
 	knobMidiCC = kc.midiCC;
 	knobSteps = kc.steps;
+	knobIndentPos1 = kc.indentPos1;
+	knobIndentPos2 = kc.indentPos2;
 	
 	ignoreListeners = false;
 }
@@ -983,6 +1166,8 @@ void rotoControlConfig::storeCurrentKnobSettings() {
 	kc.midiChannel = knobMidiChannel;
 	kc.midiCC = knobMidiCC;
 	kc.steps = knobSteps;
+	kc.indentPos1 = knobIndentPos1;
+	kc.indentPos2 = knobIndentPos2;
 	kc.configured = true;
 }
 
@@ -1075,9 +1260,10 @@ void rotoControlConfig::applyKnobConfiguration(int knobIndex) {
 	bool useSteppedMode = config.steps >= 2;
 	configPayload.push_back(useSteppedMode ? 1 : 0);
 	
-	// Indent positions (only for KNOB_300)
-	configPayload.push_back(0xFF); // Unused
-	configPayload.push_back(0xFF); // Unused
+	// Indent positions (only for KNOB_300 mode)
+	// Use configured indent positions, or 0xFF if unused
+	configPayload.push_back(static_cast<unsigned char>(config.indentPos1));
+	configPayload.push_back(static_cast<unsigned char>(config.indentPos2));
 	
 	// Haptic steps (2-10, only for KNOB_N_STEP)
 	int hapticSteps = useSteppedMode ? config.steps : 0;
@@ -1344,37 +1530,37 @@ void rotoControlConfig::presetRecallAfterSettingParameters(ofJson &json) {
 		availableSetups[s].exists = false;
 		
 		// Calculate MIDI channel and base CC for this setup
-		int midiChannel = (s / 4) + 1;                   // Channels 1-16
-		int baseCCForSetup = (s % 4) * 32;               // Base CC within channel
+		int midiChannel = (s / 2) + 1;                   // Channels 1-32 (2 setups per channel)
+		int baseCCForSetup = (s % 2) * 64;               // Base CC within channel (0 or 64)
 		
-		// Reset knobConfigs[s] to sequential defaults (2 pages)
+		// Reset knobConfigs[s] to sequential defaults (4 pages)
 		for (int i = 0; i < TOTAL_KNOBS; i++) {
-			int page = i / NUM_KNOBS_PER_PAGE;           // Which page (0-1)
+			int page = i / NUM_KNOBS_PER_PAGE;           // Which page (0-3)
 			int knobOnPage = i % NUM_KNOBS_PER_PAGE;     // Which knob on that page (0-7)
 			
-			int pageOffset = page * 16;                  // Page 0=0, Page 1=16
+			int pageOffset = page * 16;                  // Page 0=0, Page 1=16, Page 2=32, Page 3=48
 			int midiCC = baseCCForSetup + pageOffset + knobOnPage;
 			
 			auto &kc = allKnobConfigs[s][i];
-			//kc.name        = "Knob " + ofToString(knobOnPage + 1);
 			kc.name        = "";
 			kc.color       = 70;
 			kc.midiChannel = midiChannel;
 			kc.midiCC      = midiCC;
 			kc.steps       = 0;
+			kc.indentPos1  = 0xFF;
+			kc.indentPos2  = 0xFF;
 			kc.configured  = false;
 		}
 		
-		// Reset switchConfigs[s] to sequential defaults (2 pages)
+		// Reset switchConfigs[s] to sequential defaults (4 pages)
 		for (int i = 0; i < TOTAL_SWITCHES; i++) {
-			int page = i / NUM_SWITCHES_PER_PAGE;        // Which page (0-1)
+			int page = i / NUM_SWITCHES_PER_PAGE;        // Which page (0-3)
 			int switchOnPage = i % NUM_SWITCHES_PER_PAGE; // Which switch on that page (0-7)
 			
-			int pageOffset = page * 16;                  // Page 0=0, Page 1=16
+			int pageOffset = page * 16;                  // Page 0=0, Page 1=16, Page 2=32, Page 3=48
 			int midiCC = baseCCForSetup + pageOffset + 8 + switchOnPage;
 			
 			auto &sc = allSwitchConfigs[s][i];
-			//sc.name        = "Switch " + ofToString(switchOnPage + 1);
 			sc.name        = "";
 			sc.momentary   = true;
 			sc.color       = 70;
@@ -1405,6 +1591,8 @@ void rotoControlConfig::presetRecallAfterSettingParameters(ofJson &json) {
 					if (cfg.contains("midiChannel")) kc.midiChannel = cfg["midiChannel"].get<int>();
 					if (cfg.contains("midiCC"))      kc.midiCC      = cfg["midiCC"].get<int>();
 					if (cfg.contains("steps"))       kc.steps       = cfg["steps"].get<int>();
+					if (cfg.contains("indentPos1"))  kc.indentPos1  = cfg["indentPos1"].get<int>();
+					if (cfg.contains("indentPos2"))  kc.indentPos2  = cfg["indentPos2"].get<int>();
 					if (cfg.contains("configured"))  kc.configured  = cfg["configured"].get<bool>();
 				}
 			}
@@ -1472,6 +1660,8 @@ void rotoControlConfig::presetSave(ofJson &json) {
 			cfg["midiChannel"] = kc.midiChannel;
 			cfg["midiCC"]      = kc.midiCC;
 			cfg["steps"]       = kc.steps;
+			cfg["indentPos1"]  = kc.indentPos1;
+			cfg["indentPos2"]  = kc.indentPos2;
 			cfg["configured"]  = kc.configured;
 			knobArrayJson.push_back(cfg);
 		}
@@ -1498,6 +1688,18 @@ void rotoControlConfig::presetSave(ofJson &json) {
 	
 	// 4) Save which setup is currently selected
 	json["selectedSetupIndex"] = selectedSetupIndex.get();
+}
+
+void rotoControlConfig::presetWillBeLoaded() {
+	// Set flag to prevent sending configuration to device during preset load
+	isLoadingPreset = true;
+	ofLogNotice("rotoControlConfig") << "Preset loading started - configuration sending disabled";
+}
+
+void rotoControlConfig::presetHasLoaded() {
+	// Clear flag to allow sending configuration to device after preset load
+	isLoadingPreset = false;
+	ofLogNotice("rotoControlConfig") << "Preset loading completed - configuration sending enabled";
 }
 
 void rotoControlConfig::setContainer(ofxOceanodeContainer* container) {
@@ -2014,4 +2216,124 @@ string rotoControlConfig::getDefaultConfigDir() {
 	}
 	
 	return configDir;
+}
+
+void rotoControlConfig::sendCurrentConfigurationToDevice() {
+	if (!serialConnected) {
+		ofLogWarning("rotoControlConfig") << "Cannot send configuration: Serial device not connected";
+		configStatus = "No hardware connection";
+		return;
+	}
+	
+	int currentSetup = selectedSetupIndex.get();
+	ofLogNotice("rotoControlConfig") << "Sending current configuration to device (Setup " << currentSetup << ")...";
+	
+	configStatus = "Sending to device...";
+	
+	// Start config update session
+	sendSerialCommand(CMD_GENERAL, CMD_START_CONFIG_UPDATE);
+	ofSleepMillis(50);
+	
+	// Send all knob configurations for current setup
+	for (int i = 0; i < TOTAL_KNOBS; i++) {
+		if (allKnobConfigs[currentSetup][i].configured) {
+			applyKnobConfiguration(i);
+			ofSleepMillis(30);
+		}
+	}
+	
+	// Send all switch configurations for current setup
+	for (int i = 0; i < TOTAL_SWITCHES; i++) {
+		if (allSwitchConfigs[currentSetup][i].configured) {
+			applySwitchConfiguration(i);
+			ofSleepMillis(30);
+		}
+	}
+	
+	// End config update session
+	sendSerialCommand(CMD_GENERAL, CMD_END_CONFIG_UPDATE);
+	
+	configStatus = "Sent to device";
+	ofLogNotice("rotoControlConfig") << "Configuration sent to device successfully";
+}
+
+void rotoControlConfig::receiveCurrentConfigurationFromDevice() {
+	if (!serialConnected) {
+		ofLogWarning("rotoControlConfig") << "Cannot receive configuration: Serial device not connected";
+		configStatus = "No hardware connection";
+		return;
+	}
+	
+	int currentSetup = selectedSetupIndex.get();
+	ofLogNotice("rotoControlConfig") << "Receiving configuration from device (Setup " << currentSetup << ")...";
+	
+	configStatus = "Receiving from device...";
+	
+	// According to the API, we use GET KNOB CONTROL CONFIG (0x05) and GET SWITCH CONTROL CONFIG (0x06)
+	// These commands retrieve the configuration for a specific control
+	
+	// IMPORTANT: The device API only supports control indices 0x00-0x1F (0-31) for knobs and switches
+	// even though we have 4 pages (64 controls). The device maps 4 pages to 32 API control indices.
+	// We can only receive the first 32 knobs and 32 switches via the API.
+	
+	// Receive knob configurations (API limit: indices 0-31)
+	for (int i = 0; i < 32 && i < TOTAL_KNOBS; i++) {
+		receiveKnobConfigFromDevice(i);
+		ofSleepMillis(50); // Give time for response
+	}
+	
+	// Receive switch configurations (API limit: indices 0-31)
+	for (int i = 0; i < 32 && i < TOTAL_SWITCHES; i++) {
+		receiveSwitchConfigFromDevice(i);
+		ofSleepMillis(50); // Give time for response
+	}
+	
+	// Update GUI with current selection
+	updateSelectedKnobParameters();
+	updateSelectedSwitchParameters();
+	
+	configStatus = "Received from device";
+	ofLogNotice("rotoControlConfig") << "Configuration received from device successfully";
+}
+
+void rotoControlConfig::receiveKnobConfigFromDevice(int knobIndex) {
+	if (!serialConnected || knobIndex < 0 || knobIndex >= TOTAL_KNOBS) return;
+	
+	int currentSetup = selectedSetupIndex.get();
+	
+	// Send GET KNOB CONTROL CONFIG command
+	// Command: 5A 02 05 <CL:2 SI CI>
+	vector<unsigned char> payload;
+	payload.push_back(static_cast<unsigned char>(currentSetup)); // Setup index
+	payload.push_back(static_cast<unsigned char>(knobIndex));    // Control index
+	
+	sendSerialCommand(CMD_MIDI, 0x05, payload); // GET KNOB CONTROL CONFIG
+	
+	// Note: The response will be handled asynchronously in readSerialResponses()
+	// Response format: A5 <RC SI CI CM CC CP NA:2 MN:2 MX:2 CN:0D CS HM IP1 IP2 HS SN:10*0D>
+	// For now, we'll just send the request. A full implementation would need to parse
+	// the response and update allKnobConfigs[currentSetup][knobIndex]
+	
+	ofLogVerbose("rotoControlConfig") << "Requested knob " << knobIndex << " config from device";
+}
+
+void rotoControlConfig::receiveSwitchConfigFromDevice(int switchIndex) {
+	if (!serialConnected || switchIndex < 0 || switchIndex >= TOTAL_SWITCHES) return;
+	
+	int currentSetup = selectedSetupIndex.get();
+	
+	// Send GET SWITCH CONTROL CONFIG command
+	// Command: 5A 02 06 <CL:2 SI CI>
+	vector<unsigned char> payload;
+	payload.push_back(static_cast<unsigned char>(currentSetup)); // Setup index
+	payload.push_back(static_cast<unsigned char>(switchIndex));  // Control index
+	
+	sendSerialCommand(CMD_MIDI, 0x06, payload); // GET SWITCH CONTROL CONFIG
+	
+	// Note: The response will be handled asynchronously in readSerialResponses()
+	// Response format: A5 <RC SI CI CM CC CP NA:2 MN:2 MX:2 CN:0D CS LN LF HM HS SN:10*0D>
+	// For now, we'll just send the request. A full implementation would need to parse
+	// the response and update allSwitchConfigs[currentSetup][switchIndex]
+	
+	ofLogVerbose("rotoControlConfig") << "Requested switch " << switchIndex << " config from device";
 }

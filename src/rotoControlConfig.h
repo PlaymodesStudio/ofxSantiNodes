@@ -44,6 +44,8 @@ public:
 	void presetRecallAfterSettingParameters(ofJson &json) override;
 	void presetSave(ofJson &json) override;
 	void setContainer(ofxOceanodeContainer* container) override;
+	void presetWillBeLoaded() override;
+	void presetHasLoaded() override;
 
 private:
 	ofxOceanodeContainer* containerRef = nullptr;
@@ -52,9 +54,9 @@ private:
 	// Hardware constants based on API documentation
 	static const int NUM_KNOBS_PER_PAGE = 8;    // 8 knobs per page
 	static const int NUM_SWITCHES_PER_PAGE = 8; // 8 switches per page
-	static const int NUM_PAGES = 2;             // 2 pages total
-	static const int TOTAL_KNOBS = 32;          // 32 total knobs
-	static const int TOTAL_SWITCHES = 32;       // 32 total switches
+	static const int NUM_PAGES = 4;             // 4 pages total (maximum before running out of MIDI channels/CCs)
+	static const int TOTAL_KNOBS = 64;          // 64 total knobs (8 knobs × 4 pages)
+	static const int TOTAL_SWITCHES = 64;       // 64 total switches (8 switches × 4 pages)
 	static const int MAX_SETUPS = 64;
 
 	// Control configuration structures
@@ -64,6 +66,8 @@ private:
 		int midiChannel = 1;
 		int midiCC = 0;
 		int steps = 0;  // 0 = continuous, 2-10 = stepped
+		int indentPos1 = 0xFF;  // Indent position 1 (0x00-0x7F, 0xFF = unused)
+		int indentPos2 = 0xFF;  // Indent position 2 (0x00-0x7F, 0xFF = unused)
 		bool configured = false;
 	};
 
@@ -77,10 +81,10 @@ private:
 		// LED OFF color is always black (70) per requirements
 	};
 
-	// For each of the 64 setups, store a full array of 32 KnobConfig and 32 SwitchConfig.
+	// For each of the 64 setups, store a full array of 64 KnobConfig and 64 SwitchConfig.
 	// If a setup has never been configured, we can leave its 'exists' flag = false and skip saving its data.
-	vector<vector<KnobConfig>> allKnobConfigs;     // size 64 × 32
-	vector<vector<SwitchConfig>> allSwitchConfigs; // size 64 × 32
+	vector<vector<KnobConfig>> allKnobConfigs;     // size 64 × 64
+	vector<vector<SwitchConfig>> allSwitchConfigs; // size 64 × 64
 
 	// Page selection
 	ofParameter<int> selectedPage;
@@ -91,6 +95,8 @@ private:
 	ofParameter<int> knobMidiChannel;
 	ofParameter<int> knobMidiCC;
 	ofParameter<int> knobSteps;
+	ofParameter<int> knobIndentPos1;  // Indent position 1 (0-127, 255 = unused)
+	ofParameter<int> knobIndentPos2;  // Indent position 2 (0-127, 255 = unused)
 
 	// Switch parameters (for the selected switch on current page)
 	ofParameter<int> selectedSwitch;
@@ -101,8 +107,12 @@ private:
 
 	
 	// Configuration save/load using preset system
-	   ofParameter<void> saveConfigButton;
-	   ofParameter<void> loadConfigButton;
+	ofParameter<void> saveConfigButton;
+	ofParameter<void> loadConfigButton;
+	
+	// Send/Receive triggers
+	ofParameter<void> sendConfigToDevice;
+	ofParameter<void> receiveConfigFromDevice;
 	
 	// MIDI retrigger option
 	ofParameter<bool> retriggerMidiBounds;
@@ -137,6 +147,7 @@ private:
 	// Event listeners for parameter changes
 	ofEventListeners listeners;
 	bool ignoreListeners = false;
+	bool isLoadingPreset = false;  // Flag to prevent sending config during preset load
 	
 	
 
@@ -172,14 +183,20 @@ private:
 	string getRotoMidiPortName() const;
 	
 	// Helper methods for config save/load
-	   void saveConfigurationFile();
-	   void loadConfigurationFile();
+	void saveConfigurationFile();
+	void loadConfigurationFile();
 	string getDefaultConfigDir();
 	
+	// Send/Receive methods
+	void sendCurrentConfigurationToDevice();
+	void receiveCurrentConfigurationFromDevice();
+	void receiveKnobConfigFromDevice(int knobIndex);
+	void receiveSwitchConfigFromDevice(int switchIndex);
+	
 	// Threaded operations
-	  void threadedConfigurationApply();
-	  void applyConfigurationsToHardware();
-	  bool shouldSendSetupToHardware(int setupIndex);
+	void threadedConfigurationApply();
+	void applyConfigurationsToHardware();
+	bool shouldSendSetupToHardware(int setupIndex);
 
 
 };
