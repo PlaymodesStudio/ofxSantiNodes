@@ -76,6 +76,7 @@
 #include "vectorFire.h"
 #include "voidCounter.h"
 #include "voidToTick.h"
+#include "voidSwitch.h"
 
 // ─────────────────────────────────────────────
 // MATH & DSP
@@ -388,6 +389,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<vectorFire>("Santi/Events");
     o->registerModel<voidCounter>("Santi/Events");
     o->registerModel<voidToTick>("Santi/Events");
+	o->registerModel<voidSwitch>("Santi/Events");
 
     // ─────────────────────────────────────────────
     // MATH & DSP
