@@ -290,6 +290,7 @@
 #include "presetLoadTrigger.h"
 #include "ramp.h"               // class is: rampTrigger
 #include "shell.h"
+#include "keystroke.h"
 
 // ─────────────────────────────────────────────
 // THALASTASI
@@ -609,6 +610,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<presetLoadTrigger>("Santi/General");
     o->registerModel<rampTrigger>("Santi/General");
     o->registerModel<shell>("Santi/General");
+	o->registerModel<keystroke>("Santi/General");
 
     // ─────────────────────────────────────────────
     // THALASTASI
@@ -634,6 +636,5 @@ void registerModels(ofxOceanode *o)
     o->registerModel<portalSelector<vector<int>>>("Santi/PortalSelectors", "v_i", 0);
     o->registerModel<portalSelector<vector<string>>>("Santi/PortalSelectors", "v_s", string(""));
     o->registerModel<portalSelector<void>>("Santi/PortalSelectors", "v");
-    //o->registerModel<portalSelector<nodePort>>("Santi/PortalSelectors", "scbus", nodePort());
 }
 }
