@@ -292,6 +292,7 @@
 #include "ramp.h"               // class is: rampTrigger
 #include "shell.h"
 #include "keystroke.h"
+#include "dataDelay.h"
 
 // ─────────────────────────────────────────────
 // THALASTASI
@@ -613,6 +614,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<rampTrigger>("Santi/General");
     o->registerModel<shell>("Santi/General");
 	o->registerModel<keystroke>("Santi/General");
+	o->registerModel<dataDelay>("Santi/General");
 
     // ─────────────────────────────────────────────
     // THALASTASI
