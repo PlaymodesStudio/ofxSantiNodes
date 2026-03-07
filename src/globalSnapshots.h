@@ -73,11 +73,13 @@ private:
 	void loadSnapshot(int slot);
 	void startInterpolation(int targetSlot);
 	void updateInterpolation();
-	
+
 	// Persistence
 	void saveSnapshotsToFile();
 	void loadSnapshotsFromFile();
 	std::string getSnapshotsFilePath();
+	void presetSave(ofJson &json) override;
+	void presetRecallAfterSettingParameters(ofJson &json) override;
 
 	// GUI rendering
 	void renderSnapshotMatrix();
@@ -89,6 +91,9 @@ private:
 	bool isParameterExcluded(const std::string& key, ofxOceanodeAbstractParameter* param) const;
 	// Check if parameter should skip interpolation (instant change)
 	bool shouldSkipInterpolation(const std::string& key) const;
+
+	// Cached own node group name (set on first storeSnapshot/startInterpolation)
+	std::string ownGroupName;
 };
 
 #endif // GLOBAL_SNAPSHOTS_H

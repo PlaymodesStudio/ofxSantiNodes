@@ -1,6 +1,5 @@
 #include "globalSnapshots.h"
 #include "imgui.h"
-#include "ofxOceanodeNodeMacro.h"
 #include <vector>
 #include <cmath>
 #include <unordered_set>
@@ -175,16 +174,16 @@ void globalSnapshots::storeSnapshot(int slot) {
 
 	for(auto *node : globalContainer->getAllModules()) {
 		if (!node) continue;
-		
-		if(!includeMacroParams.get() && dynamic_cast<ofxOceanodeNodeMacro*>(&node->getNodeModel())) {
-			continue;
-		}
-		
+
 		auto &grp = node->getParameters();
 		std::string grpName = grp.getEscapedName();
-		
-		// Check if this is a globalSnapshots module (we'll store BiPow for all globalSnapshots instances)
-		bool isOwnNode = (grpName.find("Global_Snapshots") == 0);
+
+		// Skip this globalSnapshots node entirely — storing own params (Slot, BiPow, etc.)
+		// causes recursive loadSnapshot calls when Slot is set during recall.
+		if(&node->getNodeModel() == this) {
+			if(ownGroupName.empty()) ownGroupName = grpName;
+			continue;
+		}
 
 		for(int i = 0; i < grp.size(); i++) {
 			auto &p = grp.get(i);
@@ -192,9 +191,8 @@ void globalSnapshots::storeSnapshot(int slot) {
 			if(!oParam) continue;
 
 			std::string key = grpName + "/" + p.getName();
-			
-			// Allow this node's own input parameters to be stored, even if normally excluded
-			if(!isOwnNode && isParameterExcluded(key, oParam)) {
+
+			if(isParameterExcluded(key, oParam)) {
 				continue;
 			}
 
@@ -256,11 +254,11 @@ void globalSnapshots::loadSnapshot(int slot) {
 	int loadedCount = 0;
 	for(auto *node : globalContainer->getAllModules()) {
 		if (!node) continue;
-		
-		if(!includeMacroParams.get() && dynamic_cast<ofxOceanodeNodeMacro*>(&node->getNodeModel())) {
-			continue;
-		}
-		
+
+		// Skip own node — setting Slot (activeSnapshotSlot) would fire the listener
+		// and cause recursive loadSnapshot calls, breaking recall entirely.
+		if(&node->getNodeModel() == this) continue;
+
 		auto &grp = node->getParameters();
 		std::string grpName = grp.getEscapedName();
 
@@ -547,14 +545,23 @@ void globalSnapshots::renderInspectorInterface() {
 }
 
 std::string globalSnapshots::getSnapshotsFilePath() {
-	std::string canvasPath = getParents();
-	if(canvasPath.empty()) {
+	std::string presetPath = ofxOceanodeShared::getCurrentPresetPath();
+	if(presetPath.empty()) {
+		// No preset loaded: fallback to data root
 		return ofToDataPath("globalSnapshots.json", true);
-	} else {
-		std::string dirPath = ofToDataPath("Snapshots/" + canvasPath, true);
-		ofDirectory::createDirectory(dirPath, true, true);
-		return dirPath + "/globalSnapshots.json";
 	}
+	// presetPath is like "./Presets/BankName/1--PresetName"
+	std::string absoluteDir = ofToDataPath(presetPath, true);
+	ofDirectory::createDirectory(absoluteDir, true, true);
+	return absoluteDir + "/globalSnapshots.json";
+}
+
+void globalSnapshots::presetSave(ofJson &json) {
+	saveSnapshotsToFile();
+}
+
+void globalSnapshots::presetRecallAfterSettingParameters(ofJson &json) {
+	loadSnapshotsFromFile();
 }
 
 void globalSnapshots::saveSnapshotsToFile() {
@@ -666,32 +673,20 @@ void globalSnapshots::startInterpolation(int targetSlot) {
 
 	auto &targetSnap = it->second.paramValues;
 	
-	// Extract BiPow value from target snapshot to use for this interpolation
-	interpolationBiPowValue = 0.0f; // default
-	
-	// BiPow is stored with the module's instance name (e.g., "Global_Snapshots_1/BiPow")
-	// The slot number is at the JSON top level, not in the parameter key
-	std::string expectedKey = "Global_Snapshots_1/BiPow";
-	
-	auto tgtIt = targetSnap.find(expectedKey);
-	
-	if(tgtIt != targetSnap.end()) {
-		try {
-			if(tgtIt->second.value.is_number()) {
-				interpolationBiPowValue = tgtIt->second.value.get<float>();
-			}
-		} catch(...) {
-			interpolationBiPowValue = 0.0f;
-		}
-	}
-	
+	// Use current BiPow as default; the old per-snapshot BiPow feature is removed
+	// since own node parameters are no longer stored in snapshots (they caused
+	// recursive loadSnapshot calls via the activeSnapshotSlot listener).
+	interpolationBiPowValue = biPow.get();
+
 	for(auto *node : globalContainer->getAllModules()) {
 		if (!node) continue;
-		
-		if(!includeMacroParams.get() && dynamic_cast<ofxOceanodeNodeMacro*>(&node->getNodeModel())) {
+
+		// Skip own node to avoid touching Slot/BiPow/InterpolationMs during interpolation
+		if(&node->getNodeModel() == this) {
+			if(ownGroupName.empty()) ownGroupName = node->getParameters().getEscapedName();
 			continue;
 		}
-		
+
 		auto &grp = node->getParameters();
 		std::string grpName = grp.getEscapedName();
 
@@ -830,9 +825,6 @@ void globalSnapshots::updateInterpolation() {
 	for (const auto& key : interpolationActiveKeys) {
 		for (auto *node : globalContainer->getAllModules()) {
 			if (!node) continue;
-			if(!includeMacroParams.get() && dynamic_cast<ofxOceanodeNodeMacro*>(&node->getNodeModel())) {
-				continue;
-			}
 			
 			auto &grp = node->getParameters();
 			std::string grpName = grp.getEscapedName();
