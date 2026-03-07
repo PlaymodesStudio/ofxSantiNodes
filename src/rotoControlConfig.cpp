@@ -24,7 +24,7 @@ const unsigned char CMD_SET_SWITCH_CONTROL_CONFIG = 0x08;
 const unsigned char RESP_SUCCESS = 0x00;
 
 // ROTO-CONTROL device path
-// ROTO-CONTROL device patterns: cu.usbmodem101, cu.usbmodem1101, cu.usbmodem2101
+// Match any cu.usbmodem* device — macOS may assign suffix 1101, 1103, 101, 2101, etc.
 
 static void drawThickSeparator() {
 	// Get the current cursor position in screen coordinates
@@ -164,19 +164,23 @@ void rotoControlConfig::setup() {
 		updateSelectedSwitchParameters();
 	}));
 	
-	setupSerialPort();
-	if(serialConnected){
-		// Query current setup - this will update selectedSetupIndex AND setupName
-		getCurrentSetup();
-		// Queue up all setup queries
-		refreshAvailableSetups();
-	}
-	
 	addInspectorParameter(retriggerMidiBounds.set("Retrigger MIDI Bounds", false));
 	
 	// Add ACTIVE toggle at the top - NOT saved in presets
 	addParameter(deviceActive.set("ACTIVE", false));
-	
+
+	listeners.push(deviceActive.newListener([this](bool &active){
+		if (active) {
+			setupSerialPort();
+			if (serialConnected) {
+				getCurrentSetup();
+				refreshAvailableSetups();
+			}
+		} else {
+			closeSerialPort();
+		}
+	}));
+
 	// Page selection
 	addParameter(selectedPage.set("Page", 0, 0, NUM_PAGES - 1));
 	
@@ -626,10 +630,8 @@ void rotoControlConfig::setupSerialPort() {
 		string devicePath = device.getDevicePath();
 		ofLogNotice("rotoControlConfig") << "Found serial device: " << devicePath;
 		
-		// Look for specific ROTO-CONTROL device patterns
-		if(devicePath.find("cu.usbmodem101") != string::npos ||
-		   devicePath.find("cu.usbmodem1101") != string::npos ||
-		   devicePath.find("cu.usbmodem2101") != string::npos) {
+		// Match any usbmodem device — macOS may assign different suffixes (1101, 1103, 101, 2101, etc.)
+		if(devicePath.find("cu.usbmodem") != string::npos) {
 			ofLogNotice("rotoControlConfig") << "Attempting to connect to ROTO-CONTROL on port: " << devicePath;
 			if(serial.setup(devicePath, 115200)) {
 				ofLogNotice("rotoControlConfig") << "Connected to ROTO-CONTROL on port: " << devicePath;
@@ -643,7 +645,7 @@ void rotoControlConfig::setupSerialPort() {
 				}
 				break;
 			} else {
-				ofLogError("rotoControlConfig") << "Failed to connect to ROTO-CONTROL on " << devicePath;
+				ofLogError("rotoControlConfig") << "Failed to open " << devicePath << " - port may be held by another app (close RotoSetup)";
 			}
 		}
 	}
