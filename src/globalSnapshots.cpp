@@ -83,7 +83,9 @@ void globalSnapshots::setup(std::string additionalInfo) {
 	addOutputParameter(transition);
 	addOutputParameter(done);
 	activeSnapshotSlotListener = activeSnapshotSlot.newListener([this](int &slot){
-		if(slot >= 0) {
+		// Don't load while Shift is held — user is in "save mode" (preparing a Shift+click store).
+		// Shift can inadvertently change activeSnapshotSlot and would wipe parameter edits.
+		if(slot >= 0 && !ImGui::GetIO().KeyShift) {
 			if(interpolationMs.get() > 0) {
 				startInterpolation(slot);
 			} else {
@@ -102,7 +104,13 @@ void globalSnapshots::setup(std::string additionalInfo) {
 		renderInspectorInterface();
 	}));
 	
-	loadSnapshotsFromFile();
+	// Only auto-load at setup time for top-level nodes.
+	// Macro-embedded nodes receive their data via macroLoad() which is called
+	// during preset recall. A freshly added macro node has no saved data yet
+	// and should start empty — not inherit the top-level node's file.
+	if(getParents().empty()) {
+		loadSnapshotsFromFile();
+	}
 }
 
 void globalSnapshots::update(ofEventArgs &e) {
@@ -545,22 +553,67 @@ void globalSnapshots::renderInspectorInterface() {
 }
 
 std::string globalSnapshots::getSnapshotsFilePath() {
-	std::string presetPath = ofxOceanodeShared::getCurrentPresetPath();
-	if(presetPath.empty()) {
-		// No preset loaded: fallback to data root
-		return ofToDataPath("globalSnapshots.json", true);
+	// Inside a macro: macroFolderPath is set during macroLoad/macroSave.
+	// It is data-relative (same convention as the presetFolderPath arg to macroSave).
+	if(!macroFolderPath.empty()) {
+		std::string absoluteDir = ofToDataPath(macroFolderPath, true);
+		ofDirectory::createDirectory(absoluteDir, true, true);
+		return absoluteDir + "/globalSnapshots.json";
 	}
-	// presetPath is like "./Presets/BankName/1--PresetName"
+
+	// Top-level (no macro): use the currently-active preset folder.
+	std::string presetPath = ofxOceanodeShared::getCurrentPresetPath();
+
+	// Validate: a proper preset path ends with a "N--name" segment (the preset folder).
+	// If it doesn't have that pattern the preset hasn't been saved yet (e.g. path is
+	// empty, or only contains a bank-level directory like "./Presets/Canvas").
+	// In that case we fall back to the data root so we don't create a stray folder
+	// inside ./Presets/ that would confuse the presets controller on next launch.
+	bool validPreset = !presetPath.empty();
+	if(validPreset) {
+		size_t lastSlash = presetPath.rfind('/');
+		std::string lastSegment = (lastSlash != std::string::npos)
+		                         ? presetPath.substr(lastSlash + 1)
+		                         : presetPath;
+		validPreset = lastSegment.find("--") != std::string::npos;
+	}
+
+	if(!validPreset) {
+		// Preset not saved yet — store snapshot data in a temp folder.
+		// This won't interfere with the presets folder structure.
+		std::string tempDir = ofToDataPath("temp", true);
+		ofDirectory::createDirectory(tempDir, true, true);
+		return tempDir + "/globalSnapshots.json";
+	}
+
 	std::string absoluteDir = ofToDataPath(presetPath, true);
 	ofDirectory::createDirectory(absoluteDir, true, true);
 	return absoluteDir + "/globalSnapshots.json";
 }
 
 void globalSnapshots::presetSave(ofJson &json) {
-	saveSnapshotsToFile();
+	// When inside a macro, macroSave handles persistence — skip here.
+	if(macroFolderPath.empty()) {
+		saveSnapshotsToFile();
+	}
 }
 
 void globalSnapshots::presetRecallAfterSettingParameters(ofJson &json) {
+	// macroLoad (called earlier via loadBeforeConnections) already set
+	// macroFolderPath and triggered loadSnapshotsFromFile when inside a macro.
+	if(macroFolderPath.empty()) {
+		loadSnapshotsFromFile();
+	}
+}
+
+void globalSnapshots::macroSave(ofJson &json, string path) {
+	macroFolderPath = path;   // data-relative folder where this node's .json lives
+	saveSnapshotsToFile();
+}
+
+void globalSnapshots::macroLoad(ofJson &json, string path) {
+	// macroLoad is called in loadBeforeConnections, before presetRecallAfterSettingParameters.
+	macroFolderPath = path;   // data-relative folder where this node's .json lives
 	loadSnapshotsFromFile();
 }
 

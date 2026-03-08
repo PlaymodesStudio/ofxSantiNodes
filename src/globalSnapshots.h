@@ -80,6 +80,8 @@ private:
 	std::string getSnapshotsFilePath();
 	void presetSave(ofJson &json) override;
 	void presetRecallAfterSettingParameters(ofJson &json) override;
+	void macroSave(ofJson &json, string path) override;
+	void macroLoad(ofJson &json, string path) override;
 
 	// GUI rendering
 	void renderSnapshotMatrix();
@@ -94,6 +96,9 @@ private:
 
 	// Cached own node group name (set on first storeSnapshot/startInterpolation)
 	std::string ownGroupName;
+
+	// Set during macroLoad/macroSave when inside a macro; empty at top level
+	std::string macroFolderPath;
 };
 
 #endif // GLOBAL_SNAPSHOTS_H
