@@ -234,7 +234,17 @@ void globalSnapshots::storeSnapshot(int slot) {
 					ps.value = vf;
 					paramCount++;
 				}
-				
+				else if(ps.type == typeid(ofColor).name()) {
+					auto c = oParam->cast<ofColor>().getParameter().get();
+					ps.value = ofJson{{"r", (int)c.r}, {"g", (int)c.g}, {"b", (int)c.b}, {"a", (int)c.a}};
+					paramCount++;
+				}
+				else if(ps.type == typeid(ofFloatColor).name()) {
+					auto c = oParam->cast<ofFloatColor>().getParameter().get();
+					ps.value = ofJson{{"r", c.r}, {"g", c.g}, {"b", c.b}, {"a", c.a}};
+					paramCount++;
+				}
+
 				data.paramValues[key] = std::move(ps);
 			} catch(...) {
 				ofLogWarning("globalSnapshots") << "Failed to capture parameter: " << key;
@@ -333,6 +343,28 @@ void globalSnapshots::loadSnapshot(int slot) {
 					for(auto f : targetF) targetVal.push_back((int)std::round(f));
 					if(currentVal != targetVal) {
 						oParam->cast<std::vector<int>>().getParameter() = targetVal;
+						loadedCount++;
+					}
+				}
+				else if(ps.type == typeid(ofColor).name()) {
+					ofColor target;
+					target.r = ps.value["r"].get<int>();
+					target.g = ps.value["g"].get<int>();
+					target.b = ps.value["b"].get<int>();
+					target.a = ps.value["a"].get<int>();
+					if(oParam->cast<ofColor>().getParameter().get() != target) {
+						oParam->cast<ofColor>().getParameter() = target;
+						loadedCount++;
+					}
+				}
+				else if(ps.type == typeid(ofFloatColor).name()) {
+					ofFloatColor target;
+					target.r = ps.value["r"].get<float>();
+					target.g = ps.value["g"].get<float>();
+					target.b = ps.value["b"].get<float>();
+					target.a = ps.value["a"].get<float>();
+					if(oParam->cast<ofFloatColor>().getParameter().get() != target) {
+						oParam->cast<ofFloatColor>().getParameter() = target;
 						loadedCount++;
 					}
 				}
@@ -814,6 +846,24 @@ void globalSnapshots::startInterpolation(int targetSlot) {
 						}
 					}
 				}
+				else if(ps.type == typeid(ofColor).name()) {
+					auto cur = oParam->cast<ofColor>().getParameter().get();
+					auto& tgtJson = tgtIt->second.value;
+					ps.value = ofJson{{"r", (int)cur.r}, {"g", (int)cur.g}, {"b", (int)cur.b}, {"a", (int)cur.a}};
+					if(cur.r != tgtJson["r"].get<int>() || cur.g != tgtJson["g"].get<int>() ||
+					   cur.b != tgtJson["b"].get<int>() || cur.a != tgtJson["a"].get<int>()) {
+						differs = true;
+					}
+				}
+				else if(ps.type == typeid(ofFloatColor).name()) {
+					auto cur = oParam->cast<ofFloatColor>().getParameter().get();
+					auto& tgtJson = tgtIt->second.value;
+					ps.value = ofJson{{"r", cur.r}, {"g", cur.g}, {"b", cur.b}, {"a", cur.a}};
+					if(!floatsEqual(cur.r, tgtJson["r"].get<float>()) || !floatsEqual(cur.g, tgtJson["g"].get<float>()) ||
+					   !floatsEqual(cur.b, tgtJson["b"].get<float>()) || !floatsEqual(cur.a, tgtJson["a"].get<float>())) {
+						differs = true;
+					}
+				}
 				else {
 					differs = true;
 					if(ps.type == typeid(bool).name()) {
@@ -934,6 +984,26 @@ void globalSnapshots::updateInterpolation() {
 							}
 							oParam->cast<std::vector<int>>().getParameter() = interpolatedVec;
 						}
+					}
+					else if(vtype == typeid(ofColor).name()) {
+						auto& s = startIt->second.value;
+						auto& t = targetIt->second.value;
+						ofColor c;
+						c.r = (int)std::round(s["r"].get<int>() + (t["r"].get<int>() - s["r"].get<int>()) * easedProgress);
+						c.g = (int)std::round(s["g"].get<int>() + (t["g"].get<int>() - s["g"].get<int>()) * easedProgress);
+						c.b = (int)std::round(s["b"].get<int>() + (t["b"].get<int>() - s["b"].get<int>()) * easedProgress);
+						c.a = (int)std::round(s["a"].get<int>() + (t["a"].get<int>() - s["a"].get<int>()) * easedProgress);
+						oParam->cast<ofColor>().getParameter() = c;
+					}
+					else if(vtype == typeid(ofFloatColor).name()) {
+						auto& s = startIt->second.value;
+						auto& t = targetIt->second.value;
+						ofFloatColor c;
+						c.r = s["r"].get<float>() + (t["r"].get<float>() - s["r"].get<float>()) * easedProgress;
+						c.g = s["g"].get<float>() + (t["g"].get<float>() - s["g"].get<float>()) * easedProgress;
+						c.b = s["b"].get<float>() + (t["b"].get<float>() - s["b"].get<float>()) * easedProgress;
+						c.a = s["a"].get<float>() + (t["a"].get<float>() - s["a"].get<float>()) * easedProgress;
+						oParam->cast<ofFloatColor>().getParameter() = c;
 					}
 					else {
 						if(progress >= 0.5f) {
