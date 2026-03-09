@@ -33,8 +33,10 @@ public:
 
 	void setup() override {
 		/* -------- Inputs -------- */
+        midiPortsList = {"None"};
 		addSeparator("INPUTS", ofColor(240, 240, 240));
-		addParameterDropdown(midiPort, "Port", 0, midiIn.getInPortList());
+        addParameterDropdown(midiPort, "Port", 0, {"None"});
+        scanMidiPorts();
 		addParameter(enable.set("Enable", 0, 0, 1));
 		addParameter(clockOnlyMode.set("Clock Only", 0, 0, 1));
 		addParameter(reaperMode.set("REAPER Mode", 1, 0, 1));  // Default ON for REAPER compatibility
@@ -96,6 +98,9 @@ public:
 
 		resetMainThreadState();
 		resetMidiThreadState();
+        
+        oldNumPorts = 0;
+        unavailablePort = "";
 	}
 
 	/* ================= MIDI CALLBACK (MIDI THREAD) ================= */
@@ -207,6 +212,9 @@ public:
 	/* ================= MAIN THREAD (Oceanode update loop) ================= */
 
 	void update(ofEventArgs &args) override {
+        //Check new connected devices
+        scanMidiPorts();
+        
 		ClockSnapshot s;
 		bool got = false;
 		while(snapToMain.tryReceive(s)) {
@@ -296,6 +304,29 @@ public:
 		const float bpmVal = bpm.get();
 		timeSeconds = (bpmVal > 0.f) ? (currentBeat / bpmVal) * 60.f : 0.f;
 	}
+        
+        void presetSave(ofJson &json) override{
+            if(unavailablePort != ""){
+                json["DeviceName"] = unavailablePort;
+                return;
+            }
+            json["DeviceName"] = midiPortsList[midiPort];
+        }
+        
+        void presetRecallBeforeSettingParameters(ofJson &json) override{
+            string name = "None";
+            if(json.count("DeviceName") == 1){
+                name = json["DeviceName"];
+            }
+            auto it = std::find(midiPortsList.begin(), midiPortsList.end(), name);
+            
+            if(it != midiPortsList.end()){
+                midiPort = it - midiPortsList.begin();
+            }else{
+                midiPort = 0;
+                unavailablePort = name;
+            }
+        }
 
 private:
 	struct ClockSnapshot {
@@ -373,8 +404,9 @@ private:
 
 	void startMidi() {
 		if(midiIn.isOpen()) return;
+        if(midiPort == 0) return;
 
-		midiIn.openPort(midiPort);
+		midiIn.openPort(midiPort-1);
 
 		midiIn.ignoreTypes(
 			false, // sysex
@@ -448,6 +480,33 @@ private:
 		
 		jumpTrigFramesRemaining = 0;
 	}
+        
+    void scanMidiPorts(){
+        int numPorts = midiIn.getNumInPorts();
+        if(oldNumPorts == numPorts) return;
+        string selectedPortName = midiPortsList[midiPort];
+        midiPortsList = {"None"};
+        midiPortsList.resize(1+numPorts);
+        for(int i = 0; i < numPorts; i++){
+            midiPortsList[i+1] = midiIn.getInPortList()[i];
+        }
+        if(midiPort >= midiPortsList.size() || selectedPortName != midiPortsList[midiPort]){
+            midiPort = 0;
+            unavailablePort = selectedPortName;
+        }
+        midiPort.setMax(midiPortsList.size() - 1);
+        getOceanodeParameter(midiPort).setDropdownOptions(midiPortsList);
+        
+        if(unavailablePort != ""){
+            auto it = std::find(midiPortsList.begin(), midiPortsList.end(), unavailablePort);
+            
+            if(it != midiPortsList.end()){
+                midiPort = it - midiPortsList.begin();
+                unavailablePort = "";
+            }
+        }
+        oldNumPorts = numPorts;
+    }
 
 	/* -------- MIDI -------- */
 	ofxMidiIn midiIn;
@@ -473,6 +532,10 @@ private:
 	ofParameter<float> bpm;
 
 	ofEventListeners listeners;
+        
+    vector<string> midiPortsList;
+    int oldNumPorts;
+    string unavailablePort;
 };
 
 #endif /* midiClockTransport_h */
