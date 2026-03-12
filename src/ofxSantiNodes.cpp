@@ -245,6 +245,7 @@
 #include "circularSpeakerScheme.h"
 #include "indexMonitor.h"
 #include "multiStateVector.h"   // class is: multistateVector
+#include "multiToggleNode.h"
 #include "padXY.h"
 #include "pianoKeyboard.h"
 
@@ -560,6 +561,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<circularSpeakerScheme>("Santi/GUI");
     o->registerModel<indexMonitor>("Santi/GUI");
     o->registerModel<multistateVector>("Santi/GUI");
+    o->registerModel<multiToggleNode>("Santi/GUI");
     o->registerModel<padXY>("Santi/GUI");
     o->registerModel<pianoKeyboard>("Santi/GUI");
 //  o->registerModel<toggle>("Santi/GUI");
