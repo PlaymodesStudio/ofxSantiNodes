@@ -121,6 +121,7 @@
 #include "radialIndexer.h"
 #include "segmentLength.h"
 #include "splitMinMax.h"
+#include "splitResize.h"
 #include "splitRoute.h"
 #include "valueIndex.h"
 #include "valuesChanged.h"
@@ -436,6 +437,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<radialIndexer>("Santi/Vectors");
     o->registerModel<segmentLength>("Santi/Vectors");
     o->registerModel<splitMinMax>("Santi/Vectors");
+    o->registerModel<splitResize>("Santi/Vectors");
     o->registerModel<splitRoute>("Santi/Vectors");
     o->registerModel<trimGroupPaths>("Santi/Vectors");
     o->registerModel<valueIndex>("Santi/Vectors");
