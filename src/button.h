@@ -60,28 +60,27 @@ public:
 		});
 		
 		presetLoadedListener = ofxOceanodeShared::getPresetHasLoadedEvent().newListener([this](){
+			string nameToRestore = selectedPortalName.get();
 			updatePortalList();
-			restoreSelectionByName(selectedPortalName.get());
+			restoreSelectionByName(nameToRestore);
 		});
 		
 		updateSelectedPortalInstance();
 	}
 	
 	void update(ofEventArgs &args) override {
-		// Update portal list, but less frequently to avoid crashes
-		static int updateCounter = 0;
-		updateCounter++;
-		
-		// Only update portal list every 60 frames (once per second at 60fps)
-		if (updateCounter % 60 == 0) {
-			updatePortalList();
-		}
-		
+		if (ofxOceanodeShared::isPresetLoading()) return;
+
 		if (needsDelayedRestore) {
+			string nameToRestore = selectedPortalName.get();
 			updatePortalListOnly();
-			restoreSelectionByName(selectedPortalName.get());
+			updatePortalList();
+			restoreSelectionByName(nameToRestore);
 			needsDelayedRestore = false;
+			return;
 		}
+
+		updatePortalList();
 	}
 	
 	void presetRecallAfterSettingParameters(ofJson &json) override {
@@ -257,13 +256,9 @@ private:
 			}
 		}
 
-		if (newPortalNames != portalNames) {
-			// Store the currently selected portal name before updating
-			string currentlySelectedPortalName = "";
-			if (selectedPortalIndex >= 0 && selectedPortalIndex < portalNames.size()) {
-				currentlySelectedPortalName = getActualPortalNameFromDisplayName(portalNames[selectedPortalIndex]);
-			}
-			
+		if (newPortalNames != portalNames || newCompatiblePortals != compatiblePortals) {
+			string nameToRestore = selectedPortalName.get();
+
 			portalNames = newPortalNames;
 			compatiblePortals = newCompatiblePortals;
 
@@ -272,21 +267,13 @@ private:
 				selectedPortalInstance = nullptr;
 			}
 
-			// Update dropdown options in inspector system
 			try {
 				ofxOceanodeInspectorController::registerInspectorDropdown("Button", "Portal", portalNames);
 				selectedPortalIndex.setMin(0);
 				selectedPortalIndex.setMax(std::max(0, (int)portalNames.size() - 1));
-			} catch (...) {
-				// Ignore errors when updating dropdown options
-			}
+			} catch (...) {}
 
-			// Restore the selection by name
-			if (!currentlySelectedPortalName.empty()) {
-				restoreSelectionByName(currentlySelectedPortalName);
-			} else {
-				restoreSelectionByName(selectedPortalName.get());
-			}
+			restoreSelectionByName(nameToRestore);
 		}
 	}
 	
@@ -368,9 +355,7 @@ private:
 	void triggerPortal() {
 		if (selectedPortalInstance != nullptr) {
 			try {
-				// For void portals, we need to trigger the internal parameter
-				// Since there's no public method, we simulate what happens in match()
-				selectedPortalInstance->portalUpdated();
+				selectedPortalInstance->trigger();
 			} catch (...) {
 				selectedPortalInstance = nullptr;
 				selectedPortalName.set("");

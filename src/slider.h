@@ -66,8 +66,9 @@ public:
 		});
 		
 		presetLoadedListener = ofxOceanodeShared::getPresetHasLoadedEvent().newListener([this](){
+			string nameToRestore = selectedPortalName.get();
 			updatePortalList();
-			restoreSelectionByName(selectedPortalName.get());
+			restoreSelectionByName(nameToRestore);
 			updateSliderFromPortal();
 		});
 		
@@ -76,22 +77,19 @@ public:
 	}
 	
 	void update(ofEventArgs &args) override {
-		// Update portal list, but less frequently to avoid crashes
-		static int updateCounter = 0;
-		updateCounter++;
-		
-		// Only update portal list every 60 frames (once per second at 60fps)
-		if (updateCounter % 60 == 0) {
-			updatePortalList();
-		}
-		
+		if (ofxOceanodeShared::isPresetLoading()) return;
+
 		if (needsDelayedRestore) {
+			string nameToRestore = selectedPortalName.get();
 			updatePortalListOnly();
-			restoreSelectionByName(selectedPortalName.get());
+			updatePortalList();
+			restoreSelectionByName(nameToRestore);
 			updateSliderFromPortal();
 			needsDelayedRestore = false;
+			return;
 		}
-		
+
+		updatePortalList();
 		updateSliderFromPortal();
 	}
 	
@@ -272,13 +270,11 @@ private:
 			}
 		}
 
-		if (newPortalNames != portalNames) {
-			// Store the currently selected portal name before updating
-			string currentlySelectedPortalName = "";
-			if (selectedPortalIndex >= 0 && selectedPortalIndex < portalNames.size()) {
-				currentlySelectedPortalName = getActualPortalNameFromDisplayName(portalNames[selectedPortalIndex]);
-			}
-			
+		if (newPortalNames != portalNames || newCompatiblePortals != compatiblePortals) {
+			// Always restore by name — the name is the stable key across sessions.
+			// Never use the index, which can map to a different portal if list order changed.
+			string nameToRestore = selectedPortalName.get();
+
 			portalNames = newPortalNames;
 			compatiblePortals = newCompatiblePortals;
 
@@ -287,21 +283,13 @@ private:
 				selectedPortalInstance = nullptr;
 			}
 
-			// Update dropdown options in inspector system
 			try {
 				ofxOceanodeInspectorController::registerInspectorDropdown("Slider", "Portal", portalNames);
 				selectedPortalIndex.setMin(0);
 				selectedPortalIndex.setMax(std::max(0, (int)portalNames.size() - 1));
-			} catch (...) {
-				// Ignore errors when updating dropdown options
-			}
+			} catch (...) {}
 
-			// Restore the selection by name
-			if (!currentlySelectedPortalName.empty()) {
-				restoreSelectionByName(currentlySelectedPortalName);
-			} else {
-				restoreSelectionByName(selectedPortalName.get());
-			}
+			restoreSelectionByName(nameToRestore);
 		}
 	}
 	

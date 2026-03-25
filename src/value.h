@@ -66,8 +66,9 @@ public:
 		
 		// Listen for preset loading completion
 		presetLoadedListener = ofxOceanodeShared::getPresetHasLoadedEvent().newListener([this](){
+			string nameToRestore = selectedPortalName.get();
 			updatePortalList();
-			maintainPortalSelectionByInstance();
+			restoreSelectionByName(nameToRestore);
 			updateValueFromPortal();
 		});
 		
@@ -77,19 +78,19 @@ public:
 	}
 	
 	void update(ofEventArgs &args) override {
-		// Check if we need to update the portal list
-		updatePortalList();
-		
-		// Handle delayed restoration from preset loading
+		if (ofxOceanodeShared::isPresetLoading()) return;
+
 		if (needsDelayedRestore) {
+			string nameToRestore = selectedPortalName.get();
 			updatePortalListOnly();
 			updatePortalList();
-			maintainPortalSelectionByInstance();
+			restoreSelectionByName(nameToRestore);
 			updateValueFromPortal();
 			needsDelayedRestore = false;
+			return;
 		}
-		
-		// Update value state from portal
+
+		updatePortalList();
 		updateValueFromPortal();
 	}
 	
@@ -228,7 +229,9 @@ private:
 			}
 		}
 
-		if (newPortalNames != portalNames) {
+		if (newPortalNames != portalNames || newCompatiblePortals != compatiblePortals) {
+			string nameToRestore = selectedPortalName.get();
+
 			portalNames = newPortalNames;
 			compatiblePortals = newCompatiblePortals;
 
@@ -237,19 +240,32 @@ private:
 				selectedPortalInstance = nullptr;
 			}
 
-			// Update dropdown options in inspector system
 			try {
 				ofxOceanodeInspectorController::registerInspectorDropdown("Value", "Portal", portalNames);
 				selectedPortalIndex.setMin(0);
 				selectedPortalIndex.setMax(std::max(0, (int)portalNames.size() - 1));
-			} catch (...) {
-				// Ignore errors when updating dropdown options
-			}
+			} catch (...) {}
 
-			maintainPortalSelectionByInstance();
+			restoreSelectionByName(nameToRestore);
 		}
 	}
 	
+	void restoreSelectionByName(const string &name) {
+		if (name.empty()) { maintainPortalSelectionByInstance(); return; }
+		for (int i = 0; i < (int)compatiblePortals.size(); i++) {
+			if (compatiblePortals[i] != nullptr) {
+				try {
+					if (compatiblePortals[i]->getName() == name) {
+						selectedPortalIndex    = i;
+						selectedPortalInstance = compatiblePortals[i];
+						return;
+					}
+				} catch (...) {}
+			}
+		}
+		maintainPortalSelectionByInstance();
+	}
+
 	void maintainPortalSelectionByInstance() {
 		// First try to restore from saved name
 		if (!selectedPortalName.get().empty()) {
