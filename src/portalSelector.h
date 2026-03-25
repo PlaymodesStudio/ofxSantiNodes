@@ -70,6 +70,8 @@ public:
 	}
 
 	void update(ofEventArgs &args) override {
+			if (ofxOceanodeShared::isPresetLoading()) return;
+
 			// Check if we need to update the portal list
 			updatePortalList();
 
@@ -89,7 +91,7 @@ public:
 
 			updateOutputFromSelectedPortal();
 		}
-		
+
 		void presetRecallAfterSettingParameters(ofJson &json) override {
 			// Don't restore immediately - defer to next update cycle when all portals are loaded
 			needsDelayedRestore = true;
@@ -241,7 +243,7 @@ protected:
 		}
 
 		// Check if the portal list has changed
-		if (newPortalNames != portalNames) {
+		if (newPortalNames != portalNames || newCompatiblePortals != compatiblePortals) {
 			portalNames = newPortalNames;
 			compatiblePortals = newCompatiblePortals;
 
@@ -443,26 +445,28 @@ public:
 	}
 
 	void update(ofEventArgs &args) override {
+			if (ofxOceanodeShared::isPresetLoading()) return;
+
 			// Check if we need to update the portal list
 			updatePortalList();
-			
+
 			// Handle delayed restoration from preset loading
 			if (needsDelayedRestore) {
 				// Force a fresh portal list update
 				updatePortalListOnly();
 				updatePortalList();
-				
+
 				// Try to restore the saved connection
 				maintainPortalSelectionByInstance();
 				updateOutputFromSelectedPortal();
-				
+
 				// Clear the flag
 				needsDelayedRestore = false;
 			}
-			
+
 			updateOutputFromSelectedPortal();
 		}
-		
+
 		void presetRecallAfterSettingParameters(ofJson &json) override {
 			// Don't restore immediately - defer to next update cycle when all portals are loaded
 			needsDelayedRestore = true;
@@ -601,7 +605,7 @@ protected:
 			}
 		}
 
-		if (newPortalNames != portalNames) {
+		if (newPortalNames != portalNames || newCompatiblePortals != compatiblePortals) {
 			portalNames = newPortalNames;
 			compatiblePortals = newCompatiblePortals;
 
@@ -778,26 +782,28 @@ public:
 	}
 
 	void update(ofEventArgs &args) override {
+			if (ofxOceanodeShared::isPresetLoading()) return;
+
 			// Check if we need to update the portal list
 			updatePortalList();
-			
+
 			// Handle delayed restoration from preset loading
 			if (needsDelayedRestore) {
 				// Force a fresh portal list update
 				updatePortalListOnly();
 				updatePortalList();
-				
+
 				// Try to restore the saved connection
 				maintainPortalSelectionByInstance();
 				updateOutputFromSelectedPortal();
-				
+
 				// Clear the flag
 				needsDelayedRestore = false;
 			}
-			
+
 			updateOutputFromSelectedPortal();
 		}
-		
+
 		void presetRecallAfterSettingParameters(ofJson &json) override {
 			// Don't restore immediately - defer to next update cycle when all portals are loaded
 			needsDelayedRestore = true;
@@ -934,7 +940,7 @@ protected:
 			}
 		}
 
-		if (newPortalNames != portalNames) {
+		if (newPortalNames != portalNames || newCompatiblePortals != compatiblePortals) {
 			portalNames = newPortalNames;
 			compatiblePortals = newCompatiblePortals;
 
