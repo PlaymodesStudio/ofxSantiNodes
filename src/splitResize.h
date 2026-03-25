@@ -44,6 +44,11 @@ public:
         }
     }
 
+    void loadBeforeConnections(ofJson &json) override {
+        deserializeParameter(json, numRegions);
+        updateNumRegions();
+    }
+
 private:
     float lerp(float a, float b, float t) {
         return a + t * (b - a);
@@ -193,6 +198,7 @@ private:
     void updateNumRegions() {
         int oldSize = (int)outputs.size();
         int newSize = numRegions.get();
+        if (newSize == oldSize) return;
 
         if (newSize < oldSize) {
             for (int i = oldSize - 1; i >= newSize; i--) {
