@@ -175,6 +175,7 @@
 #include "fitNotesInRange.h"
 #include "harmonyDetector.h"
 #include "jazzStandards.h"
+#include "pitchClassLoad.h"
 #include "scalaTuning.h"
 
 // ─────────────────────────────────────────────
@@ -249,6 +250,17 @@
 #include "multiToggleNode.h"
 #include "padXY.h"
 #include "pianoKeyboard.h"
+
+//Following are invisible background nodes bindable with portals
+#include "toggle.h"
+#include "slider.h"
+#include "button.h"
+#include "multislider.h"
+#include "multitoggle.h"
+#include "value.h"
+#include "intSlider.h"
+#include "intValue.h"
+#include "rangedSlider.h"
 
 // ─────────────────────────────────────────────
 // AUDIO UTILS
@@ -491,6 +503,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<fitNotesInRange>("Santi/Pitch");
     o->registerModel<harmonyDetector>("Santi/Pitch");
     o->registerModel<jazzStandards>("Santi/Pitch");
+    o->registerModel<pitchClassLoad>("Santi/Pitch");
     o->registerModel<scalaTuning>("Santi/Pitch");
 
     // ─────────────────────────────────────────────
@@ -566,13 +579,15 @@ void registerModels(ofxOceanode *o)
     o->registerModel<multiToggleNode>("Santi/GUI");
     o->registerModel<padXY>("Santi/GUI");
     o->registerModel<pianoKeyboard>("Santi/GUI");
-//  o->registerModel<toggle>("Santi/GUI");
-//  o->registerModel<button>("Santi/GUI");
-//  o->registerModel<slider>("Santi/GUI");
-//  o->registerModel<multislider>("Santi/GUI");
-//  o->registerModel<multitoggle>("Santi/GUI");
-//  o->registerModel<value>("Santi/GUI");
-//  o->registerModel<rangedSlider>("Santi/GUI");
+	o->registerModel<toggle>("Santi/GUI");
+	o->registerModel<button>("Santi/GUI");
+	o->registerModel<slider>("Santi/GUI");
+	o->registerModel<multislider>("Santi/GUI");
+	o->registerModel<multitoggle>("Santi/GUI");
+	o->registerModel<value>("Santi/GUI");
+	o->registerModel<intSlider>("Santi/GUI");
+	o->registerModel<intValue>("Santi/GUI");
+	o->registerModel<rangedSlider>("Santi/GUI");
 
     // ─────────────────────────────────────────────
     // AUDIO UTILS
