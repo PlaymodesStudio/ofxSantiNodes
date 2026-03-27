@@ -56,6 +56,8 @@
 #include "choose.h"
 #include "randomSeries.h"
 #include "randomValues.h"
+#include "jazzWalk.h"
+#include "melodicMutation.h"
 #include "randomWalk.h"
 #include "scramble.h"
 #include "unrepeatedRandom.h"
@@ -381,6 +383,8 @@ void registerModels(ofxOceanode *o)
     o->registerModel<choose>("Santi/Chance");
     o->registerModel<randomSeries>("Santi/Chance");
     o->registerModel<randomValues>("Santi/Chance");
+    o->registerModel<jazzWalk>("Santi/Chance");
+    o->registerModel<melodicMutation>("Santi/Chance");
     o->registerModel<randomWalk>("Santi/Chance");
     o->registerModel<scramble>("Santi/Chance");
     o->registerModel<UnrepeatedRandom>("Santi/Chance");
