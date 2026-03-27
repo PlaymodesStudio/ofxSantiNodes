@@ -181,11 +181,12 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 		lastPhasorForHoldVec = vector<float>(inputSize, 0);
 		stagePhaseVec        = vector<float>(inputSize, 0);
 
-		voices         = vector<vector<EnvelopeVoice>>(inputSize);
-		pendingOnsets  = vector<vector<float>>(inputSize);
-		pendingRelease = vector<bool>(inputSize, false);
-		lastGate       = vector<float>(inputSize, 0);
-		lastGateInSize = inputSize;
+		voices            = vector<vector<EnvelopeVoice>>(inputSize);
+		pendingOnsets     = vector<vector<float>>(inputSize);
+		pendingRelease    = vector<bool>(inputSize, false);
+		lastGate          = vector<float>(inputSize, 0);
+		monoNewGateEvent  = vector<bool>(inputSize, false);
+		lastGateInSize    = inputSize;
 	}
 
 	vector<float> tempOutput(inputSize, 0);
@@ -252,7 +253,25 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 			bool wasOff = lastInput[i] <= gateThreshold;
 			bool isOn   = currentGate > gateThreshold;
 
+			// Consume the new-gate event flag set by gateInListener
+			bool newEvt = (i < (int)monoNewGateEvent.size()) && monoNewGateEvent[i];
+			if(newEvt) monoNewGateEvent[i] = false;
+
+			bool doOnset = false;
 			if(wasOff && isOn) {
+				doOnset = true;
+			} else if(!wasOff && currentGate <= gateThreshold) {
+				if(getValueForIndex(hold, i) == 0) {
+					envelopeStage[i] = (getValueForIndex(release, i) > 0) ? envelopeRelease2 : envelopeEnd2;
+					stagePhaseVec[i] = 0;
+				}
+			} else if(isOn && (newEvt || abs(currentGate - targetValue[i]) > gateThreshold)) {
+				// New gate event (same or different value) or amplitude changed:
+				// restart the envelope (equivalent to synthetic 0 → new onset).
+				doOnset = true;
+			}
+
+			if(doOnset) {
 				targetValue[i] = currentGate;
 				maxValue[i]    = currentGate;
 
@@ -266,19 +285,6 @@ void envelopeGenerator2::phasorListener(vector<float> &vf) {
 				lastPhasorForHoldVec[i] = f;
 				stagePhaseVec[i]        = 0;
 				lastSustainValue[i]     = currentGate;
-			}
-			else if(!wasOff && currentGate <= gateThreshold) {
-				if(getValueForIndex(hold, i) == 0) {
-					envelopeStage[i] = (getValueForIndex(release, i) > 0) ? envelopeRelease2 : envelopeEnd2;
-					stagePhaseVec[i] = 0;
-				}
-			}
-			else if(isOn && abs(currentGate - targetValue[i]) > gateThreshold) {
-				targetValue[i] = currentGate;
-				maxValue[i]    = currentGate;
-				if(envelopeStage[i] == envelopeDecay2 || envelopeStage[i] == envelopeSustain2) {
-					lastSustainValue[i] = currentGate * getValueForIndex(sustain, i);
-				}
 			}
 
 			EnvelopeVoice v;
@@ -338,11 +344,11 @@ float envelopeGenerator2::smoothinterpolate(float start, float end, float pos) {
 // gateInListener
 // ---------------------------------------------------------------------------
 void envelopeGenerator2::gateInListener(vector<float> &vf) {
-	if(!polyMode.get()) return;
-
+	// Handles both poly and mono — no early return on mono.
 	int sz = (int)vf.size();
 
-	if(sz > (int)lastGate.size())     lastGate.resize(sz, 0);
+	if(sz > (int)lastGate.size())          lastGate.resize(sz, 0);
+	if(sz > (int)monoNewGateEvent.size())  monoNewGateEvent.resize(sz, false);
 	if(sz > (int)pendingOnsets.size()) {
 		pendingOnsets.resize(sz);
 		pendingRelease.resize(sz, false);
@@ -355,11 +361,24 @@ void envelopeGenerator2::gateInListener(vector<float> &vf) {
 		bool wasOff = prev <= gateThreshold;
 		bool isOn   = cur  >  gateThreshold;
 
-		if(wasOff && isOn) {
-			pendingOnsets[i].push_back(cur);
-		}
-		if(!wasOff && !isOn) {
-			pendingRelease[i] = true;
+		if(polyMode.get()) {
+			if(wasOff && isOn) {
+				// Zero → non-zero: normal onset
+				pendingOnsets[i].push_back(cur);
+			} else if(!wasOff && isOn) {
+				// Non-zero → non-zero (same OR different value): synthetic 0 + new onset.
+				// No abs check: if the listener fired the send was intentional, even at same value.
+				pendingRelease[i] = true;
+				pendingOnsets[i].push_back(cur);
+			}
+			if(!wasOff && !isOn) {
+				pendingRelease[i] = true;
+			}
+		} else {
+			// Mono: set a one-shot flag so phasorListener can retrigger even on same-value gates.
+			// phasorListener reads gate continuously so it can't tell apart a held gate from a
+			// deliberate same-value re-send without this out-of-band signal.
+			if(isOn) monoNewGateEvent[i] = true;
 		}
 
 		lastGate[i] = cur;
