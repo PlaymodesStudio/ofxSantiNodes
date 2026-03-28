@@ -88,6 +88,7 @@
 #include "Fold.h"
 #include "formula.h"
 #include "histogram2.h"
+#include "histogramScore.h"
 #include "Logic.h"
 #include "metaballAnalyzer.h"
 #include "polygonArea.h"
@@ -418,6 +419,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<fold>("Santi/Math");
     o->registerModel<formula>("Santi/Math");
     o->registerModel<histogram2>("Santi/Math");
+    o->registerModel<histogramScore>("Santi/Math");
     o->registerModel<Logic>("Santi/Math");
     o->registerModel<metaballAnalyzer>("Santi/Math");
     o->registerModel<polygonArea>("Santi/Math");
