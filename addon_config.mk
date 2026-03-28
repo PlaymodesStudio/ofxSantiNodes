@@ -52,7 +52,10 @@ common:
 	# they can be specified here
 	# ADDON_SOURCES =
 
-	# derines that will be passed to the compiler when including this addon
+	# defines that will be passed to the compiler when including this addon
+	# Optional addon dependency flags — add these to enable nodes with external dependencies:
+	#   USE_OFX_MIDI     → enables midiClockTransport (requires ofxMidi)
+	#   USE_OFX_OSC      → enables BPMControl, reaperOscTransport, multiOscSender (requires ofxOsc)
 	# ADDON_DEFINES =
 
 	# some addons need resources to be copied to the bin/data folder of the project

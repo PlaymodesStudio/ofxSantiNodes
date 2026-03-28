@@ -5,7 +5,9 @@
 // TIMING & TRANSPORT
 // ─────────────────────────────────────────────
 #include "beatMeasures.h"
+#ifdef USE_OFX_OSC
 #include "BPMControl.h"
+#endif
 #include "cycleCount.h"
 #include "deltaTime.h"
 #include "divmult2ms.h"
@@ -19,7 +21,9 @@
 // ─────────────────────────────────────────────
 #include "curveTrack.h"
 #include "gateTrack.h"
+#ifdef USE_OFX_MIDI
 #include "midiClockTransport.h"
+#endif
 #include "midiNoteQuantizer.h"
 #include "pianoRollTrack.h"
 #include "ppqBeats.h"
@@ -27,7 +31,9 @@
 #include "ppqMeter.h"
 #include "ppqPhasor.h"
 #include "ppqTimeline.h"
+#ifdef USE_OFX_OSC
 #include "reaperOscTransport.h"
+#endif
 #include "transportQuantizer.h"
 #include "valueTrack.h"
 
@@ -282,7 +288,9 @@
 // ─────────────────────────────────────────────
 // OSC
 // ─────────────────────────────────────────────
+#ifdef USE_OFX_OSC
 #include "multiOscSender.h"
+#endif
 
 // ─────────────────────────────────────────────
 // MIDI
@@ -333,7 +341,9 @@ void registerModels(ofxOceanode *o)
     // TIMING & TRANSPORT
     // ─────────────────────────────────────────────
     o->registerModel<beatMeasures>("Santi/Timing");
+#ifdef USE_OFX_OSC
     o->registerModel<BPMControl>("Santi/Timing");
+#endif
     o->registerModel<cycleCount>("Santi/Timing");
     o->registerModel<deltaTime>("Santi/Timing");
     o->registerModel<divmult2ms>("Santi/Timing");
@@ -347,7 +357,9 @@ void registerModels(ofxOceanode *o)
     // ─────────────────────────────────────────────
     o->registerModel<curveTrack>("Santi/Timeline");
     o->registerModel<gateTrack>("Santi/Timeline");
+#ifdef USE_OFX_MIDI
     o->registerModel<midiClockTransport>("Santi/Timeline");
+#endif
     o->registerModel<midiNoteQuantizer>("Santi/Timeline");
     o->registerModel<pianoRollTrack>("Santi/Timeline");
     o->registerModel<ppqBeats>("Santi/Timeline");
@@ -355,7 +367,9 @@ void registerModels(ofxOceanode *o)
     o->registerModel<ppqMeter>("Santi/Timeline");
     o->registerModel<ppqPhasor>("Santi/Timeline");
     o->registerModel<ppqTimeline>("Santi/Timeline");
+#ifdef USE_OFX_OSC
     o->registerModel<reaperOscTransport>("Santi/Timeline");
+#endif
     o->registerModel<transportQuantizer>("Santi/Timeline");
     o->registerModel<valueTrack>("Santi/Timeline");
 
@@ -612,7 +626,9 @@ void registerModels(ofxOceanode *o)
     // ─────────────────────────────────────────────
     // OSC
     // ─────────────────────────────────────────────
+#ifdef USE_OFX_OSC
     o->registerModel<multiOscSender>("Santi/OSC");
+#endif
 
     // ─────────────────────────────────────────────
     // MIDI
