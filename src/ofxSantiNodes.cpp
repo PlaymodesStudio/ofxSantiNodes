@@ -5,7 +5,7 @@
 // TIMING & TRANSPORT
 // ─────────────────────────────────────────────
 #include "beatMeasures.h"
-#ifdef USE_OFX_OSC
+#ifdef OFXOCEANODE_USE_OSC
 #include "BPMControl.h"
 #endif
 #include "cycleCount.h"
@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────
 #include "curveTrack.h"
 #include "gateTrack.h"
-#ifdef USE_OFX_MIDI
+#ifdef OFXOCEANODE_USE_MIDI
 #include "midiClockTransport.h"
 #endif
 #include "midiNoteQuantizer.h"
@@ -31,7 +31,7 @@
 #include "ppqMeter.h"
 #include "ppqPhasor.h"
 #include "ppqTimeline.h"
-#ifdef USE_OFX_OSC
+#ifdef OFXOCEANODE_USE_OSC
 #include "reaperOscTransport.h"
 #endif
 #include "transportQuantizer.h"
@@ -288,7 +288,7 @@
 // ─────────────────────────────────────────────
 // OSC
 // ─────────────────────────────────────────────
-#ifdef USE_OFX_OSC
+#ifdef OFXOCEANODE_USE_OSC
 #include "multiOscSender.h"
 #endif
 
@@ -341,7 +341,7 @@ void registerModels(ofxOceanode *o)
     // TIMING & TRANSPORT
     // ─────────────────────────────────────────────
     o->registerModel<beatMeasures>("Santi/Timing");
-#ifdef USE_OFX_OSC
+#ifdef OFXOCEANODE_USE_OSC
     o->registerModel<BPMControl>("Santi/Timing");
 #endif
     o->registerModel<cycleCount>("Santi/Timing");
@@ -357,7 +357,7 @@ void registerModels(ofxOceanode *o)
     // ─────────────────────────────────────────────
     o->registerModel<curveTrack>("Santi/Timeline");
     o->registerModel<gateTrack>("Santi/Timeline");
-#ifdef USE_OFX_MIDI
+#ifdef OFXOCEANODE_USE_MIDI
     o->registerModel<midiClockTransport>("Santi/Timeline");
 #endif
     o->registerModel<midiNoteQuantizer>("Santi/Timeline");
@@ -367,7 +367,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<ppqMeter>("Santi/Timeline");
     o->registerModel<ppqPhasor>("Santi/Timeline");
     o->registerModel<ppqTimeline>("Santi/Timeline");
-#ifdef USE_OFX_OSC
+#ifdef OFXOCEANODE_USE_OSC
     o->registerModel<reaperOscTransport>("Santi/Timeline");
 #endif
     o->registerModel<transportQuantizer>("Santi/Timeline");
@@ -626,7 +626,7 @@ void registerModels(ofxOceanode *o)
     // ─────────────────────────────────────────────
     // OSC
     // ─────────────────────────────────────────────
-#ifdef USE_OFX_OSC
+#ifdef OFXOCEANODE_USE_OSC
     o->registerModel<multiOscSender>("Santi/OSC");
 #endif
 
