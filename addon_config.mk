@@ -54,8 +54,10 @@ common:
 
 	# defines that will be passed to the compiler when including this addon
 	# Optional addon dependency flags — add these to enable nodes with external dependencies:
-	#   USE_OFX_MIDI     → enables midiClockTransport (requires ofxMidi)
-	#   USE_OFX_OSC      → enables BPMControl, reaperOscTransport, multiOscSender (requires ofxOsc)
+	#   OFXOCEANODE_USE_MIDI  → enables midiClockTransport (requires ofxMidi)
+	#   OFXOCEANODE_USE_OSC   → enables BPMControl, reaperOscTransport, multiOscSender (requires ofxOsc)
+	# These match the defines set by ofxOceanode projects, so no extra config is needed
+	# if the project already defines OFXOCEANODE_USE_MIDI / OFXOCEANODE_USE_OSC.
 	# ADDON_DEFINES =
 
 	# some addons need resources to be copied to the bin/data folder of the project
