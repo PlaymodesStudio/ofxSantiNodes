@@ -73,7 +73,8 @@ public:
 		// ---------- UI ----------
 		addSeparator("GUI",ofColor(240,240,240));
 		addParameter(showWindow.set("Show", false));
-		addParameter(zoomBars.set("Zoom Bars", 8, 1, totalBars.get())); // Max = totalBars
+		addParameter(zoomBars.set("Zoom Bars", 8, 1, totalBars.get()));
+		addParameter(autoScroll.set("Auto Scroll", false));
 		addParameterDropdown(gridDiv, "Grid", 5, {
 			"None", "Bar", "1st", "2nd", "4th", "8th", "16th", "32nd", "64th"
 		});
@@ -120,6 +121,9 @@ public:
 	
 	float getBpm() const { return bpm.get(); }
 	bool isPlaying() const { return play.get() == 1; }
+
+	// Track list accessor (used by trackScheduler)
+	const std::vector<transportTrack*>& getSubscribedTracks() const { return subscribedTracks; }
 
 	// Loop accessors
 	bool isLoopEnabled() const { return loopEnabled.get() == 1; }
@@ -259,8 +263,9 @@ public:
 				int barsVisible = zoomBars.get();
 				double beatsPerBar = double(numerator.get()) * (4.0 / double(denominator.get()));
 				
-				// Match the ruler's view - start from bar 0
-				int viewStartBar = 0;
+				// Match the ruler's scroll position exactly
+				int viewStartBar = ofClamp(viewScrollBar, 0,
+				                           std::max(0, totalBars.get() - barsVisible));
 				double viewStartBeat = viewStartBar * beatsPerBar;
 				double viewEndBeat = viewStartBeat + (barsVisible * beatsPerBar);
 
@@ -448,13 +453,18 @@ private:
 			denominator = denVal;
 		}
 
-		// Zoom
+		// Zoom (capped at totalBars)
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(80);
 		int zoomVal = zoomBars.get();
-		if(ImGui::DragInt("Zoom", &zoomVal, 0.1f, 1, 128)){
-			zoomBars = zoomVal;
+		if(ImGui::DragInt("Zoom", &zoomVal, 0.1f, 1, totalBars.get())){
+			zoomBars = ofClamp(zoomVal, 1, totalBars.get());
 		}
+
+		// Auto Scroll
+		ImGui::SameLine();
+		bool asVal = autoScroll.get();
+		if(ImGui::Checkbox("Auto", &asVal)) autoScroll = asVal;
 
 		// Grid
 		ImGui::SameLine();
@@ -493,7 +503,18 @@ private:
 		float y1 = p.y + s.y;
 
 		int barsVisible = zoomBars.get();
-		int viewStartBar = 0;
+
+		// Autoscroll: keep playhead at ~25% from left edge
+		if(autoScroll.get()) {
+			double bpb = double(numerator.get()) * (4.0 / double(denominator.get()));
+			int playBar = (int)(beatAcc / bpb);
+			viewScrollBar = ofClamp(playBar - barsVisible / 4,
+			                        0, std::max(0, totalBars.get() - barsVisible));
+		}
+		// Clamp scroll in case totalBars / zoom changed
+		viewScrollBar = ofClamp(viewScrollBar, 0, std::max(0, totalBars.get() - barsVisible));
+
+		int viewStartBar = viewScrollBar;
 		int viewEndBar   = viewStartBar + barsVisible;
 
 		double beatsPerBar = double(numerator.get()) * (4.0 / double(denominator.get()));
@@ -690,7 +711,17 @@ private:
 		if(ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
 			dragMode = DRAG_NONE;
 		}
-		
+
+		// Horizontal scroll via mouse wheel (disabled while autoscroll is active)
+		if(!autoScroll.get() && ImGui::IsItemHovered()) {
+			float wheel = ImGui::GetIO().MouseWheelH;           // trackpad two-finger horizontal
+			if(wheel == 0.f) wheel = -ImGui::GetIO().MouseWheel; // vertical wheel → scroll right/left
+			if(wheel != 0.f) {
+				viewScrollBar = ofClamp(viewScrollBar + (int)std::round(wheel),
+				                        0, std::max(0, totalBars.get() - barsVisible));
+			}
+		}
+
 		// Cursor already advanced by InvisibleButton, no Dummy needed!
 	}
 
@@ -725,7 +756,9 @@ private:
 	ofParameter<int> wrapAtEnd;
 
 	ofParameter<bool> showWindow;
-	ofParameter<int> zoomBars;
+	ofParameter<int>  zoomBars;
+	ofParameter<bool> autoScroll;
+	int viewScrollBar = 0;   // leftmost visible bar (UI state, not serialised)
 	
 	ofParameter<int> gridDiv;
 	ofParameter<int> gridMode;

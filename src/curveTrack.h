@@ -43,6 +43,10 @@ public:
 		
 		addParameter(minValue.set("Min Value", 0.0f, -10.0f, 10.0f));
 		addParameter(maxValue.set("Max Value", 1.0f, -10.0f, 10.0f));
+		addParameter(clipStart   .set("Clip Start",   0.f,   0.f, 999.f));
+		addParameter(clipEnd     .set("Clip End",    999.f,  0.f, 999.f));
+		addParameter(clipDuration.set("Clip Dur",      4.f, 0.25f, 64.f));
+		addParameter(clipLoop    .set("Loop",         false));
 		
 		addOutputParameter(curveOutput.set("Curve[]", {0}, {-10}, {10}));
 		
@@ -74,8 +78,31 @@ public:
 			curveOutput = outputs;
 			return;
 		}
-		
+
 		double currentBeat = currentTimeline->getBeatPosition();
+
+		// Clip window — check all clips
+		double dur = (double)clipDuration.get();
+		bool   lp  = clipLoop.get();
+		double cs0 = getClipStartAt(0); // primary clip start — curve data is in this space
+		bool   inClip = false;
+		int nClips = getClipCount();
+		for(int ci = 0; ci < nClips; ci++) {
+			double cs = getClipStartAt(ci);
+			double ce = getClipEndAt(ci);
+			if(currentBeat >= cs && currentBeat < ce) {
+				double local = currentBeat - cs;
+				if(lp && dur > 0.001) local = std::fmod(local, dur);
+				currentBeat = cs0 + local; // remap to primary clip space
+				inClip = true;
+				break;
+			}
+		}
+		if(!inClip) {
+			curveOutput = vector<float>(numCurves.get(), minValue.get());
+			return;
+		}
+
 		vector<float> outputs;
 		
 		for(int curveIdx = 0; curveIdx < numCurves.get(); curveIdx++) {
@@ -571,6 +598,72 @@ public:
 	}
 	
 
+	// Clip window virtuals
+	bool   hasClipWindow()        const override { return true; }
+	double getClipStart()         const override { return clipStart.get(); }
+	double getClipEnd()           const override { return clipEnd.get(); }
+	double getClipDuration()      const override { return clipDuration.get(); }
+	bool   getClipLoop()          const override { return clipLoop.get(); }
+	void   setClipStart(double v)    override { clipStart.set((float)v); }
+	void   setClipEnd(double v)      override { clipEnd.set((float)v); }
+	void   setClipDuration(double v) override { clipDuration.set((float)ofClamp(v, 0.25, 64.0)); }
+	void   setClipLoop(bool v)       override { clipLoop.set(v); }
+
+	// Content stretching — scale all curve point beats relative to primary clip start
+	void beginContentStretch() override {
+		curveStretchSnap.clear();
+		for(auto& curve : allCurvePoints) {
+			std::vector<std::pair<double,float>> snap;
+			for(auto& pt : curve) snap.push_back({pt.beat, pt.value});
+			curveStretchSnap.push_back(snap);
+		}
+	}
+	void applyContentStretch(double factor) override {
+		if(curveStretchSnap.size() != allCurvePoints.size()) return;
+		factor = std::max(0.01, factor);
+		double cs0 = (double)clipStart.get();
+		for(int i = 0; i < (int)allCurvePoints.size(); i++) {
+			for(int j = 0; j < (int)allCurvePoints[i].size() && j < (int)curveStretchSnap[i].size(); j++) {
+				allCurvePoints[i][j].beat = cs0 + (curveStretchSnap[i][j].first - cs0) * factor;
+			}
+		}
+	}
+
+	// Mini content — draw curve line inside clip bar
+	void drawMiniContent(ImDrawList* dl, ImVec2 p1, ImVec2 p2,
+	                     double viewBeat0, double viewBeat1,
+	                     double clipOrigin = -1.0) override
+	{
+		if(allCurvePoints.empty() || allCurvePoints[0].size() < 2) return;
+		double barLen = viewBeat1 - viewBeat0;
+		if(barLen <= 0.001) return;
+		float W = p2.x - p1.x;
+		float H = p2.y - p1.y;
+		if(W <= 1.f || H <= 1.f) return;
+
+		double cs_primary = (double)clipStart.get();
+		double cs  = (clipOrigin >= 0.0) ? clipOrigin : cs_primary;
+		double dur = (double)clipDuration.get();
+		bool   lp  = clipLoop.get();
+
+		const int N = (int)std::max(40.f, W / 2.f);
+		ImVec2 prev; bool hasPrev = false;
+		dl->PushClipRect(p1, p2, true);
+		for(int i = 0; i <= N; i++) {
+			double globalBeat = viewBeat0 + (double)i / N * barLen;
+			// Remap to primary clip space so extra clips show the same curve content
+			double local = globalBeat - cs;
+			if(lp && dur > 0.001) local = std::fmod(local, dur);
+			double evalBeat = cs_primary + local;
+			float v = evaluateCurveAt(evalBeat, activeCurve);
+			float x = p1.x + float(i) / N * W;
+			float y = p2.y - v * H;
+			if(hasPrev) dl->AddLine(prev, ImVec2(x, y), IM_COL32(100, 180, 255, 160), 1.f);
+			prev = ImVec2(x, y); hasPrev = true;
+		}
+		dl->PopClipRect();
+	}
+
 	// --- Preset Saving ---
 	void presetSave(ofJson &json) override {
 		// Save all curves
@@ -594,10 +687,15 @@ public:
 		}
 		json["allCurveTensions"] = allCurvesTensions;
 		
-		json["trackHeight"] = trackHeight;
-		json["collapsed"] = collapsed;
-		json["numCurves"] = numCurves.get();
-		json["activeCurve"] = activeCurve;
+		json["trackHeight"]    = trackHeight;
+		json["collapsed"]      = collapsed;
+		json["numCurves"]      = numCurves.get();
+		json["activeCurve"]    = activeCurve;
+		json["clipStart"]      = clipStart.get();
+		json["clipEnd"]        = clipEnd.get();
+		json["clipDuration"]   = clipDuration.get();
+		json["clipLoop"]       = clipLoop.get();
+		saveExtraClips(json);
 	}
 
 	void presetRecallAfterSettingParameters(ofJson &json) override {
@@ -648,14 +746,23 @@ public:
 			activeCurve = json["activeCurve"];
 			activeCurve = ofClamp(activeCurve, 0, numCurves.get() - 1);
 		}
+		if(json.count("clipStart"))    clipStart    = (float)json["clipStart"];
+		if(json.count("clipEnd"))      clipEnd      = (float)json["clipEnd"];
+		if(json.count("clipDuration")) clipDuration = (float)json["clipDuration"];
+		if(json.count("clipLoop"))     clipLoop     = (bool) json["clipLoop"];
+		loadExtraClips(json);
 	}
 
 private:
-	ofParameter<int> timelineSelect;
+	ofParameter<int>         timelineSelect;
 	ofParameter<std::string> trackName;
-	ofParameter<int> numCurves;
-	ofParameter<float> minValue;
-	ofParameter<float> maxValue;
+	ofParameter<int>         numCurves;
+	ofParameter<float>       minValue;
+	ofParameter<float>       maxValue;
+	ofParameter<float>       clipStart;
+	ofParameter<float>       clipEnd;
+	ofParameter<float>       clipDuration;
+	ofParameter<bool>        clipLoop;
 	ofParameter<vector<float>> curveOutput;
 
 	ppqTimeline* currentTimeline = nullptr;
@@ -663,6 +770,7 @@ private:
 	// Multiple curves data
 	std::vector<std::vector<CurveControlPoint>> allCurvePoints;
 	std::vector<std::vector<CurveTension>> allCurveTensions;
+	std::vector<std::vector<std::pair<double,float>>> curveStretchSnap; // for beginContentStretch
 	int activeCurve = 0;
 	
 	std::vector<std::string> timelineOptions;

@@ -31,7 +31,11 @@ public:
 		addParameterDropdown(timelineSelect, "Timeline", 0, timelineOptions);
 		addParameter(trackName.set("Track Name", "MultiValue " + ofToString(getNumIdentifier())));
 		addParameter(numLanes.set("Num Lanes", 4, 1, 16));
-		
+		addParameter(clipStart   .set("Clip Start",   0.f,   0.f, 999.f));
+		addParameter(clipEnd     .set("Clip End",    999.f,  0.f, 999.f));
+		addParameter(clipDuration.set("Clip Dur",      4.f, 0.25f, 64.f));
+		addParameter(clipLoop    .set("Loop",         false));
+
 		// Vector output for multiple values
 		addOutputParameter(valueOutput.set("Value[]", {0}, {-FLT_MAX}, {FLT_MAX}));
 		addOutputParameter(trigOutput.set("Trig[]", {0}, {0}, {1}));
@@ -52,7 +56,30 @@ public:
 
 	void update(ofEventArgs &args) override {
 		float currentBeat = 0.0f;
-		if(currentTimeline) currentBeat = currentTimeline->getBeatPosition();
+		bool inClip = false;
+		if(currentTimeline) {
+			double beat = currentTimeline->getBeatPosition();
+			double dur  = (double)clipDuration.get();
+			double cs0  = getClipStartAt(0); // primary clip start
+			int nClips = getClipCount();
+			for(int ci = 0; ci < nClips; ci++) {
+				double cs = getClipStartAt(ci);
+				double ce = getClipEndAt(ci);
+				if(beat >= cs && beat < ce) {
+					double local = beat - cs;
+					if(clipLoop.get() && dur > 0.001) local = std::fmod(local, dur);
+					currentBeat = (float)(cs0 + local);
+					inClip = true;
+					break;
+				}
+			}
+			if(!inClip) {
+				valueOutput = vector<float>(numLanes.get(), 0.0f);
+				trigOutput  = vector<float>(numLanes.get(), 0.0f);
+				std::fill(lastActiveState.begin(), lastActiveState.end(), false);
+				return;
+			}
+		}
 
 		// Prepare output vectors
 		vector<float> valueOutputs(numLanes.get(), 0.0f);
@@ -557,6 +584,85 @@ public:
 	}
 	
 
+	// Clip window virtuals
+	bool   hasClipWindow()        const override { return true; }
+	double getClipStart()         const override { return clipStart.get(); }
+	double getClipEnd()           const override { return clipEnd.get(); }
+	double getClipDuration()      const override { return clipDuration.get(); }
+	bool   getClipLoop()          const override { return clipLoop.get(); }
+	void   setClipStart(double v)    override { clipStart.set((float)v); }
+	void   setClipEnd(double v)      override { clipEnd.set((float)v); }
+	void   setClipDuration(double v) override { clipDuration.set((float)ofClamp(v, 0.25, 64.0)); }
+	void   setClipLoop(bool v)       override { clipLoop.set(v); }
+
+	// Mini content — draw value regions inside clip bar
+	void drawMiniContent(ImDrawList* dl, ImVec2 p1, ImVec2 p2,
+	                     double viewBeat0, double viewBeat1,
+	                     double clipOrigin = -1.0) override
+	{
+		double barLen = viewBeat1 - viewBeat0;
+		if(barLen <= 0.001) return;
+		float W = p2.x - p1.x;
+		float H = p2.y - p1.y;
+		if(W <= 1.f || H <= 1.f || valueLanes.empty()) return;
+
+		double cs_primary = (double)clipStart.get();
+		double cs  = (clipOrigin >= 0.0) ? clipOrigin : cs_primary;
+		double dur = (double)clipDuration.get();
+		bool   lp  = clipLoop.get();
+		int    nL  = (int)valueLanes.size();
+		float laneH = H / nL;
+
+		int repStart = 0, repEnd = 0;
+		if(lp && dur > 0.001) {
+			repStart = std::max(0, (int)std::floor((viewBeat0 - cs) / dur) - 1);
+			repEnd   = (int)std::ceil((viewBeat1 - cs) / dur);
+		}
+
+		dl->PushClipRect(p1, p2, true);
+		for(int rep = repStart; rep <= repEnd; rep++) {
+			double offset = rep * dur;
+			for(int lane = 0; lane < nL && lane < (int)valueLanes.size(); lane++) {
+				float ly1 = p1.y + lane * laneH;
+				float ly2 = ly1 + laneH - 1.f;
+				for(auto& r : valueLanes[lane]) {
+					if(lp && dur > 0.001 &&
+					   (r.start < cs_primary || r.start >= cs_primary + dur)) continue;
+					float rx1 = p1.x + float((r.start - cs_primary + offset) / barLen) * W;
+					float rx2 = p1.x + float((r.end()  - cs_primary + offset) / barLen) * W;
+					if(rx2 < p1.x || rx1 > p2.x) continue;
+					float vNorm = ofClamp(r.value, 0.f, 1.f);
+					float topY  = ly2 - vNorm * laneH * 0.8f;
+					ImU32 c = getLaneColor(lane, 150);
+					dl->AddRectFilled(ImVec2(std::max(rx1,p1.x), topY),
+					                  ImVec2(std::min(rx2,p2.x), ly2), c, 1.f);
+				}
+			}
+		}
+		dl->PopClipRect();
+	}
+
+	// Content stretching
+	void beginContentStretch() override {
+		valueStretchSnap.clear();
+		for(auto& lane : valueLanes) {
+			std::vector<std::pair<float,float>> snap;
+			for(auto& r : lane) snap.push_back({r.start, r.length});
+			valueStretchSnap.push_back(snap);
+		}
+	}
+	void applyContentStretch(double factor) override {
+		if(valueStretchSnap.size() != valueLanes.size()) return;
+		factor = std::max(0.01, factor);
+		double cs0 = (double)clipStart.get();
+		for(int i = 0; i < (int)valueLanes.size(); i++) {
+			for(int j = 0; j < (int)valueLanes[i].size() && j < (int)valueStretchSnap[i].size(); j++) {
+				valueLanes[i][j].start  = (float)(cs0 + (valueStretchSnap[i][j].first  - cs0) * factor);
+				valueLanes[i][j].length = (float)(valueStretchSnap[i][j].second * factor);
+			}
+		}
+	}
+
 	// --- Preset Saving ---
 	void presetSave(ofJson &json) override {
 		// Save all lanes
@@ -568,10 +674,15 @@ public:
 			}
 			allLanes.push_back(laneRegions);
 		}
-		json["valueLanes"] = allLanes;
-		json["trackHeight"] = trackHeight;
-		json["numLanes"] = numLanes.get();
-		json["collapsed"] = collapsed;
+		json["valueLanes"]     = allLanes;
+		json["trackHeight"]    = trackHeight;
+		json["numLanes"]       = numLanes.get();
+		json["collapsed"]      = collapsed;
+		json["clipStart"]      = clipStart.get();
+		json["clipEnd"]        = clipEnd.get();
+		json["clipDuration"]   = clipDuration.get();
+		json["clipLoop"]       = clipLoop.get();
+		saveExtraClips(json);
 	}
 
 	void presetRecallAfterSettingParameters(ofJson &json) override {
@@ -600,20 +711,28 @@ public:
 			trackHeight = ofClamp(trackHeight, MIN_TRACK_HEIGHT, MAX_TRACK_HEIGHT);
 		}
 		
-		if(json.count("collapsed") > 0) {
-			collapsed = json["collapsed"];
-		}
+		if(json.count("collapsed") > 0) collapsed = json["collapsed"];
+		if(json.count("clipStart"))    clipStart    = (float)json["clipStart"];
+		if(json.count("clipEnd"))      clipEnd      = (float)json["clipEnd"];
+		if(json.count("clipDuration")) clipDuration = (float)json["clipDuration"];
+		if(json.count("clipLoop"))     clipLoop     = (bool) json["clipLoop"];
+		loadExtraClips(json);
 	}
 
 private:
-	ofParameter<int> timelineSelect;
+	ofParameter<int>         timelineSelect;
 	ofParameter<std::string> trackName;
-	ofParameter<int> numLanes;
+	ofParameter<int>         numLanes;
+	ofParameter<float>       clipStart;
+	ofParameter<float>       clipEnd;
+	ofParameter<float>       clipDuration;
+	ofParameter<bool>        clipLoop;
 	ofParameter<vector<float>> valueOutput;
 	ofParameter<vector<float>> trigOutput;
 
 	ppqTimeline* currentTimeline = nullptr;
-	std::vector<std::vector<ValueRegion>> valueLanes;  // Vector of lanes, each containing regions
+	std::vector<std::vector<ValueRegion>> valueLanes;
+	std::vector<std::vector<std::pair<float,float>>> valueStretchSnap;
 	std::vector<std::string> timelineOptions;
 	
 	std::vector<bool> lastActiveState;  // One per lane
