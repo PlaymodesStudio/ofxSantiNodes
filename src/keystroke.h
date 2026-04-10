@@ -2,6 +2,7 @@
 #pragma once
 #include "ofxOceanodeNodeModel.h"
 #include <string>
+#include <sstream>
 
 class keystroke : public ofxOceanodeNodeModel {
 public:
@@ -9,25 +10,24 @@ public:
 
 	void setup() override {
 		color = ofColor(255, 180, 0);
-		description = "Fires a void trigger on 'Output' when the key pressed matches the 'Key' parameter. 'Last Key' outputs the name of the last pressed key.";
+		description = "Fires a void trigger on 'Output' when the key pressed matches the 'Key' parameter. 'Last Key' outputs the name of the last pressed key. When 'Combo' is on, 'Key' accepts modifier+key combinations like cmd+space or ctrl+shift+a.";
 
-		// A single-character (or named key) string the user wants to watch for.
-		// Examples: "a", "A", " " (space), "F1", "return", "left", etc.
 		addParameter(key_Param.set("Key", "a"));
+		addParameter(combo_Param.set("Combo", false));
 
 		addOutputParameter(triggerOutput.set("Output"));
 		addOutputParameter(lastKeyOutput.set("Last Key", ""));
 
-		// Listen for keypress events from openFrameworks
 		keyPressListener = ofEvents().keyPressed.newListener(this, &keystroke::onKeyPressed);
 	}
 
 private:
 	// ---------- Parameters ----------
 	ofParameter<std::string> key_Param;
+	ofParameter<bool>        combo_Param;
 
 	// ---------- Output ----------
-	ofParameter<void> triggerOutput;
+	ofParameter<void>        triggerOutput;
 	ofParameter<std::string> lastKeyOutput;
 
 	// ---------- Listeners ----------
@@ -35,31 +35,27 @@ private:
 
 	// ---------- Helpers ----------
 
-	// Resolve the target string into a key code / character for comparison.
-	// Returns true and sets outChar/outKey when we have a match candidate.
 	void onKeyPressed(ofKeyEventArgs & args){
-		// Always update last key output
-		lastKeyOutput.set(keyToString(args));
+		if(combo_Param.get()){
+			lastKeyOutput.set(keyToComboString(args));
+		} else {
+			lastKeyOutput.set(keyToString(args));
+		}
 
 		const std::string target = key_Param.get();
 		if(target.empty()) return;
 
 		bool matched = false;
 
-		// ---- single printable character comparison ----
-		if(target.size() == 1){
-			// Compare against the unicode codepoint directly
-			matched = (args.codepoint == (uint32_t)target[0]);
-			// Fallback: compare against the raw key value (covers uppercase etc.)
-			if(!matched){
-				matched = (args.key == (int)(unsigned char)target[0]);
-			}
-		}
-		// ---- named / special keys ----
-		else {
-			int namedKey = resolveNamedKey(target);
-			if(namedKey != -1){
-				matched = (args.key == namedKey);
+		if(combo_Param.get()){
+			matched = matchCombo(args, target);
+		} else {
+			if(target.size() == 1){
+				matched = (args.codepoint == (uint32_t)target[0]);
+				if(!matched) matched = (args.key == (int)(unsigned char)target[0]);
+			} else {
+				int namedKey = resolveNamedKey(target);
+				if(namedKey != -1) matched = (args.key == namedKey);
 			}
 		}
 
@@ -68,13 +64,59 @@ private:
 		}
 	}
 
-	// Convert a key event to a human-readable string (mirrors resolveNamedKey in reverse).
+	// Match "mod1+mod2+key" combo against the current key event.
+	bool matchCombo(const ofKeyEventArgs & args, const std::string & target){
+		std::vector<std::string> parts = splitPlus(target);
+		if(parts.empty()) return false;
+
+		std::string baseKey = parts.back();
+
+		// Resolve required modifiers
+		bool needShift = false, needCtrl = false, needAlt = false, needSuper = false;
+		for(int i = 0; i < (int)parts.size() - 1; i++){
+			std::string m = toLower(parts[i]);
+			if(m == "shift")                                    needShift = true;
+			else if(m == "ctrl" || m == "control")              needCtrl  = true;
+			else if(m == "alt"  || m == "option")               needAlt   = true;
+			else if(m == "cmd"  || m == "command" || m == "super") needSuper = true;
+		}
+
+		// Check that required modifiers are held
+		if(needShift && !ofGetKeyPressed(OF_KEY_SHIFT))   return false;
+		if(needCtrl  && !ofGetKeyPressed(OF_KEY_CONTROL)) return false;
+		if(needAlt   && !ofGetKeyPressed(OF_KEY_ALT))     return false;
+		if(needSuper && !ofGetKeyPressed(OF_KEY_SUPER))   return false;
+
+		// Check base key
+		if(baseKey.size() == 1){
+			if(args.codepoint == (uint32_t)baseKey[0]) return true;
+			return (args.key == (int)(unsigned char)baseKey[0]);
+		} else {
+			int namedKey = resolveNamedKey(baseKey);
+			if(namedKey != -1) return (args.key == namedKey);
+		}
+		return false;
+	}
+
+	// Build a combo string from the current event (for Last Key output in combo mode).
+	static std::string keyToComboString(const ofKeyEventArgs & args){
+		std::string result;
+		if(ofGetKeyPressed(OF_KEY_SUPER))    result += "cmd+";
+		if(ofGetKeyPressed(OF_KEY_CONTROL))  result += "ctrl+";
+		if(ofGetKeyPressed(OF_KEY_ALT))      result += "alt+";
+		if(ofGetKeyPressed(OF_KEY_SHIFT))    result += "shift+";
+
+		std::string base = keyToString(args);
+		if(base.empty()) return result; // modifier-only event
+		result += base;
+		return result;
+	}
+
+	// Convert a key event to a human-readable string.
 	static std::string keyToString(const ofKeyEventArgs & args){
-		// Printable ASCII / unicode single character
 		if(args.codepoint >= 32 && args.codepoint < 127){
 			return std::string(1, (char)args.codepoint);
 		}
-		// Special keys
 		switch(args.key){
 			case OF_KEY_RETURN:    return "return";
 			case OF_KEY_BACKSPACE: return "backspace";
@@ -111,47 +153,29 @@ private:
 	}
 
 	// Map common human-readable key names to OF key codes.
-	static int resolveNamedKey(const std::string& name){
-		// Case-insensitive compare helper
-		auto eq = [&](const char* s){
-			std::string n = name;
-			std::string t = s;
-			std::transform(n.begin(), n.end(), n.begin(), ::tolower);
-			std::transform(t.begin(), t.end(), t.begin(), ::tolower);
-			return n == t;
-		};
+	static int resolveNamedKey(const std::string & name){
+		auto eq = [&](const char * s){ return toLower(name) == toLower(s); };
 
-		// Whitespace / editing
-		if(eq("space") || eq(" "))   return OF_KEY_RETURN; // space bar: key == 32
-		// OF uses 32 for space but let's be explicit:
-		if(name == " ")              return 32;
-		if(eq("space"))              return 32;
-		if(eq("return") || eq("enter")) return OF_KEY_RETURN;
-		if(eq("backspace"))          return OF_KEY_BACKSPACE;
-		if(eq("delete") || eq("del")) return OF_KEY_DEL;
-		if(eq("tab"))                return OF_KEY_TAB;
-		if(eq("esc") || eq("escape")) return OF_KEY_ESC;
-
-		// Arrow keys
-		if(eq("left"))               return OF_KEY_LEFT;
-		if(eq("right"))              return OF_KEY_RIGHT;
-		if(eq("up"))                 return OF_KEY_UP;
-		if(eq("down"))               return OF_KEY_DOWN;
-
-		// Page / home / end
-		if(eq("pageup"))             return OF_KEY_PAGE_UP;
-		if(eq("pagedown"))           return OF_KEY_PAGE_DOWN;
-		if(eq("home"))               return OF_KEY_HOME;
-		if(eq("end"))                return OF_KEY_END;
-		if(eq("insert"))             return OF_KEY_INSERT;
-
-		// Modifier keys (useful for listening in isolation)
-		if(eq("shift"))              return OF_KEY_SHIFT;
-		if(eq("ctrl") || eq("control")) return OF_KEY_CONTROL;
-		if(eq("alt"))                return OF_KEY_ALT;
+		if(name == " ")                         return 32;
+		if(eq("space"))                         return 32;
+		if(eq("return") || eq("enter"))         return OF_KEY_RETURN;
+		if(eq("backspace"))                     return OF_KEY_BACKSPACE;
+		if(eq("delete") || eq("del"))           return OF_KEY_DEL;
+		if(eq("tab"))                           return OF_KEY_TAB;
+		if(eq("esc") || eq("escape"))           return OF_KEY_ESC;
+		if(eq("left"))                          return OF_KEY_LEFT;
+		if(eq("right"))                         return OF_KEY_RIGHT;
+		if(eq("up"))                            return OF_KEY_UP;
+		if(eq("down"))                          return OF_KEY_DOWN;
+		if(eq("pageup"))                        return OF_KEY_PAGE_UP;
+		if(eq("pagedown"))                      return OF_KEY_PAGE_DOWN;
+		if(eq("home"))                          return OF_KEY_HOME;
+		if(eq("end"))                           return OF_KEY_END;
+		if(eq("insert"))                        return OF_KEY_INSERT;
+		if(eq("shift"))                         return OF_KEY_SHIFT;
+		if(eq("ctrl") || eq("control"))         return OF_KEY_CONTROL;
+		if(eq("alt"))                           return OF_KEY_ALT;
 		if(eq("super") || eq("cmd") || eq("command")) return OF_KEY_SUPER;
-
-		// Function keys F1-F12
 		if(eq("f1"))  return OF_KEY_F1;
 		if(eq("f2"))  return OF_KEY_F2;
 		if(eq("f3"))  return OF_KEY_F3;
@@ -164,7 +188,27 @@ private:
 		if(eq("f10")) return OF_KEY_F10;
 		if(eq("f11")) return OF_KEY_F11;
 		if(eq("f12")) return OF_KEY_F12;
-
-		return -1; // unknown
+		return -1;
 	}
+
+	// Split string by '+', trimming whitespace from each token.
+	static std::vector<std::string> splitPlus(const std::string & s){
+		std::vector<std::string> parts;
+		std::stringstream ss(s);
+		std::string token;
+		while(std::getline(ss, token, '+')){
+			// trim
+			size_t start = token.find_first_not_of(" \t");
+			size_t end   = token.find_last_not_of(" \t");
+			if(start != std::string::npos) parts.push_back(token.substr(start, end - start + 1));
+		}
+		return parts;
+	}
+
+	static std::string toLower(const std::string & s){
+		std::string r = s;
+		std::transform(r.begin(), r.end(), r.begin(), ::tolower);
+		return r;
+	}
+	static std::string toLower(const char * s){ return toLower(std::string(s)); }
 };
