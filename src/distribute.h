@@ -36,12 +36,16 @@ public:
             }
         }));
 
+        // Don't automatically update outputs when routeTo changes
+        // Only update routing configuration, outputs will update on next input
         listeners.push(routeTo.newListener([this](vector<int> &) {
-            updateOutputs();
+            // Just update the routing configuration, don't trigger output
         }));
 
+        // Don't automatically update outputs when keep changes
+        // Only update on next input
         listeners.push(keep.newListener([this](bool &) {
-            updateOutputs();
+            // Just update the keep configuration, don't trigger output
         }));
     }
 
@@ -66,7 +70,8 @@ private:
         }
 
         routeTo.setMax(vector<int>(1, newSize));
-        updateOutputs();
+        // Don't automatically update outputs when changing number of outputs
+        // Outputs will update on next input
     }
 
     void updateOutputs() {
