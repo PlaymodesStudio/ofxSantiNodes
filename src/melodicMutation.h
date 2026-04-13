@@ -37,6 +37,8 @@ public:
         addParameter(minVel.set("MinVel",       0.4f, 0.0f, 1.0f));
         addParameter(maxVel.set("MaxVel",       0.9f, 0.0f, 1.0f));
         addParameter(silenceProb.set("SilProb", 0.0f, 0.0f, 1.0f));
+        addParameter(noteChance.set("Note%",    1.0f, 0.0f, 1.0f));
+        addParameter(seqChance.set("Seq%",      1.0f, 0.0f, 1.0f));
 
         addSeparator("MUTATION", ofColor(100, 200, 120));
         addParameter(mutation.set("Mutation",  0.3f, 0.0f, 1.0f));
@@ -97,6 +99,9 @@ public:
         listeners.push(mutateParam.newListener([this]()   { onMutate();   }));
         listeners.push(demutateParam.newListener([this]() { onDemutate(); }));
 
+        // Initialize chance RNG with a different seed
+        chanceRng.seed(std::random_device{}());
+        
         expandScales();
         rebuildFromSeed();
     }
@@ -129,6 +134,8 @@ private:
     ofParameter<float>         minVel;
     ofParameter<float>         maxVel;
     ofParameter<float>         silenceProb;
+    ofParameter<float>         noteChance;
+    ofParameter<float>         seqChance;
     ofParameter<float>         mutation;
     ofParameter<float>         mutPitch;
     ofParameter<float>         mutDur;
@@ -180,6 +187,10 @@ private:
     float    beatAccum        = 0.0f;   // monotonic total beats from phasor
     float    nextNoteBeat     = 0.0f;   // beat position to fire the next note
     float    lastPhasorVal    = -1.0f;  // previous phasor sample for delta/wrap detection
+    
+    // Chance control state
+    std::mt19937 chanceRng;             // separate RNG for chance calculations
+    bool         seqGateActive = true;  // current sequence gate state
 
     // ── Low-level helpers ──────────────────────────────────────────────────────
 
@@ -631,10 +642,23 @@ private:
         currentNoteIndex %= (int)melody.size();
         const MelodyNote& note = melody[currentNoteIndex];
 
+        // Check sequence chance at the beginning of each loop
+        if (currentNoteIndex == 0) {
+            std::uniform_real_distribution<float> chanceDist(0.0f, 1.0f);
+            seqGateActive = (chanceDist(chanceRng) < seqChance.get());
+        }
+
+        // Calculate final gate output based on both sequence and note chances
+        bool shouldGate = seqGateActive;
+        if (shouldGate && noteChance.get() < 1.0f) {
+            std::uniform_real_distribution<float> chanceDist(0.0f, 1.0f);
+            shouldGate = (chanceDist(chanceRng) < noteChance.get());
+        }
+
         if (note.scaleIndex >= 0 && note.scaleIndex < (int)expandedScale.size()) {
             int raw      = expandedScale[note.scaleIndex];
             pitchOut = std::clamp((int)std::round(raw + transpose.get()), 0, 127);
-            velGate  = note.velocity;
+            velGate  = shouldGate ? note.velocity : 0.0f;
         } else {
             velGate = 0.0f;
         }
