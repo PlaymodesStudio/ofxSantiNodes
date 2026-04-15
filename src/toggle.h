@@ -436,6 +436,7 @@ private:
 	}
 	
 	void drawToggle() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Draw the toggle name above the toggle if it's not empty
 		string name = toggleName.get();
 		if (!name.empty()) {
@@ -508,7 +509,7 @@ private:
 		
 		// Add subtle border
 		ImU32 borderColor = IM_COL32(200, 200, 200, 100);
-		drawList->AddRect(toggleMin, toggleMax, borderColor, radius, 0, 1.0f);
+		drawList->AddRect(toggleMin, toggleMax, borderColor, radius, 0, 1.0f * zoom);
 		
 		// Calculate knob position and size
 		float knobRadius = (height * 0.4f);

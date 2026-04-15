@@ -2,6 +2,7 @@
 #define multiSliderMatrix_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui_internal.h"
 
 class multiSliderMatrix : public ofxOceanodeNodeModel {
@@ -373,6 +374,7 @@ private:
 
 	// --- GUI ---
 	void drawMultiSlider(int index) {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		if (index >= (int)vectorValues[currentSlot].size()) return;
 
 		auto values_getter = [](void* data, int idx) -> float {

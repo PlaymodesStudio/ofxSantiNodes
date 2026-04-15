@@ -2,6 +2,7 @@
 #define curveTrack_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "ppqTimeline.h"
 #include "transportTrack.h"
@@ -137,11 +138,11 @@ public:
 	}
 
 	void drawInTimeline(ImDrawList* dl, ImVec2 pos, ImVec2 sz, double viewStart, double viewEnd) override {
-		
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		// 0. Draw tab bar if multiple curves
 		float tabBarHeight = 0.0f;
 		if(numCurves.get() > 1) {
-			tabBarHeight = 25.0f;
+			tabBarHeight = 25.0f * zoom;
 			ImVec2 tabBarStart = ImGui::GetCursorScreenPos();
 			
 			// Tab buttons
@@ -157,7 +158,7 @@ public:
 					ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.6f, 0.8f, 1.0f));
 				}
 				
-				if(ImGui::Button(tabLabel, ImVec2(70, 20))) {
+				if(ImGui::Button(tabLabel, ImVec2(70.0f * zoom, 20.0f * zoom))) {
 					activeCurve = i;
 				}
 				
@@ -254,7 +255,7 @@ public:
 				ImVec2(barX, p.y),
 				ImVec2(barX, endP.y),
 				IM_COL32(120, 120, 120, 255),
-				2.0f
+				2.0f * zoom
 			);
 			
 			if(gridTicks > 0 && bar < viewEndBar) {
@@ -269,7 +270,7 @@ public:
 						ImVec2(gridX, p.y),
 						ImVec2(gridX, endP.y),
 						IM_COL32(70, 70, 70, 100),
-						0.5f
+						0.5f * zoom
 					);
 				}
 			}
@@ -283,13 +284,13 @@ public:
 				ImVec2(p.x, yPos),
 				ImVec2(endP.x, yPos),
 				IM_COL32(80, 80, 80, 100),
-				1.0f
+				1.0f * zoom
 			);
-			
+
 			// Value labels
 			char buf[16];
 			snprintf(buf, 16, "%.2f", minValue.get() + val * (maxValue.get() - minValue.get()));
-			dl->AddText(ImVec2(p.x + 2, yPos - 8), IM_COL32(150, 150, 150, 200), buf);
+			dl->AddText(ImVec2(p.x + 2.0f * zoom, yPos - 8.0f * zoom), IM_COL32(150, 150, 150, 200), buf);
 		}
 		
 		// 6.5 Draw loop region
@@ -314,13 +315,13 @@ public:
 					ImVec2(lx1, p.y),
 					ImVec2(lx1, endP.y),
 					IM_COL32(160, 160, 255, 180),
-					2.0f
+					2.0f * zoom
 				);
 				dl->AddLine(
 					ImVec2(lx2, p.y),
 					ImVec2(lx2, endP.y),
 					IM_COL32(160, 160, 255, 180),
-					2.0f
+					2.0f * zoom
 				);
 			}
 		}
@@ -364,7 +365,7 @@ public:
 						ImVec2(sx1, sy1),
 						ImVec2(sx2, sy2),
 						curveColor,
-						1.0f
+						1.0f * zoom
 					);
 				}
 			}
@@ -405,7 +406,7 @@ public:
 					ImVec2(sx1, sy1),
 					ImVec2(sx2, sy2),
 					activeCurveColor,
-					2.0f
+					2.0f * zoom
 				);
 			}
 		}
@@ -418,15 +419,15 @@ public:
 			
 			if(px < p.x - 20 || px > endP.x + 20) continue;
 			
-			bool isPointHovered = (std::abs(mousePos.x - px) < 8 && std::abs(mousePos.y - py) < 8);
-			float radius = (isPointHovered || (int)i == selectedPoint) ? 6.0f : 4.0f;
-			
+			bool isPointHovered = (std::abs(mousePos.x - px) < 8.0f * zoom && std::abs(mousePos.y - py) < 8.0f * zoom);
+			float radius = (isPointHovered || (int)i == selectedPoint) ? 6.0f * zoom : 4.0f * zoom;
+
 			ImU32 pointColor = (int)i == selectedPoint ?
 				IM_COL32(255, 200, 100, 255) :
 				IM_COL32(255, 255, 255, 255);
-			
+
 			dl->AddCircleFilled(ImVec2(px, py), radius, pointColor);
-			dl->AddCircle(ImVec2(px, py), radius, IM_COL32(50, 50, 50, 255), 12, 1.5f);
+			dl->AddCircle(ImVec2(px, py), radius, IM_COL32(50, 50, 50, 255), 12, 1.5f * zoom);
 		}
 		
 		// 9. Draw playhead with all curve values
@@ -436,26 +437,26 @@ public:
 				ImVec2(playheadX, p.y),
 				ImVec2(playheadX, endP.y),
 				IM_COL32(255, 80, 80, 255),
-				2.5f
+				2.5f * zoom
 			);
-			
+
 			// Draw value indicators for all curves
 			for(int curveIdx = 0; curveIdx < numCurves.get(); curveIdx++) {
 				float currentValue = evaluateCurveAt(currentPlayheadBeat, curveIdx);
 				float currentY = valueToY(currentValue);
-				
+
 				if(curveIdx == activeCurve) {
 					// Active curve: bright indicator
 					dl->AddCircleFilled(
 						ImVec2(playheadX, currentY),
-						5.0f,
+						5.0f * zoom,
 						IM_COL32(255, 80, 80, 255)
 					);
 				} else {
 					// Inactive curves: dimmed indicator
 					dl->AddCircleFilled(
 						ImVec2(playheadX, currentY),
-						3.0f,
+						3.0f * zoom,
 						IM_COL32(255, 80, 80, 100)
 					);
 				}
@@ -634,6 +635,7 @@ public:
 	                     double viewBeat0, double viewBeat1,
 	                     double clipOrigin = -1.0) override
 	{
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		if(allCurvePoints.empty() || allCurvePoints[0].size() < 2) return;
 		double barLen = viewBeat1 - viewBeat0;
 		if(barLen <= 0.001) return;
@@ -658,7 +660,7 @@ public:
 			float v = evaluateCurveAt(evalBeat, activeCurve);
 			float x = p1.x + float(i) / N * W;
 			float y = p2.y - v * H;
-			if(hasPrev) dl->AddLine(prev, ImVec2(x, y), IM_COL32(100, 180, 255, 160), 1.f);
+			if(hasPrev) dl->AddLine(prev, ImVec2(x, y), IM_COL32(100, 180, 255, 160), 1.f * zoom);
 			prev = ImVec2(x, y); hasPrev = true;
 		}
 		dl->PopClipRect();

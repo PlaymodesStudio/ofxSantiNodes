@@ -364,6 +364,7 @@ private:
 	}
 	
 	void drawButton() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Draw the button name above if not empty
 		string name = buttonName.get();
 		if (!name.empty()) {
@@ -411,7 +412,7 @@ private:
 		ImVec2 buttonMin(pos.x, pos.y);
 		ImVec2 buttonMax(pos.x + width, pos.y + height);
 		drawList->AddRectFilled(buttonMin, buttonMax, currentBgColor, radius);
-		drawList->AddRect(buttonMin, buttonMax, borderColor, radius, 0, 1.0f);
+		drawList->AddRect(buttonMin, buttonMax, borderColor, radius, 0, 1.0f * zoom);
 		
 		// Draw button text
 		string buttonText = "";

@@ -481,6 +481,7 @@ private:
 	}
 	
 	void drawSlider() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Draw the slider name above the slider if it's not empty
 		string name = sliderName.get();
 		if (!name.empty()) {

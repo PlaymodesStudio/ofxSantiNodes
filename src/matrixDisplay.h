@@ -2,6 +2,7 @@
 #define matrixDisplay_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include <algorithm>
 #include <functional>
@@ -65,20 +66,21 @@ public:
 private:
 	// Embedded widget wrapper (respects Draw In Node + inspector W/H)
 	void drawMatrixWidget() {
-
-		float w = widgetWidth.get();
-		float h = widgetHeight.get();
+		float zoom = ofxOceanodeShared::getZoomLevel();
+		float w = widgetWidth.get() * zoom;
+		float h = widgetHeight.get() * zoom;
 
 		// Use exact inspector widget size (like VU meter)
 		drawMatrixAtCursor(w, h, /*showInfo*/false);
 
 		// Small spacer after widget (keeps node layout clean)
-		ImGui::Dummy(ImVec2(0, 4));
+		ImGui::Dummy(ImVec2(0, 4.0f * zoom));
 	}
 
 	// Core renderer used by BOTH contexts
 	// Draws into current ImGui cursor area, consuming layout space.
 	void drawMatrixAtCursor(float targetW, float targetH, bool showInfoLine) {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 
@@ -101,9 +103,9 @@ private:
 
 		// Background + border
 		drawList->AddRectFilled(start, end, IM_COL32(15, 15, 15, 255));
-		drawList->AddRect(start, end, IM_COL32(100, 100, 100, 255), 0.0f, 0, 1.5f);
+		drawList->AddRect(start, end, IM_COL32(100, 100, 100, 255), 0.0f, 0, 1.5f * zoom);
 
-		const float pad = padding.get();
+		const float pad = padding.get() * zoom;
 		const bool grid = showGrid.get();
 
 		for(int yy = 0; yy < hCells; ++yy){

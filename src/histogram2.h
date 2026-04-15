@@ -2,6 +2,7 @@
 #define histogram2_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include <algorithm>
 #include <functional>
@@ -213,15 +214,17 @@ private:
 	void drawWidget() {
 		if(!drawInNode.get()) return;
 
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		float w = widgetWidth.get();
 		float h = widgetHeight.get();
 
 		drawHistogramAtCursor(w, h);
-		ImGui::Dummy(ImVec2(0, 4));
+		ImGui::Dummy(ImVec2(0, 4 * zoom));
 	}
 
 	// Core renderer - draws scrolling waveforms
 	void drawHistogramAtCursor(float targetW, float targetH) {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 

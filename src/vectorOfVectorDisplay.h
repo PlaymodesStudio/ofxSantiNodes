@@ -2,6 +2,7 @@
 #define vectorOfVectorDisplay_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include <algorithm>
 #include <functional>
@@ -62,16 +63,17 @@ private:
 	// Embedded widget wrapper
 	void drawWidget() {
 		if(!drawInNode.get()) return;
-
-		float w = widgetWidth.get();
-		float h = widgetHeight.get();
+		float zoom = ofxOceanodeShared::getZoomLevel();
+		float w = widgetWidth.get() * zoom;
+		float h = widgetHeight.get() * zoom;
 
 		drawVectorOfVectorAtCursor(w, h, /*showInfo*/false);
-		ImGui::Dummy(ImVec2(0, 4));
+		ImGui::Dummy(ImVec2(0, 4.0f * zoom));
 	}
 
 	// Core renderer
 	void drawVectorOfVectorAtCursor(float targetW, float targetH, bool showInfoLine) {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 
@@ -87,7 +89,7 @@ private:
 		// Find min/max for normalization
 		float minVal = FLT_MAX;
 		float maxVal = -FLT_MAX;
-		
+
 		if(norm) {
 			for(const auto& row : data) {
 				for(float val : row) {
@@ -106,7 +108,7 @@ private:
 
 		// Background + border
 		drawList->AddRectFilled(start, end, IM_COL32(15, 15, 15, 255));
-		drawList->AddRect(start, end, IM_COL32(100, 100, 100, 255), 0.0f, 0, 1.5f);
+		drawList->AddRect(start, end, IM_COL32(100, 100, 100, 255), 0.0f, 0, 1.5f * zoom);
 
 		const int numRows = data.size();
 		const float rowHeight = targetH / (float)numRows;
@@ -119,13 +121,13 @@ private:
 					ImVec2(start.x, y),
 					ImVec2(end.x, y),
 					IM_COL32(60, 60, 60, 140),
-					0.5f
+					0.5f * zoom
 				);
 			}
 		}
 
 		// Draw each row as a line
-		const float thickness = lineThickness.get();
+		const float thickness = lineThickness.get() * zoom;
 		
 		for(int i = 0; i < numRows; i++) {
 			if(data[i].empty()) continue;

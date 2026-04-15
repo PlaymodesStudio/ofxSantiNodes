@@ -2,6 +2,7 @@
 #define scalaTuning_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <regex>
@@ -217,6 +218,7 @@ public:
 	
 	// Draw scale pitch visualization
 	void drawScaleVisualization() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		if ((scaleRatios.empty() || (!useCustomRatios && !scaleFiles.size())) && !bypass) {
 			ImGui::Text("No scale loaded");
 			return;

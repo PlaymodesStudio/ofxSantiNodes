@@ -2,6 +2,7 @@
 #define sigmoidCurve_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include <algorithm>
 #include <cmath>
@@ -108,6 +109,7 @@ private:
 	float dragStartSteepness = 1.0f;
 
 	void drawCurveEditor() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Tab bar if multiple curves
 		if(numCurves.get() > 1) {
 			for(int i = 0; i < numCurves.get(); i++) {

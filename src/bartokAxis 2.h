@@ -3,6 +3,7 @@
 #define bartokAxis_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <vector>
@@ -288,6 +289,7 @@ private:
 	}
 	
 	void drawAxisDisplay() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		

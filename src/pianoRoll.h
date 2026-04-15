@@ -2,6 +2,7 @@
 #define pianoRoll_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <vector>
@@ -308,16 +309,16 @@ private:
     
     
     void drawPianoRoll() {
-        
+        float zoom = ofxOceanodeShared::getZoomLevel();
         shiftPressed = ImGui::GetIO().KeyShift;
         ctrlPressed = ImGui::GetIO().KeyCtrl;
-        
-        
+
+
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
         ImVec2 canvas_pos = ImGui::GetCursorScreenPos();
         ImVec2 canvas_size = ImGui::GetContentRegionAvail();
         float totalHeight = (octaves * NOTES_PER_OCTAVE * noteHeight);
-        gridWidth = canvas_size.x - TIME_WIDTH;
+        gridWidth = canvas_size.x - TIME_WIDTH * zoom;
         updateGrid();
         
         ImVec2 mouse_pos = ImGui::GetMousePos();
@@ -330,26 +331,26 @@ private:
                     float y = canvas_pos.y + totalHeight - (i + 1) * noteHeight;
                     
                     // Draw the base key color
-                    draw_list->AddRectFilled(ImVec2(canvas_pos.x, y), ImVec2(canvas_pos.x + TIME_WIDTH, y + noteHeight), keyColor);
-                    
+                    draw_list->AddRectFilled(ImVec2(canvas_pos.x, y), ImVec2(canvas_pos.x + TIME_WIDTH * zoom, y + noteHeight), keyColor);
+
                     // Draw the highlight if this is the highlighted note
                     if (i == highlightedNote) {
                         ImU32 highlightColor = IM_COL32(255, 255, 0, 25); // Yellow with some transparency
                         draw_list->AddRectFilled(ImVec2(canvas_pos.x, y), ImVec2(canvas_pos.x + canvas_size.x, y + noteHeight), highlightColor);
                     }
-                    
+
                     // Draw horizontal grid lines
-                    draw_list->AddLine(ImVec2(canvas_pos.x + TIME_WIDTH, y), ImVec2(canvas_pos.x + canvas_size.x, y), IM_COL32(60, 60, 60, 255));
-                    
+                    draw_list->AddLine(ImVec2(canvas_pos.x + TIME_WIDTH * zoom, y), ImVec2(canvas_pos.x + canvas_size.x, y), IM_COL32(60, 60, 60, 255));
+
                     // Draw black key outlines
                     if (isBlackKey) {
-                        draw_list->AddRect(ImVec2(canvas_pos.x, y), ImVec2(canvas_pos.x + TIME_WIDTH, y + noteHeight), IM_COL32(0, 0, 0, 255));
+                        draw_list->AddRect(ImVec2(canvas_pos.x, y), ImVec2(canvas_pos.x + TIME_WIDTH * zoom, y + noteHeight), IM_COL32(0, 0, 0, 255));
                     }
                 }
         
         // Draw vertical grid lines
         for (int i = 0; i <= totalSteps; ++i) {
-            float x = canvas_pos.x + TIME_WIDTH + i * stepWidth;
+            float x = canvas_pos.x + TIME_WIDTH * zoom + i * stepWidth;
             ImU32 lineColor = (i % quantizationResolution == 0) ? IM_COL32(100, 100, 100, 255) : IM_COL32(60, 60, 60, 255);
             draw_list->AddLine(ImVec2(x, canvas_pos.y), ImVec2(x, canvas_pos.y + totalHeight), lineColor);
         }
@@ -364,24 +365,24 @@ private:
         // Draw notes with opacity based on velocity and highlight selected notes
         for (auto& note : notes) {
             float y = canvas_pos.y + totalHeight - (note.pitch + 1) * noteHeight;
-            float x = canvas_pos.x + TIME_WIDTH + note.start * gridWidth;
+            float x = canvas_pos.x + TIME_WIDTH * zoom + note.start * gridWidth;
             float width = note.length * gridWidth;
             ImU32 noteColor = note.selected ? IM_COL32(255, 0, 0, 255) : IM_COL32(100, 150, 250, (int)(note.velocity * 255));
             draw_list->AddRectFilled(
                                      ImVec2(x, y),
-                                     ImVec2(x + width, y + noteHeight - NOTE_PADDING),
+                                     ImVec2(x + width, y + noteHeight - NOTE_PADDING * zoom),
                                      noteColor
                                      );
-            
+
             // If this note is being adjusted for velocity, display the value
             if (isAdjustingVelocity && draggingNote == &note) {
                 char velocityText[16];
                 snprintf(velocityText, sizeof(velocityText), "%.2f", note.velocity);
                 ImVec2 textSize = ImGui::CalcTextSize(velocityText);
-                ImVec2 textPos = ImVec2(x + width / 2 - textSize.x / 2, y - textSize.y - 2);
+                ImVec2 textPos = ImVec2(x + width / 2 - textSize.x / 2, y - textSize.y - 2.0f * zoom);
                 draw_list->AddRectFilled(
-                                         ImVec2(textPos.x - 2, textPos.y - 2),
-                                         ImVec2(textPos.x + textSize.x + 2, textPos.y + textSize.y + 2),
+                                         ImVec2(textPos.x - 2.0f * zoom, textPos.y - 2.0f * zoom),
+                                         ImVec2(textPos.x + textSize.x + 2.0f * zoom, textPos.y + textSize.y + 2.0f * zoom),
                                          IM_COL32(0, 0, 0, 180)
                                          );
                 draw_list->AddText(textPos, IM_COL32(255, 255, 255, 255), velocityText);
@@ -391,7 +392,7 @@ private:
         
         // Handle mouse input for note creation, movement, selection, and velocity adjustment
         //ImVec2 mouse_pos = ImGui::GetMousePos();
-        float mouseX = mouse_pos.x - canvas_pos.x - TIME_WIDTH;
+        float mouseX = mouse_pos.x - canvas_pos.x - TIME_WIDTH * zoom;
         float mouseY = mouse_pos.y - canvas_pos.y;
         
         if (mouseX >= 0 && mouseX < gridWidth && mouseY >= 0 && mouseY < totalHeight) {
@@ -533,8 +534,8 @@ private:
         }
         
         // Draw playhead
-        float playheadX = canvas_pos.x + TIME_WIDTH + phasor * gridWidth;
-        draw_list->AddLine(ImVec2(playheadX, canvas_pos.y), ImVec2(playheadX, canvas_pos.y + totalHeight), IM_COL32(255, 0, 0, 255), 2.0f);
+        float playheadX = canvas_pos.x + TIME_WIDTH * zoom + phasor * gridWidth;
+        draw_list->AddLine(ImVec2(playheadX, canvas_pos.y), ImVec2(playheadX, canvas_pos.y + totalHeight), IM_COL32(255, 0, 0, 255), 2.0f * zoom);
     }
     
     bool isNoteBlack(int noteIndex) {

@@ -110,6 +110,7 @@ private:
     }
 
     void drawGui() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
         int n = size.get();
         if (n <= 0) return;
 

@@ -2,6 +2,7 @@
 #define markovVector_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui_internal.h"
 #include <random>
 
@@ -305,6 +306,7 @@ private:
 	}
 	
 	void drawTransitionMatrix() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Title and spacing
 		ImGui::Text("Transition Probabilities");
 		ImGui::Spacing();

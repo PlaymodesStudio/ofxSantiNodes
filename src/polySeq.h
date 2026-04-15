@@ -2,6 +2,7 @@
 #define polySeq_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui_internal.h"
 #include <fstream>
 #include <vector>
@@ -294,6 +295,7 @@ private:
 	}
 	
 	void drawMultiSlider(int index) {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		if (index >= numSliders || index >= vectorValueParams.size()) return;
 		
 		auto values_getter = [](void* data, int idx) -> float {

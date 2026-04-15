@@ -2,6 +2,7 @@
 #define pianoKeyboard_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <algorithm>
@@ -166,6 +167,7 @@ private:
 	}
 	
 	void drawKeyboard() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		

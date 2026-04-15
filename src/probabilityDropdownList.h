@@ -2,6 +2,7 @@
 #define probabilityDropdownList_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include <algorithm>
 
@@ -643,6 +644,7 @@ private:
 		}
 	
 	void drawWeightSliders(const string& label, ofParameter<vector<float>>& weights, float height, bool showLabels) {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 			ImGui::Text("%s", label.c_str());
 			
 			float width = widgetWidth.get();

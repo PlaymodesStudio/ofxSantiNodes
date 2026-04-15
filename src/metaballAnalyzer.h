@@ -1,5 +1,6 @@
 #pragma once
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include <numeric>
 #include <cmath>
@@ -122,6 +123,7 @@ private:
 
 	// helper like your rotoControl but with label
 	static void drawSectionHeader(const char* label) {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		ImVec2 p = ImGui::GetCursorScreenPos();
 		float w = 220.0f;               // width inside node
 		ImU32 col = IM_COL32(200,200,200,255);
@@ -132,9 +134,9 @@ private:
 			col,
 			1.4f
 		);
-		ImGui::Dummy(ImVec2(0, 4));
+		ImGui::Dummy(ImVec2(0, 4 * zoom));
 		ImGui::TextUnformatted(label);
-		ImGui::Dummy(ImVec2(0, 2));
+		ImGui::Dummy(ImVec2(0, 2 * zoom));
 	}
 
 	static inline float safe(float v){ return (std::isnan(v) || std::isinf(v)) ? 0.f : v; }

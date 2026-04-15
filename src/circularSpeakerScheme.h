@@ -2,6 +2,7 @@
 #define circularSpeakerScheme_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <cmath>
@@ -51,6 +52,7 @@ private:
     }
 
     void drawScheme() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         float displaySize = size.get();

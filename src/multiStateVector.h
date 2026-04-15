@@ -9,6 +9,7 @@
 #define multistateVector_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui_internal.h"
 
 class multistateVector : public ofxOceanodeNodeModel {
@@ -110,6 +111,7 @@ private:
     }
     
     void drawCustomWidget() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
         
         
         auto cursorPos = ImGui::GetCursorScreenPos();

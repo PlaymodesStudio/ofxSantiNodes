@@ -2,6 +2,7 @@
 #define trackScheduler_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "ppqTimeline.h"
 #include "transportTrack.h"
@@ -60,6 +61,7 @@ public:
     void drawInTimeline(ImDrawList* dl, ImVec2 /*pos*/, ImVec2 sz,
                         double viewStart, double viewEnd) override
     {
+		float zoom = ofxOceanodeShared::getZoomLevel();
         std::string btnId = "##tsch" + ofToString(getNumIdentifier());
         ImGui::InvisibleButton(btnId.c_str(), sz);
 
@@ -421,6 +423,7 @@ private:
     }
 
     void drawPlayhead(ImDrawList* dl, ImVec2 p, ImVec2 ep, float phX) {
+		float zoom = ofxOceanodeShared::getZoomLevel();
         if(phX >= p.x && phX <= ep.x)
             dl->AddLine(ImVec2(phX, p.y), ImVec2(phX, ep.y),
                         IM_COL32(255, 80, 80, 255), 2.5f);

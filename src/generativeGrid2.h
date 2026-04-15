@@ -2,6 +2,7 @@
 #define generativeGrid2_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include <set>
 
 class generativeGrid2 : public ofxOceanodeNodeModel {
@@ -58,6 +59,7 @@ public:
 	}
 	
 	void draw(ofEventArgs &a) override {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		if (!showWindow) return;
 		
 		if (ImGui::Begin(("Generative Grid 2 " + ofToString(getNumIdentifier())).c_str())) {
@@ -463,6 +465,7 @@ private:
 	
 	void drawShapePreview(ImDrawList* draw_list, ImVec2 screenPos, ImVec2 screenSize,
 						 float left, float top, float right, float bottom, int selectionIndex) {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		float centerX = (left + right) * 0.5f;
 		float centerY = (top + bottom) * 0.5f;
 		

@@ -2,6 +2,7 @@
 #define trimGroupPaths_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include <map>
 #include <set>
 
@@ -55,6 +56,7 @@ public:
 	
 	void draw(ofEventArgs &a) override
 	{
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		if(showWindow)
 		{
 			if(ImGui::Begin(("Trim Group Paths " + ofToString(getNumIdentifier())).c_str()))

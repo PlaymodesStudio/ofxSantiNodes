@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <random>
@@ -494,6 +495,7 @@ private:
     // ── Visualization ──────────────────────────────────────────────────────────
 
     void drawMelodyViz() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
         if (expandedScale.empty() || history.empty()) return;
 
         ImDrawList* dl  = ImGui::GetWindowDrawList();

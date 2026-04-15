@@ -2,6 +2,7 @@
 #define padXY_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <deque>
@@ -133,6 +134,7 @@ private:
     }
 
     void drawPad() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         float padSize = size.get();

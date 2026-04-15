@@ -493,6 +493,7 @@ private:
 	}
 	
 	void drawMultislider() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Draw the multislider name above if not empty
 		string name = sliderName.get();
 		if (!name.empty()) {

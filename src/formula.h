@@ -2,6 +2,7 @@
 #define formula_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include <string>
 #include <regex>
 #include <cmath>
@@ -60,7 +61,8 @@ public:
 
 		// In-node custom editor (fixed width; height via Editor Lines)
 		addCustomRegion(formulaEditorRegion, [this](){
-			const float PADDING = 6.0f;
+			float zoom = ofxOceanodeShared::getZoomLevel();
+			const float PADDING = 6.0f * zoom;
 
 			// Height in pixels by line count
 			const float baseLineHeight = ImGui::GetTextLineHeightWithSpacing();
@@ -68,10 +70,10 @@ public:
 			const float boxH           = lines * baseLineHeight;
 
 			// Fixed content width to avoid spilling
-			const float boxW = 240.0f;
+			const float boxW = 240.0f * zoom;
 
 			ImGui::BeginChild("FormulaEditor",
-							  ImVec2(boxW, boxH + 2*PADDING),
+							  ImVec2(boxW, boxH + 2.0f*PADDING),
 							  true,
 							  ImGuiWindowFlags_None);
 
@@ -86,7 +88,7 @@ public:
 			buf.assign(formulaBuf.begin(), formulaBuf.end());
 			buf.push_back('\0');
 
-			ImVec2 inputSize(boxW - 2*PADDING, boxH);
+			ImVec2 inputSize(boxW - 2.0f*PADDING, boxH);
 
 			bool changed = ImGui::InputTextMultiline(
 				"##formulaML",

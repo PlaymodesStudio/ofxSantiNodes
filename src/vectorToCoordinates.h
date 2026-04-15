@@ -2,6 +2,7 @@
 #define vectorToCoordinates_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include <algorithm>
 
@@ -95,6 +96,7 @@ private:
 	}
 	
 	void drawDisplay() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		if(!showDisplay.get()) return;
 		
 		ImDrawList* drawList = ImGui::GetWindowDrawList();

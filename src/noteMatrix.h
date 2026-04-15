@@ -2,6 +2,7 @@
 #define noteMatrix_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include <algorithm>
 #include "imgui_internal.h"
@@ -182,6 +183,7 @@ private:
     }
 
     void drawCustomGui() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 

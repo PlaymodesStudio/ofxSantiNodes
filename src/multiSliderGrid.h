@@ -2,6 +2,7 @@
 #define multiSliderGrid_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui_internal.h"
 
 class multiSliderGrid : public ofxOceanodeNodeModel {
@@ -830,6 +831,7 @@ private:
 	customGuiRegion customWidget;
 	
 	void drawMultiSliderGrid() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Get ImGui IO to check key states
 		ImGuiIO& io = ImGui::GetIO();
 		

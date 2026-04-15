@@ -12,6 +12,7 @@
 #define stepValueTrack_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "ppqTimeline.h"
 #include "transportTrack.h"
@@ -98,6 +99,7 @@ public:
     void drawInTimeline(ImDrawList* dl, ImVec2 /*pos*/, ImVec2 sz,
                         double viewStart, double viewEnd) override
     {
+		float zoom = ofxOceanodeShared::getZoomLevel();
         std::string btnId = "##svt" + ofToString(getNumIdentifier());
         ImGui::InvisibleButton(btnId.c_str(), sz);
 
@@ -255,6 +257,7 @@ public:
                          double viewBeat0, double viewBeat1,
                          double clipOrigin = -1.0) override
     {
+		float zoom = ofxOceanodeShared::getZoomLevel();
         if(steps.empty()) return;
         double barLen = viewBeat1 - viewBeat0;
         if(barLen <= 0.001) return;

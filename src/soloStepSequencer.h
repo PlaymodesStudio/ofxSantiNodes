@@ -2,6 +2,7 @@
 #define soloStepSequencer_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <random>
@@ -169,6 +170,7 @@ public:
     }
 
     void drawCustomWidget() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
             ImGuiStyle& style = ImGui::GetStyle();
             float width = guiWidth;
             float height = trackHeight;

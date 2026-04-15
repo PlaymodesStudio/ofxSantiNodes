@@ -493,6 +493,7 @@ private:
 	}
 	
 	void drawMultitoggle() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Draw the multitoggle name above if not empty
 		string name = toggleName.get();
 		if (!name.empty()) {
@@ -562,7 +563,7 @@ private:
 			
 			ImU32 currentColor = (toggleValues[i] == 1) ? onColor : offColor;
 			drawList->AddRectFilled(toggleMin, toggleMax, currentColor);
-			drawList->AddRect(toggleMin, toggleMax, borderColor, 0, 0, 1.0f);
+			drawList->AddRect(toggleMin, toggleMax, borderColor, 0, 0, 1.0f * zoom);
 			
 			if (isHovered) {
 				ImVec2 mousePos = ImGui::GetIO().MousePos;

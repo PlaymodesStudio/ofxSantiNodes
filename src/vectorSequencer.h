@@ -2,6 +2,7 @@
 #define vectorSequencer_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include <memory>
 #include <algorithm>
@@ -229,6 +230,7 @@ private:
     }
 
     void drawCustomWidget() {
+		float zoom = ofxOceanodeShared::getZoomLevel();
             ImGuiStyle& style = ImGui::GetStyle();
             float width = guiWidth;
             float height = guiHeight;

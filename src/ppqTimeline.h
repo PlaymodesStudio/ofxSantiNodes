@@ -2,6 +2,7 @@
 #define ppqTimeline_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "transportTrack.h"
 #include <cmath>
@@ -221,6 +222,7 @@ public:
 
 	// ---------- GUI ----------
 	void draw(ofEventArgs &) override {
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		if(!showWindow.get()) return;
 
 		std::string title = "Timeline " + ofToString(getNumIdentifier());
@@ -482,6 +484,7 @@ private:
 
 	
 	void drawTimeline(float height){
+		float zoom = ofxOceanodeShared::getZoomLevel();
 		drawTransportHeader();
 		
 		ImDrawList* dl = ImGui::GetWindowDrawList();
