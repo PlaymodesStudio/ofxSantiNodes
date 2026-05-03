@@ -39,6 +39,12 @@ public:
 		addParameter(maxValue.set("Max Value", 1.0f, -10.0f, 10.0f));
 		
 		addParameter(showEditor.set("Show Editor", false));
+		auto curveEditorRegionRef = addCustomRegion(curveEditorRegion.set("Curve Editor", [this](){
+			drawCurveEditor();
+		}), [this](){
+			drawCurveEditor();
+		});
+		curveEditorRegionRef->setFlags(curveEditorRegionRef->getFlags() | ofxOceanodeParameterFlags_NoGuiWidget);
 		
 		addOutputParameter(curveOutput.set("Curve[]", {0}, {-10}, {10}));
 		
@@ -90,6 +96,7 @@ private:
 	ofParameter<float> minValue;
 	ofParameter<float> maxValue;
 	ofParameter<bool> showEditor;
+	customGuiRegion curveEditorRegion;
 	ofParameter<vector<float>> curveOutput;
 	
 	// Multiple curves data
