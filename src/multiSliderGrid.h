@@ -1029,7 +1029,8 @@ private:
 		if (isHovered || isActive) {
 			// Number keys 0-9 select slots 0-9
 			for (int i = 0; i <= 9; i++) {
-				if (io.KeysDown[ImGui::GetKeyIndex(ImGuiKey_0) + i] && io.KeyCtrl) {
+				const ImGuiKey key = static_cast<ImGuiKey>(ImGuiKey_0 + i);
+				if (ImGui::IsKeyPressed(key) && io.KeyCtrl) {
 					if (io.KeyShift && i == 0) {
 						// Ctrl+Shift+0 resets current slot
 						resetCurrentSlot();
