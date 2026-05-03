@@ -1,5 +1,6 @@
 #include "polyphonicArpeggiator.h"
 #include "imgui.h"
+#include "ofxOceanodeShared.h"
 #include <chrono>
 
 // ═══════════════════════════════════════════════════════════
@@ -1246,10 +1247,11 @@ void polyphonicArpeggiator::presetRecallAfterSettingParameters(ofJson &json) {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::drawPatternDisplay() {
+	float zoom = ofxOceanodeShared::getZoomLevel();
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	ImVec2 p = ImGui::GetCursorScreenPos();
-	float width = guiWidth.get();
-	float height = patternHeight.get();
+	float width = guiWidth.get() * zoom;
+	float height = patternHeight.get() * zoom;
 
 	ImGui::InvisibleButton("##pattern", ImVec2(width, height));
 	drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(30, 30, 30, 255));
@@ -1277,13 +1279,13 @@ void polyphonicArpeggiator::drawPatternDisplay() {
 			bool gateOn = (i < (int)currentGates.size() && currentGates[i] == 1);
 			ImU32 barColor = gateOn ? IM_COL32(100, 220, 120, 255) : IM_COL32(60, 100, 80, 140);
 
-			drawList->AddRectFilled(ImVec2(x + 1, barY), ImVec2(x + stepWidth - 1, p.y + height - height * 0.05f), barColor);
+			drawList->AddRectFilled(ImVec2(x + 1.0f * zoom, barY), ImVec2(x + stepWidth - 1.0f * zoom, p.y + height - height * 0.05f), barColor);
 		}
 	}
 
 	// Labeling
 	const char* modeLabel = dynamicMode ? "MODE: DYNAMIC (Voices 1-16)" : "MODE: STANDARD (Sequence Steps)";
-	drawList->AddText(ImVec2(p.x + 4, p.y + 2), IM_COL32(200, 200, 200, 200), modeLabel);
+	drawList->AddText(ImVec2(p.x + 4.0f * zoom, p.y + 2.0f * zoom), IM_COL32(200, 200, 200, 200), modeLabel);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1294,10 +1296,11 @@ void polyphonicArpeggiator::drawPatternDisplay() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::drawEuclideanDisplay() {
+	float zoom = ofxOceanodeShared::getZoomLevel();
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	ImVec2 p = ImGui::GetCursorScreenPos();
-	float width = guiWidth.get();
-	float height = euclideanHeight.get();
+	float width = guiWidth.get() * zoom;
+	float height = euclideanHeight.get() * zoom;
 
 	ImGui::InvisibleButton("##euclidean", ImVec2(width, height));
 
@@ -1314,17 +1317,17 @@ void polyphonicArpeggiator::drawEuclideanDisplay() {
 		for(int i = 0; i < len && i < (int)euclideanPattern.size(); i++) {
 			float x = p.x + i * stepW;
 			if(euclideanPattern[i]) {
-				drawList->AddRectFilled(ImVec2(x + 1, p.y + 2),
-					ImVec2(x + stepW - 1, p.y + rowHeight - 2),
+				drawList->AddRectFilled(ImVec2(x + 1.0f * zoom, p.y + 2.0f * zoom),
+					ImVec2(x + stepW - 1.0f * zoom, p.y + rowHeight - 2.0f * zoom),
 					IM_COL32(200, 100, 100, 255));
 			}
 			if(i == eucPos) {
-				drawList->AddRect(ImVec2(x, p.y + 1),
-					ImVec2(x + stepW, p.y + rowHeight - 1),
-					IM_COL32(255, 255, 200, 200), 0.0f, 0, 2.0f);
+				drawList->AddRect(ImVec2(x, p.y + 1.0f * zoom),
+					ImVec2(x + stepW, p.y + rowHeight - 1.0f * zoom),
+					IM_COL32(255, 255, 200, 200), 0.0f, 0, 2.0f * zoom);
 			}
 		}
-		drawList->AddText(ImVec2(p.x + 2, p.y + 2), IM_COL32(255, 255, 255, 180), "Gates");
+		drawList->AddText(ImVec2(p.x + 2.0f * zoom, p.y + 2.0f * zoom), IM_COL32(255, 255, 255, 180), "Gates");
 	}
 
 	// Row 2: Accent euclidean
@@ -1335,28 +1338,28 @@ void polyphonicArpeggiator::drawEuclideanDisplay() {
 		for(int i = 0; i < len && i < (int)euclideanAccents.size(); i++) {
 			float x = p.x + i * stepW;
 			if(euclideanAccents[i]) {
-				drawList->AddRectFilled(ImVec2(x + 1, rowY + 2),
-					ImVec2(x + stepW - 1, rowY + rowHeight - 2),
+				drawList->AddRectFilled(ImVec2(x + 1.0f * zoom, rowY + 2.0f * zoom),
+					ImVec2(x + stepW - 1.0f * zoom, rowY + rowHeight - 2.0f * zoom),
 					IM_COL32(100, 200, 100, 255));
 			}
 		}
-		drawList->AddText(ImVec2(p.x + 2, rowY + 2), IM_COL32(255, 255, 255, 180), "Accents");
+		drawList->AddText(ImVec2(p.x + 2.0f * zoom, rowY + 2.0f * zoom), IM_COL32(255, 255, 255, 180), "Accents");
 	}
 
 	// Row 3: Duration euclidean
 	{
-		float rowY = p.y + 2 * rowHeight;
+		float rowY = p.y + 2.0f * rowHeight;
 		int len = std::max(1, (int)eucDurLen);
 		float stepW = width / len;
 		for(int i = 0; i < len && i < (int)euclideanDurations.size(); i++) {
 			float x = p.x + i * stepW;
 			if(euclideanDurations[i]) {
-				drawList->AddRectFilled(ImVec2(x + 1, rowY + 2),
-					ImVec2(x + stepW - 1, rowY + rowHeight - 2),
+				drawList->AddRectFilled(ImVec2(x + 1.0f * zoom, rowY + 2.0f * zoom),
+					ImVec2(x + stepW - 1.0f * zoom, rowY + rowHeight - 2.0f * zoom),
 					IM_COL32(100, 100, 200, 255));
 			}
 		}
-		drawList->AddText(ImVec2(p.x + 2, rowY + 2), IM_COL32(255, 255, 255, 180), "Duration");
+		drawList->AddText(ImVec2(p.x + 2.0f * zoom, rowY + 2.0f * zoom), IM_COL32(255, 255, 255, 180), "Duration");
 	}
 }
 
@@ -1366,10 +1369,11 @@ void polyphonicArpeggiator::drawEuclideanDisplay() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::drawVelocityDisplay() {
+	float zoom = ofxOceanodeShared::getZoomLevel();
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	ImVec2 p = ImGui::GetCursorScreenPos();
-	float width = guiWidth.get();
-	float height = 60.0f;
+	float width = guiWidth.get() * zoom;
+	float height = 60.0f * zoom;
 
 	ImGui::InvisibleButton("##velocity", ImVec2(width, height));
 	drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(30, 30, 30, 255));
@@ -1380,13 +1384,13 @@ void polyphonicArpeggiator::drawVelocityDisplay() {
 	for(int i = 0; i < displayCount; i++) {
 		bool gateOn = (i < (int)currentGates.size() && currentGates[i] == 1);
 		float vel = (i < (int)currentVelocities.size()) ? currentVelocities[i] : 0.0f;
-		float barH = vel * (height - 6);
-		float barY = p.y + height - barH - 3;
+		float barH = vel * (height - 6.0f * zoom);
+		float barY = p.y + height - barH - 3.0f * zoom;
 
 		ImU32 color = gateOn ? IM_COL32(200, 200, 80, 220) : IM_COL32(80, 80, 40, 80);
 		if(vel > 0.0f) {
-			drawList->AddRectFilled(ImVec2(p.x + i * stepWidth + 1, barY),
-									ImVec2(p.x + (i + 1) * stepWidth - 1, p.y + height - 3), color);
+			drawList->AddRectFilled(ImVec2(p.x + i * stepWidth + 1.0f * zoom, barY),
+									ImVec2(p.x + (i + 1) * stepWidth - 1.0f * zoom, p.y + height - 3.0f * zoom), color);
 		}
 	}
 }
@@ -1398,9 +1402,10 @@ void polyphonicArpeggiator::drawVelocityDisplay() {
 // ═══════════════════════════════════════════════════════════
 
 void polyphonicArpeggiator::drawSnapshotSlots() {
+	float zoom = ofxOceanodeShared::getZoomLevel();
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	ImVec2 p = ImGui::GetCursorScreenPos();
-	float width = guiWidth.get();
+	float width = guiWidth.get() * zoom;
 
 	float slotSize = width / 8.0f;
 	float height = slotSize * 2.0f;
@@ -1421,7 +1426,7 @@ void polyphonicArpeggiator::drawSnapshotSlots() {
 		int row = i / 8;
 		int column = i % 8;
 		ImVec2 slotPos = ImVec2(p.x + column * slotSize, p.y + row * slotSize);
-		ImVec2 slotMax = ImVec2(slotPos.x + slotSize - 2, slotPos.y + slotSize - 2);
+		ImVec2 slotMax = ImVec2(slotPos.x + slotSize - 2.0f * zoom, slotPos.y + slotSize - 2.0f * zoom);
 
 		bool hasData = snapshotSlots[i].hasData;
 		bool hovered = (mouse.x >= slotPos.x && mouse.x < slotMax.x &&
@@ -1463,16 +1468,16 @@ void polyphonicArpeggiator::drawSnapshotSlots() {
 		// Draw slot number
 		char buf[8];
 		sprintf(buf, "%d", i + 1);
-		drawList->AddText(ImVec2(slotPos.x + 3, slotPos.y + 3), IM_COL32(255, 255, 255, 200), buf);
+		drawList->AddText(ImVec2(slotPos.x + 3.0f * zoom, slotPos.y + 3.0f * zoom), IM_COL32(255, 255, 255, 200), buf);
 
 		// Show "S" indicator when shift-hovering
 		if(shift && hovered) {
-			drawList->AddText(ImVec2(slotPos.x + slotSize - 15, slotPos.y + slotSize - 15),
+			drawList->AddText(ImVec2(slotPos.x + slotSize - 15.0f * zoom, slotPos.y + slotSize - 15.0f * zoom),
 							IM_COL32(255, 100, 100, 255), "S");
 		}
 		// Show "X" indicator when right-click-hovering on filled slot
 		else if(hovered && hasData) {
-			drawList->AddText(ImVec2(slotPos.x + slotSize - 15, slotPos.y + slotSize - 15),
+			drawList->AddText(ImVec2(slotPos.x + slotSize - 15.0f * zoom, slotPos.y + slotSize - 15.0f * zoom),
 							IM_COL32(255, 80, 80, 180), "X");
 		}
 	}

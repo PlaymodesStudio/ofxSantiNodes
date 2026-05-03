@@ -500,15 +500,15 @@ private:
 
         ImDrawList* dl  = ImGui::GetWindowDrawList();
         ImVec2      pos = ImGui::GetCursorScreenPos();
-        const float W   = widgetWidth.get();
-        const float H   = widgetHeight.get();
-        const float pad = 5.0f;
+        const float W   = widgetWidth.get() * zoom;
+        const float H   = widgetHeight.get() * zoom;
+        const float pad = 5.0f * zoom;
         const float dW  = W - pad * 2.0f;
         const float dH  = H - pad * 2.0f;
 
         // Background + border
-        dl->AddRectFilled(pos, ImVec2(pos.x + W, pos.y + H), IM_COL32(18, 18, 22, 255), 3.0f);
-        dl->AddRect      (pos, ImVec2(pos.x + W, pos.y + H), IM_COL32(55, 55, 65, 255),  3.0f);
+        dl->AddRectFilled(pos, ImVec2(pos.x + W, pos.y + H), IM_COL32(18, 18, 22, 255), 3.0f * zoom);
+        dl->AddRect      (pos, ImVec2(pos.x + W, pos.y + H), IM_COL32(55, 55, 65, 255),  3.0f * zoom);
 
         // Reserve ImGui layout space
         ImGui::Dummy(ImVec2(W, H));
@@ -562,11 +562,11 @@ private:
                 float xL = spans[i].first;
                 float xR = spans[i].second;
                 // Horizontal bar for this note's duration
-                dl->AddLine(ImVec2(xL, y), ImVec2(xR, y), lineCol, thick);
+                dl->AddLine(ImVec2(xL, y), ImVec2(xR, y), lineCol, thick * zoom);
                 // Vertical step connector to next note
                 if (i + 1 < sz) {
                     float yNext = getY(mel[i + 1].scaleIndex);
-                    dl->AddLine(ImVec2(xR, y), ImVec2(xR, yNext), lineCol, thick * 0.55f);
+                    dl->AddLine(ImVec2(xR, y), ImVec2(xR, yNext), lineCol, thick * 0.55f * zoom);
                 }
             }
             // Dot at the left (onset) of each note
@@ -575,7 +575,7 @@ private:
                            && isChordTone(expandedScale[mel[i].scaleIndex]);
                 float y  = getY(mel[i].scaleIndex);
                 dl->AddCircleFilled(ImVec2(spans[i].first, y),
-                                    ic ? dotR * 1.5f : dotR,
+                                    (ic ? dotR * 1.5f : dotR) * zoom,
                                     ic ? chordDotCol : dotCol);
             }
         };
@@ -613,7 +613,7 @@ private:
                 auto  spans = computeSpans(mel);
                 float y     = getY(mel[ci].scaleIndex);
                 dl->AddCircle(ImVec2(spans[ci].first, y),
-                              5.5f, IM_COL32(255, 255, 255, 210), 12, 1.5f);
+                              5.5f * zoom, IM_COL32(255, 255, 255, 210), 12, 1.5f * zoom);
             }
         }
 
@@ -622,14 +622,14 @@ private:
             char   buf[16];
             snprintf(buf, sizeof(buf), "%d/%d", historyIndex, (int)history.size() - 1);
             ImVec2 ts = ImGui::CalcTextSize(buf);
-            dl->AddText(ImVec2(pos.x + W - ts.x - pad - 2.0f, pos.y + pad + 1.0f),
+            dl->AddText(ImVec2(pos.x + W - ts.x - pad - 2.0f * zoom, pos.y + pad + 1.0f * zoom),
                         IM_COL32(130, 130, 145, 180), buf);
         }
 
         // Pending change indicator: bottom-left
         if (pendingMutate || pendingDemutate) {
             const char* lbl = pendingMutate ? "* mut" : "* demut";
-            dl->AddText(ImVec2(pos.x + pad + 2.0f, pos.y + H - 14.0f),
+            dl->AddText(ImVec2(pos.x + pad + 2.0f * zoom, pos.y + H - 14.0f * zoom),
                         IM_COL32(235, 210, 80, 200), lbl);
         }
     }
