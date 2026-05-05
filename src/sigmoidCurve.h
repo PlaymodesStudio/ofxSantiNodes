@@ -146,6 +146,8 @@ private:
 		
 		// Get available space
 		ImVec2 avail = ImGui::GetContentRegionAvail();
+		avail.x = std::max(1.0f, avail.x);
+		avail.y = std::max(1.0f, avail.y);
 		
 		// Create interaction button
 		std::string buttonId = "##curveEdit" + ofToString(getNumIdentifier());
