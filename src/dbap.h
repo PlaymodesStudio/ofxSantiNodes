@@ -123,7 +123,7 @@ private:
 		float zoom = ofxOceanodeShared::getZoomLevel();
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        float displaySize = size.get();
+        float displaySize = size.get() * zoom;
         
         // Create invisible button for interaction area
         ImGui::InvisibleButton("DbapArea", ImVec2(displaySize, displaySize));
@@ -145,19 +145,21 @@ private:
             drawList->AddLine(
                 ImVec2(x, pos.y),
                 ImVec2(x, pos.y + displaySize),
-                IM_COL32(40, 40, 40, 255)
+                IM_COL32(40, 40, 40, 255),
+                zoom
             );
             
             // Horizontal lines
             drawList->AddLine(
                 ImVec2(pos.x, y),
                 ImVec2(pos.x + displaySize, y),
-                IM_COL32(40, 40, 40, 255)
+                IM_COL32(40, 40, 40, 255),
+                zoom
             );
         }
 
         // Draw speakers
-        const float speakerSize = 10.0f;
+        const float speakerSize = 10.0f * zoom;
         const auto& spkX = speakerX.get();
         const auto& spkY = speakerY.get();
         
@@ -184,7 +186,7 @@ private:
         }
         
         // Draw sources
-        const float sourceSize = 8.0f;
+        const float sourceSize = 8.0f * zoom;
         const auto& srcX = sourceX.get();
         const auto& srcY = sourceY.get();
         

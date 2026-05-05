@@ -134,8 +134,8 @@ private:
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         
-        float currentButtonSize = buttonSize.get();
-        float spacing = 5.0f;
+        float currentButtonSize = buttonSize.get() * zoom;
+        float spacing = 5.0f * zoom;
         
         int currentX = x.get();
         int currentY = y.get();

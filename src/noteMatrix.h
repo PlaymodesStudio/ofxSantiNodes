@@ -188,8 +188,8 @@ private:
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
         int y = std::max(1, gridY.get());
-        float totalWidth = matrixWidth.get();
-        float rowHeightValue = rowHeight.get();
+        float totalWidth = matrixWidth.get() * zoom;
+        float rowHeightValue = rowHeight.get() * zoom;
 
         // Create a larger clickable area
         ImGui::InvisibleButton("MatrixArea", ImVec2(totalWidth, y * rowHeightValue));
@@ -243,7 +243,7 @@ private:
                 if (matrix[i][j]) {
                     drawList->AddRectFilled(cellPos, cellPosEnd, IM_COL32(255, 255, 255, 255));
                 }
-                drawList->AddRect(cellPos, cellPosEnd, IM_COL32(100, 100, 100, 255));
+                drawList->AddRect(cellPos, cellPosEnd, IM_COL32(100, 100, 100, 255), 0.0f, 0, zoom);
             }
         }
 
@@ -253,7 +253,7 @@ private:
             float phasorX = phasor * totalWidth;
             ImVec2 phasorStart(pos.x + phasorX, pos.y + i * rowHeightValue);
             ImVec2 phasorEnd(phasorStart.x, pos.y + (i + 1) * rowHeightValue);
-            drawList->AddLine(phasorStart, phasorEnd, IM_COL32(255, 0, 0, 255), 2.0f);
+            drawList->AddLine(phasorStart, phasorEnd, IM_COL32(255, 0, 0, 255), 2.0f * zoom);
         }
     }
 

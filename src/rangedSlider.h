@@ -489,14 +489,14 @@ private:
 			ImVec2 pos = ImGui::GetCursorPos();
 			
 			// Center the text above the slider
-			float sliderW = sliderWidth.get();
+			float sliderW = sliderWidth.get() * zoom;
 			ImGui::SetCursorPosX(pos.x + (sliderW - textSize.x) * 0.5f);
 			ImGui::Text("%s", name.c_str());
 			ImGui::Spacing();
 		}
 		
-		float width = sliderWidth.get();
-		float height = sliderHeight.get();
+		float width = sliderWidth.get() * zoom;
+		float height = sliderHeight.get() * zoom;
 		float absMin = absoluteMin.get();
 		float absMax = absoluteMax.get();
 		float minVal = currentMinValue.get();
@@ -583,7 +583,7 @@ private:
 				float markX = pos.x + i * step;
 				ImVec2 markTop(markX, pos.y + height * 0.3f);
 				ImVec2 markBottom(markX, pos.y + height * 0.7f);
-				drawList->AddLine(markTop, markBottom, IM_COL32(200, 200, 200, 150), 1.0f);
+				drawList->AddLine(markTop, markBottom, IM_COL32(200, 200, 200, 150), zoom);
 			}
 		}
 		
@@ -592,7 +592,7 @@ private:
 		ImVec2 maxHandleCenter(pos.x + maxHandleX, pos.y + height * 0.5f);
 		
 		// Handle shadows
-		ImVec2 shadowOffset(1.0f, 1.0f);
+		ImVec2 shadowOffset(1.0f * zoom, 1.0f * zoom);
 		drawList->AddCircleFilled(minHandleCenter + shadowOffset, handleRadius, handleShadow);
 		drawList->AddCircleFilled(maxHandleCenter + shadowOffset, handleRadius, handleShadow);
 		
@@ -617,11 +617,11 @@ private:
 		string valueText = minText + " - " + maxText;
 		
 		ImVec2 valueTextSize = ImGui::CalcTextSize(valueText.c_str());
-		ImVec2 valueTextPos(pos.x + (width - valueTextSize.x) * 0.5f, pos.y + height + 2);
+		ImVec2 valueTextPos(pos.x + (width - valueTextSize.x) * 0.5f, pos.y + height + 2 * zoom);
 		drawList->AddText(valueTextPos, IM_COL32(200, 200, 200, 255), valueText.c_str());
 		
 		// Advance cursor past the slider and text
-		ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y + height + valueTextSize.y + 4));
+		ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y + height + valueTextSize.y + 4 * zoom));
 		
 		// Show tooltip with detailed info
 		if (isHovered) {

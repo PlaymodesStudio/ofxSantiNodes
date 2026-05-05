@@ -310,7 +310,7 @@ private:
 		if (!name.empty()) {
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();
-			float  w   = sliderWidth.get();
+			float  w   = sliderWidth.get() * zoom;
 			ImGui::SetCursorPosX(pos.x + (w - textSize.x) * 0.5f);
 			ImGui::Text("%s", name.c_str());
 			ImGui::Spacing();
@@ -318,8 +318,8 @@ private:
 
 		ImVec2 pos      = ImGui::GetCursorScreenPos();
 		ImDrawList *dl  = ImGui::GetWindowDrawList();
-		float width     = sliderWidth.get();
-		float height    = sliderHeight.get();
+		float width     = sliderWidth.get() * zoom;
+		float height    = sliderHeight.get() * zoom;
 		int   minV      = minValue.get();
 		int   maxV      = maxValue.get();
 		if (minV >= maxV) maxV = minV + 1;
@@ -355,7 +355,7 @@ private:
 		float knobY = pos.y + height * 0.5f;
 		dl->AddCircleFilled(ImVec2(knobX, knobY), knobRadius,
 			isActive ? IM_COL32(220, 220, 220, 255) : IM_COL32(255, 255, 255, 255));
-		dl->AddCircle(ImVec2(knobX, knobY), knobRadius, IM_COL32(150, 150, 150, 255), 0, 1.5f);
+		dl->AddCircle(ImVec2(knobX, knobY), knobRadius, IM_COL32(150, 150, 150, 255), 0, 1.5f * zoom);
 
 		if (isHovered) {
 			string tip = ofToString(sliderValue);

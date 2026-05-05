@@ -647,7 +647,8 @@ private:
 		float zoom = ofxOceanodeShared::getZoomLevel();
 			ImGui::Text("%s", label.c_str());
 			
-			float width = widgetWidth.get();
+			float width = widgetWidth.get() * zoom;
+			height *= zoom;
 			ImGui::PushID(label.c_str());
 			
 			ImVec2 pos = ImGui::GetCursorScreenPos();
@@ -683,7 +684,7 @@ private:
 				// Draw value
 				float normalizedValue = weightsCopy[i];
 				ImVec2 valuePosStart(pos.x + i * sliderWidth, pos.y + height * (1.0f - normalizedValue));
-				ImVec2 valuePosEnd(pos.x + (i + 1) * sliderWidth - 2, pos.y + height);
+				ImVec2 valuePosEnd(pos.x + (i + 1) * sliderWidth - 2 * zoom, pos.y + height);
 				
 				drawList->AddRectFilled(valuePosStart, valuePosEnd,
 					ImGui::GetColorU32(ImGuiCol_PlotHistogram));
@@ -693,12 +694,12 @@ private:
 					string label = ofToString(i);
 					float textWidth = ImGui::CalcTextSize(label.c_str()).x;
 					ImVec2 textPos(pos.x + i * sliderWidth + (sliderWidth - textWidth) * 0.5f,
-						pos.y + height + 2);
+						pos.y + height + 2 * zoom);
 					drawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
 				}
 			}
 			
-			ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y + height + (showLabels ? 20 : 4)));
+			ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y + height + (showLabels ? 20 * zoom : 4 * zoom)));
 			ImGui::PopID();
 		}
 	

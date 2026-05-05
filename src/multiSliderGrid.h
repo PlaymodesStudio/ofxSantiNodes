@@ -837,7 +837,7 @@ private:
 		
 		// Get cursor position and calculate widget dimensions
 		ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-		ImVec2 widgetSize(width, height);
+		ImVec2 widgetSize(width * zoom, height * zoom);
 		
 		// Create invisible button for interaction area
 		ImGui::InvisibleButton("##MultiSliderGrid", widgetSize);
@@ -862,7 +862,7 @@ private:
 		);
 		
 		// Calculate dimensions for drawing with spacing between sliders
-		const float sliderSpacing = 2.0f; // Spacing between sliders
+		const float sliderSpacing = 2.0f * zoom; // Spacing between sliders
 		float sliderWidth = (widgetSize.x - (sliderSpacing * (size - 1))) / size;
 		
 		// Calculate zero position for visualization
@@ -879,7 +879,7 @@ private:
 				ImVec2(cursorPos.x, zeroY),
 				ImVec2(cursorPos.x + widgetSize.x, zeroY),
 				ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 0.5f)), // White line at zero
-				1.5f
+				1.5f * zoom
 			);
 		}
 		
@@ -891,7 +891,7 @@ private:
 			
 			ImU32 lineColor = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 			// Make the bottom and top lines thicker
-			float thickness = (i == 0 || i == q-1) ? 1.5f : 0.75f;
+			float thickness = (i == 0 || i == q-1) ? 1.5f * zoom : 0.75f * zoom;
 			
 			drawList->AddLine(
 				ImVec2(cursorPos.x, y),

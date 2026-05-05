@@ -500,7 +500,7 @@ private:
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();
 			
-			float multitoggleW = toggleWidth.get();
+			float multitoggleW = toggleWidth.get() * zoom;
 			ImGui::SetCursorPosX(pos.x + (multitoggleW - textSize.x) * 0.5f);
 			ImGui::Text("%s", name.c_str());
 			ImGui::Spacing();
@@ -509,8 +509,8 @@ private:
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		
-		float width = toggleWidth.get();
-		float height = toggleHeight.get();
+		float width = toggleWidth.get() * zoom;
+		float height = toggleHeight.get() * zoom;
 		int num_toggles = numToggles.get();
 		int num_rows = rows.get();
 		

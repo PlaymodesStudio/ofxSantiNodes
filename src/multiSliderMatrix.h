@@ -387,7 +387,7 @@ private:
 		ImGui::PushID(index);
 
 		// Use inspector width/height
-		ImVec2 frame_size((float)width.get(), (float)height.get());
+		ImVec2 frame_size((float)width.get() * zoom, (float)height.get() * zoom);
 
 		ImGui::InvisibleButton(("##InvBox" + ofToString(index)).c_str(), frame_size);
 		

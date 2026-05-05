@@ -418,7 +418,7 @@ private:
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();
 			
-			float sliderW = sliderWidth.get();
+			float sliderW = sliderWidth.get() * zoom;
 			ImGui::SetCursorPosX(pos.x + (sliderW - textSize.x) * 0.5f);
 			ImGui::Text("%s", name.c_str());
 			ImGui::Spacing();
@@ -427,8 +427,8 @@ private:
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		
-		float width = sliderWidth.get();
-		float height = sliderHeight.get();
+		float width = sliderWidth.get() * zoom;
+		float height = sliderHeight.get() * zoom;
 		float min_val = minValue.get();
 		float max_val = maxValue.get();
 		

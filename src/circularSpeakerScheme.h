@@ -55,7 +55,7 @@ private:
 		float zoom = ofxOceanodeShared::getZoomLevel();
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        float displaySize = size.get();
+        float displaySize = size.get() * zoom;
         float centerX = pos.x + displaySize/2;
         float centerY = pos.y + displaySize/2;
         
@@ -73,18 +73,20 @@ private:
         drawList->AddLine(
             ImVec2(centerX, pos.y),
             ImVec2(centerX, pos.y + displaySize),
-            IM_COL32(40, 40, 40, 255)
+            IM_COL32(40, 40, 40, 255),
+            zoom
         );
         drawList->AddLine(
             ImVec2(pos.x, centerY),
             ImVec2(pos.x + displaySize, centerY),
-            IM_COL32(40, 40, 40, 255)
+            IM_COL32(40, 40, 40, 255),
+            zoom
         );
         
         // Draw center point
         drawList->AddCircleFilled(
             ImVec2(centerX, centerY),
-            2,
+            2 * zoom,
             IM_COL32(100, 100, 100, 255)
         );
 
@@ -123,7 +125,7 @@ private:
                 boxMin,
                 boxMax,
                 IM_COL32(brightness, brightness, brightness, 255),
-                2.0f  // corner radius
+                2.0f * zoom  // corner radius
             );
             
             // Draw speaker number

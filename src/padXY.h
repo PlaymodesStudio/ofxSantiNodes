@@ -137,7 +137,7 @@ private:
 		float zoom = ofxOceanodeShared::getZoomLevel();
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        float padSize = size.get();
+        float padSize = size.get() * zoom;
         
         // Create invisible button for interaction
         ImGui::InvisibleButton("PadArea", ImVec2(padSize, padSize));
@@ -175,12 +175,14 @@ private:
         drawList->AddLine(
             ImVec2(centerX, pos.y),
             ImVec2(centerX, pos.y + padSize),
-            IM_COL32(40, 40, 40, 255)
+            IM_COL32(40, 40, 40, 255),
+            zoom
         );
         drawList->AddLine(
             ImVec2(pos.x, centerY),
             ImVec2(pos.x + padSize, centerY),
-            IM_COL32(40, 40, 40, 255)
+            IM_COL32(40, 40, 40, 255),
+            zoom
         );
 
         updateTrails();

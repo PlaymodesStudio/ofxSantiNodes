@@ -293,11 +293,11 @@ private:
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		
-		float totalWidth = 260;
-		float axisBoxSize = 76;
-		float spacing = 8;
-		float poleRadius = 7;
-		float totalHeight = axisBoxSize + 36;
+		float totalWidth = 260 * zoom;
+		float axisBoxSize = 76 * zoom;
+		float spacing = 8 * zoom;
+		float poleRadius = 7 * zoom;
+		float totalHeight = axisBoxSize + 36 * zoom;
 		
 		ImGui::InvisibleButton("AxisDisplay", ImVec2(totalWidth, totalHeight));
 		
@@ -323,18 +323,18 @@ private:
 			drawList->AddRectFilled(
 				ImVec2(boxX, boxY),
 				ImVec2(boxX + axisBoxSize, boxY + axisBoxSize),
-				bgColor, 5.0f);
+				bgColor, 5.0f * zoom);
 			
 			// Axis letter
 			const char* label = axisLabels[vis];
 			ImVec2 labelSize = ImGui::CalcTextSize(label);
-			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 1.6f,
+			drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 1.6f * zoom,
 				ImVec2(boxX + (axisBoxSize - labelSize.x * 1.6f) / 2,
 					   boxY + (axisBoxSize - labelSize.y * 1.6f) / 2),
 				isActive ? textDark : IM_COL32(70, 70, 70, 255), label);
 			
 			// 4 poles in corners
-			float margin = 12;
+			float margin = 12 * zoom;
 			float polePos[4][2] = {
 				{boxX + margin, boxY + margin},
 				{boxX + axisBoxSize - margin, boxY + margin},
@@ -354,7 +354,7 @@ private:
 				const char* noteName = noteNames[noteIdx];
 				ImVec2 noteSize = ImGui::CalcTextSize(noteName);
 				
-				float tx = (p % 2 == 0) ? px + poleRadius + 2 : px - poleRadius - noteSize.x - 2;
+				float tx = (p % 2 == 0) ? px + poleRadius + 2 * zoom : px - poleRadius - noteSize.x - 2 * zoom;
 				float ty = py - noteSize.y / 2;
 				
 				drawList->AddText(ImVec2(tx, ty), isActive ? textDark : textLight, noteName);
@@ -362,7 +362,7 @@ private:
 		}
 		
 		// Info line
-		float infoY = pos.y + axisBoxSize + 6;
+		float infoY = pos.y + axisBoxSize + 6 * zoom;
 		int currentRoot = getPoleRoot(axis.get(), pole.get());
 		const char* modeNames[] = {"Maj", "Min", "Dor", "Phr", "Lyd", "Mix", "Loc", "HMin", "HMaj", "Mel", "Usr"};
 		const char* axisName[] = {"T", "S", "D"};

@@ -444,7 +444,7 @@ private:
 			ImVec2 pos = ImGui::GetCursorPos();
 			
 			// Center the text above the toggle
-			float toggleW = toggleWidth.get();
+			float toggleW = toggleWidth.get() * zoom;
 			ImGui::SetCursorPosX(pos.x + (toggleW - textSize.x) * 0.5f);
 			ImGui::Text("%s", name.c_str());
 			ImGui::Spacing();
@@ -453,9 +453,9 @@ private:
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		
-		float width = toggleWidth.get();
-		float height = toggleHeight.get();
-		float radius = std::min(cornerRadius.get(), height * 0.5f);
+		float width = toggleWidth.get() * zoom;
+		float height = toggleHeight.get() * zoom;
+		float radius = std::min(cornerRadius.get() * zoom, height * 0.5f);
 		
 		// Animate the toggle
 		float targetValue = toggleValue ? 1.0f : 0.0f;
@@ -519,7 +519,7 @@ private:
 		float knobY = pos.y + height * 0.5f;
 		
 		// Draw knob shadow
-		ImVec2 shadowOffset(1.0f, 1.0f);
+		ImVec2 shadowOffset(1.0f * zoom, 1.0f * zoom);
 		drawList->AddCircleFilled(
 			ImVec2(knobX + shadowOffset.x, knobY + shadowOffset.y),
 			knobRadius,

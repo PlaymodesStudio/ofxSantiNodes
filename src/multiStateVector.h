@@ -115,7 +115,8 @@ private:
         
         
         auto cursorPos = ImGui::GetCursorScreenPos();
-        ImGui::InvisibleButton("##InvBox", ImVec2(210, ImGui::GetFrameHeight() * 2));
+        ImVec2 frame_size = ImVec2(210 * zoom, ImGui::GetFrameHeight() * 2 * zoom);
+        ImGui::InvisibleButton("##InvBox", frame_size);
         auto drawList = ImGui::GetWindowDrawList();
         
         void* data = (void*)vectorValues[currentPage].data();
@@ -123,8 +124,6 @@ private:
         float scale_min = minVal;
         float scale_max = maxVal;
         int values_count = vectorValues[currentPage].size();
-        ImVec2 frame_size = ImVec2(210, ImGui::GetFrameHeight() * 2);
-        
         const ImGuiStyle& style = ImGui::GetStyle();
         const ImRect frame_bb(cursorPos, cursorPos + frame_size);
         const ImRect inner_bb(frame_bb.Min + style.FramePadding, frame_bb.Max - style.FramePadding);

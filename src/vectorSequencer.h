@@ -232,11 +232,13 @@ private:
     void drawCustomWidget() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
             ImGuiStyle& style = ImGui::GetStyle();
-            float width = guiWidth;
-            float height = guiHeight;
+            float width = guiWidth * zoom;
+            float height = guiHeight * zoom;
             ImVec2 p = ImGui::GetCursorScreenPos();
 
             float rowHeight = height / numInputs;
+            float rowGap = 2.0f * zoom;
+            float barGap = 1.0f * zoom;
 
             for (int i = 0; i < numInputs; ++i) {
                 const vector<float>& inputVec = inputVectors[i].get();
@@ -270,14 +272,14 @@ private:
                     // Draw alternating background pattern
                     for (int j = 0; j < vectorSize; j += 2) {
                         ImVec2 bg_pos0 = ImVec2(p.x + j * stepWidth, p.y + rowHeight * i);
-                        ImVec2 bg_pos1 = ImVec2(bg_pos0.x + stepWidth, p.y + rowHeight * (i + 1) - 2);
+                        ImVec2 bg_pos1 = ImVec2(bg_pos0.x + stepWidth, p.y + rowHeight * (i + 1) - rowGap);
                         ImGui::GetWindowDrawList()->AddRectFilled(bg_pos0, bg_pos1, col_bg_alt);
                     }
                     
                     // Draw highlighted background for current index
                     if(index >= 0 && index < vectorSize) {
                         ImVec2 hl_pos0 = ImVec2(p.x + index * stepWidth, p.y + rowHeight * i);
-                        ImVec2 hl_pos1 = ImVec2(hl_pos0.x + stepWidth, p.y + rowHeight * (i + 1) - 2);
+                        ImVec2 hl_pos1 = ImVec2(hl_pos0.x + stepWidth, p.y + rowHeight * (i + 1) - rowGap);
                         ImGui::GetWindowDrawList()->AddRectFilled(hl_pos0, hl_pos1, IM_COL32(100, 100, 0, 100));
                     }
                     
@@ -286,13 +288,13 @@ private:
                         ImU32 color = (j == index) ? IM_COL32(255, 255, 0, 255) : IM_COL32(100, 100, 100, 255);
                         
                         float normalizedValue = normalizeValue(inputVec[j], inputVec);
-                        float barHeight = normalizedValue * (rowHeight - 2);  // -2 for a small gap between rows
+                        float barHeight = normalizedValue * (rowHeight - rowGap);
                         
                         if(barHeight > 0) {  // Only draw bar if there's a value
                             ImVec2 pos = ImVec2(p.x + j * stepWidth, p.y + rowHeight * i + rowHeight - barHeight);
                             ImGui::GetWindowDrawList()->AddRectFilled(
                                 pos,
-                                ImVec2(pos.x + stepWidth - 1, pos.y + barHeight),
+                                ImVec2(pos.x + stepWidth - barGap, pos.y + barHeight),
                                 color
                             );
                         }
@@ -302,9 +304,9 @@ private:
                     float phasorX = p.x + phasor * width;
                     ImGui::GetWindowDrawList()->AddLine(
                         ImVec2(phasorX, p.y + rowHeight * i),
-                        ImVec2(phasorX, p.y + rowHeight * (i + 1) - 2),
+                        ImVec2(phasorX, p.y + rowHeight * (i + 1) - rowGap),
                         IM_COL32(255, 0, 0, 255),
-                        2.0f
+                        2.0f * zoom
                     );
                 }
             }

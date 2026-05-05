@@ -371,7 +371,7 @@ private:
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();
 			
-			float buttonW = buttonWidth.get();
+			float buttonW = buttonWidth.get() * zoom;
 			ImGui::SetCursorPosX(pos.x + (buttonW - textSize.x) * 0.5f);
 			ImGui::Text("%s", name.c_str());
 			ImGui::Spacing();
@@ -380,9 +380,9 @@ private:
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		
-		float width = buttonWidth.get();
-		float height = buttonHeight.get();
-		float radius = cornerRadius.get();
+		float width = buttonWidth.get() * zoom;
+		float height = buttonHeight.get() * zoom;
+		float radius = cornerRadius.get() * zoom;
 		
 		// Create invisible button for interaction
 		ImGui::InvisibleButton("VoidButton", ImVec2(width, height));

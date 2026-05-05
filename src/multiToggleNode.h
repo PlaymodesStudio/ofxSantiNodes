@@ -117,9 +117,9 @@ private:
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-        const float totalWidth = (float)(ofxOceanodeShared::getNodeWidthWidget() + ofxOceanodeShared::getNodeWidthText());
-        const float btnH       = 25.0f;
-        const float gap        = 1.0f;
+        const float totalWidth = (float)(ofxOceanodeShared::getNodeWidthWidget() + ofxOceanodeShared::getNodeWidthText()) * zoom;
+        const float btnH       = 25.0f * zoom;
+        const float gap        = 1.0f * zoom;
         const float cellW      = totalWidth / n;
 
         // Single invisible button covering the full row
@@ -151,8 +151,8 @@ private:
             else if (isHoveredCell) fillColor = IM_COL32(110, 110, 110, 255);
             else                   fillColor = IM_COL32(80,   80,  80, 255);
 
-            drawList->AddRectFilled(bMin, bMax, fillColor, 2.0f);
-            drawList->AddRect(bMin, bMax, IM_COL32(150, 150, 150, 200), 2.0f, 0, 1.0f);
+            drawList->AddRectFilled(bMin, bMax, fillColor, 2.0f * zoom);
+            drawList->AddRect(bMin, bMax, IM_COL32(150, 150, 150, 200), 2.0f * zoom, 0, zoom);
         }
 
         if (hovered) {

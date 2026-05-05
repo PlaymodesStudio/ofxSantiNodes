@@ -459,11 +459,11 @@ private:
 		
 		if(matrix12x12.empty()) return;
 		
-		float cellSize = 18;
-		float labelWidth = 20;
+		float cellSize = 18 * zoom;
+		float labelWidth = 20 * zoom;
 		float matrixSize = cellSize * 12;
-		float totalWidth = matrixSize + labelWidth + 10;
-		float totalHeight = matrixSize + labelWidth + 60;
+		float totalWidth = matrixSize + labelWidth + 10 * zoom;
+		float totalHeight = matrixSize + labelWidth + 60 * zoom;
 		
 		ImGui::InvisibleButton("MatrixDisplay", ImVec2(totalWidth, totalHeight));
 		
@@ -481,14 +481,14 @@ private:
 		
 		drawList->AddRectFilled(
 			ImVec2(pos.x, pos.y),
-			ImVec2(pos.x + 60, pos.y + 18),
-			validColor, 3.0f);
-		drawList->AddText(ImVec2(pos.x + 8, pos.y + 2), IM_COL32(255,255,255,255), validText);
+			ImVec2(pos.x + 60 * zoom, pos.y + 18 * zoom),
+			validColor, 3.0f * zoom);
+		drawList->AddText(ImVec2(pos.x + 8 * zoom, pos.y + 2 * zoom), IM_COL32(255,255,255,255), validText);
 		
 		// Draw matrix title
-		drawList->AddText(ImVec2(pos.x + 70, pos.y + 2), textColor, "12×12 MATRIX (Rows=P, Cols=I)");
+		drawList->AddText(ImVec2(pos.x + 70 * zoom, pos.y + 2 * zoom), textColor, "12x12 MATRIX (Rows=P, Cols=I)");
 		
-		float matrixStartY = pos.y + 25;
+		float matrixStartY = pos.y + 25 * zoom;
 		float matrixStartX = pos.x + labelWidth;
 		
 		// Draw column labels (I0 - I11) at top
@@ -496,7 +496,7 @@ private:
 			char label[8];
 			snprintf(label, sizeof(label), "I%d", c);
 			float x = matrixStartX + c * cellSize;
-			drawList->AddText(ImVec2(x + 2, matrixStartY - 15), labelColor, label);
+			drawList->AddText(ImVec2(x + 2 * zoom, matrixStartY - 15 * zoom), labelColor, label);
 		}
 		
 		// Determine which row/column is selected based on current form
@@ -517,7 +517,7 @@ private:
 			// Row label (P0 - P11)
 			char rowLabel[8];
 			snprintf(rowLabel, sizeof(rowLabel), "P%d", r);
-			drawList->AddText(ImVec2(pos.x, matrixStartY + r * cellSize + 2), labelColor, rowLabel);
+			drawList->AddText(ImVec2(pos.x, matrixStartY + r * cellSize + 2 * zoom), labelColor, rowLabel);
 			
 			for(int c = 0; c < 12; c++) {
 				float x = matrixStartX + c * cellSize;
@@ -531,7 +531,7 @@ private:
 				drawList->AddRectFilled(
 					ImVec2(x, y),
 					ImVec2(x + cellSize - 1, y + cellSize - 1),
-					color, 1.0f);
+					color, 1.0f * zoom);
 				
 				// Draw note number
 				if(r < (int)matrix12x12.size() && c < (int)matrix12x12[r].size()) {
@@ -539,14 +539,14 @@ private:
 					snprintf(noteText, sizeof(noteText), "%d", matrix12x12[r][c]);
 					ImVec2 textSize = ImGui::CalcTextSize(noteText);
 					drawList->AddText(
-						ImVec2(x + (cellSize - textSize.x) / 2, y + 2),
+						ImVec2(x + (cellSize - textSize.x) / 2, y + 2 * zoom),
 						textColor, noteText);
 				}
 			}
 		}
 		
 		// Info line
-		float infoY = matrixStartY + matrixSize + 8;
+		float infoY = matrixStartY + matrixSize + 8 * zoom;
 		const char* formNames[4] = {"Prime", "Retrograde", "Inversion", "Retro-Inv"};
 		
 		char info[128];
@@ -559,13 +559,13 @@ private:
 		drawList->AddText(ImVec2(pos.x, infoY), textColor, info);
 		
 		// Draw current row linearly below
-		float rowViewY = infoY + 20;
+		float rowViewY = infoY + 20 * zoom;
 		drawList->AddText(ImVec2(pos.x, rowViewY), labelColor, "Current Row:");
 		
 		std::vector<int> currentRow = fullRowOut.get();
 		for(size_t i = 0; i < currentRow.size() && i < 12; i++) {
-			float x = pos.x + i * 20;
-			float y = rowViewY + 15;
+			float x = pos.x + i * 20 * zoom;
+			float y = rowViewY + 15 * zoom;
 			
 			// Highlight segment
 			bool inSegment = false;
@@ -584,14 +584,14 @@ private:
 			
 			drawList->AddRectFilled(
 				ImVec2(x, y),
-				ImVec2(x + 18, y + 18),
-				cellCol, 2.0f);
+				ImVec2(x + 18 * zoom, y + 18 * zoom),
+				cellCol, 2.0f * zoom);
 			
 			char noteText[4];
 			snprintf(noteText, sizeof(noteText), "%d", currentRow[i]);
 			ImVec2 textSize = ImGui::CalcTextSize(noteText);
 			drawList->AddText(
-				ImVec2(x + (18 - textSize.x) / 2, y + 2),
+				ImVec2(x + (18 * zoom - textSize.x) / 2, y + 2 * zoom),
 				textColor, noteText);
 		}
 	}

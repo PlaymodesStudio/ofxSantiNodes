@@ -500,7 +500,7 @@ private:
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();
 			
-			float multisliderW = sliderWidth.get();
+			float multisliderW = sliderWidth.get() * zoom;
 			ImGui::SetCursorPosX(pos.x + (multisliderW - textSize.x) * 0.5f);
 			ImGui::Text("%s", name.c_str());
 			ImGui::Spacing();
@@ -509,8 +509,8 @@ private:
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		
-		float width = sliderWidth.get();
-		float height = sliderHeight.get();
+		float width = sliderWidth.get() * zoom;
+		float height = sliderHeight.get() * zoom;
 		float min_val = minValue.get();
 		float max_val = maxValue.get();
 		int num_sliders = numSliders.get();
@@ -560,18 +560,18 @@ private:
 		ImVec2 bgMin(pos.x, pos.y);
 		ImVec2 bgMax(pos.x + width, pos.y + height);
 		drawList->AddRectFilled(bgMin, bgMax, bgColor);
-		drawList->AddRect(bgMin, bgMax, borderColor);
+		drawList->AddRect(bgMin, bgMax, borderColor, 0.0f, 0, zoom);
 		
 		// Draw grid lines
 		float sliderWidth = width / (float)num_sliders;
 		for (int i = 1; i < num_sliders; i++) {
 			float x = pos.x + i * sliderWidth;
-			drawList->AddLine(ImVec2(x, pos.y), ImVec2(x, pos.y + height), gridColor);
+			drawList->AddLine(ImVec2(x, pos.y), ImVec2(x, pos.y + height), gridColor, zoom);
 		}
 		
 		for (int i = 1; i < 4; i++) {
 			float y = pos.y + (height / 4.0f) * i;
-			drawList->AddLine(ImVec2(pos.x, y), ImVec2(pos.x + width, y), gridColor);
+			drawList->AddLine(ImVec2(pos.x, y), ImVec2(pos.x + width, y), gridColor, zoom);
 		}
 		
 		// Draw sliders
@@ -582,8 +582,8 @@ private:
 			float sliderX = pos.x + i * sliderWidth;
 			float sliderHeight = height * normalizedValue;
 			
-			ImVec2 sliderMin(sliderX + 2, pos.y + height - sliderHeight);
-			ImVec2 sliderMax(sliderX + sliderWidth - 2, pos.y + height);
+			ImVec2 sliderMin(sliderX + 2 * zoom, pos.y + height - sliderHeight);
+			ImVec2 sliderMax(sliderX + sliderWidth - 2 * zoom, pos.y + height);
 			drawList->AddRectFilled(sliderMin, sliderMax, sliderColor);
 			
 			if (i == activeSlider) {
