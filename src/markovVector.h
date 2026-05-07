@@ -47,7 +47,9 @@ public:
 		}
 		
 		// Add custom region for matrix sliders
-		addCustomRegion(customWidget, [this]() {
+		addCustomRegion(customWidget.set("Transition Matrix", [this]() {
+			drawTransitionMatrix();
+		}), [this]() {
 			drawTransitionMatrix();
 		});
 		
@@ -327,11 +329,10 @@ private:
 			};
 			
 			auto cursorPos = ImGui::GetCursorScreenPos();
-			
-			// Use fixed width instead of GetContentRegionAvail
-			// This is the key change to fix the sizing issue
-			const float sliderWidth = 250.0f;
-			const ImVec2 frame_size = ImVec2(sliderWidth, ImGui::GetFrameHeight() * 2);
+			const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+			const ImVec2 frame_size = customRegionContext.active
+				? ImVec2(std::max(1.0f, customRegionContext.width), std::max(1.0f, customRegionContext.height / std::max(1, numStates.get())))
+				: ImVec2(250.0f, ImGui::GetFrameHeight() * 2);
 			
 			ImGui::InvisibleButton(("##slider" + ofToString(from)).c_str(), frame_size);
 			

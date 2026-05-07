@@ -64,8 +64,9 @@ private:
 	void drawWidget() {
 		if(!drawInNode.get()) return;
 		float zoom = ofxOceanodeShared::getZoomLevel();
-		float w = widgetWidth.get() * zoom;
-		float h = widgetHeight.get() * zoom;
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+		float w = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : widgetWidth.get() * zoom;
+		float h = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : widgetHeight.get() * zoom;
 
 		drawVectorOfVectorAtCursor(w, h, /*showInfo*/false);
 		ImGui::Dummy(ImVec2(0, 4.0f * zoom));

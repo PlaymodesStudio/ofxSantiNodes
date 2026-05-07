@@ -28,7 +28,9 @@ public:
         addParameter(numPages.set("Num Pages", 2, 1, 10));
         addParameter(currentPage.set("Current Page", 0, 0, numPages-1));
         
-        addCustomRegion(customWidget, [this]() {
+        addCustomRegion(customWidget.set("State Vector", [this]() {
+            drawCustomWidget();
+        }), [this]() {
             drawCustomWidget();
         });
         
@@ -112,10 +114,11 @@ private:
     
     void drawCustomWidget() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+        const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
         
         
         auto cursorPos = ImGui::GetCursorScreenPos();
-        ImVec2 frame_size = ImVec2(210 * zoom, ImGui::GetFrameHeight() * 2 * zoom);
+        ImVec2 frame_size = customRegionContext.active ? ImVec2(std::max(1.0f, customRegionContext.width), std::max(1.0f, customRegionContext.height)) : ImVec2(210 * zoom, ImGui::GetFrameHeight() * 2 * zoom);
         ImGui::InvisibleButton("##InvBox", frame_size);
         auto drawList = ImGui::GetWindowDrawList();
         

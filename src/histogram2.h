@@ -215,8 +215,9 @@ private:
 		if(!drawInNode.get()) return;
 
 		float zoom = ofxOceanodeShared::getZoomLevel();
-		float w = widgetWidth.get();
-		float h = widgetHeight.get();
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+		float w = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : widgetWidth.get();
+		float h = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : widgetHeight.get();
 
 		drawHistogramAtCursor(w, h);
 		ImGui::Dummy(ImVec2(0, 4 * zoom));

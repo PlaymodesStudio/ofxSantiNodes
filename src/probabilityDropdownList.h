@@ -112,7 +112,9 @@ public:
 		currentToEditValues.resize(numSliders);
 		
 		// Add custom region for GUI
-		addCustomRegion(guiRegion, [this](){
+		addCustomRegion(guiRegion.set("Probability Table", [this](){
+			drawGui();
+		}), [this](){
 			drawGui();
 		});
 		
@@ -474,11 +476,12 @@ private:
 	
 	void drawGui() {
 			if(!ImGui::GetCurrentContext()) return;
+			const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 			
 			ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4, 2));
 			
-			float currentWidth = widgetWidth.get();
-			float sliderHeight = 33;
+			float currentWidth = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : widgetWidth.get();
+			float sliderHeight = customRegionContext.active ? std::max(24.0f, std::min(60.0f, customRegionContext.height * 0.15f)) : 33;
 			
 			// Draw weight sliders with safety checks
 			if(!transposeWeights.get().empty()) {
@@ -645,10 +648,11 @@ private:
 	
 	void drawWeightSliders(const string& label, ofParameter<vector<float>>& weights, float height, bool showLabels) {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 			ImGui::Text("%s", label.c_str());
 			
-			float width = widgetWidth.get() * zoom;
-			height *= zoom;
+			float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : widgetWidth.get() * zoom;
+			height = customRegionContext.active ? std::max(20.0f, height) : height * zoom;
 			ImGui::PushID(label.c_str());
 			
 			ImVec2 pos = ImGui::GetCursorScreenPos();

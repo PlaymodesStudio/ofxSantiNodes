@@ -61,7 +61,11 @@ public:
 						   ofxOceanodeParameterFlags_DisplayMinimized);
 
 		// Custom GUI region
-		addCustomRegion(customWidget, [this]() {
+		addCustomRegion(customWidget.set("MultiSlider Matrix", [this]() {
+			for (int i = 0; i < numSliders; i++) {
+				drawMultiSlider(i);
+			}
+		}), [this]() {
 			for (int i = 0; i < numSliders; i++) {
 				drawMultiSlider(i);
 			}
@@ -375,6 +379,7 @@ private:
 	// --- GUI ---
 	void drawMultiSlider(int index) {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 		if (index >= (int)vectorValues[currentSlot].size()) return;
 
 		auto values_getter = [](void* data, int idx) -> float {
@@ -387,7 +392,10 @@ private:
 		ImGui::PushID(index);
 
 		// Use inspector width/height
-		ImVec2 frame_size((float)width.get() * zoom, (float)height.get() * zoom);
+		ImVec2 frame_size(
+			customRegionContext.active ? std::max(1.0f, customRegionContext.width) : (float)width.get() * zoom,
+			customRegionContext.active ? std::max(1.0f, customRegionContext.height) : (float)height.get() * zoom
+		);
 
 		ImGui::InvisibleButton(("##InvBox" + ofToString(index)).c_str(), frame_size);
 		

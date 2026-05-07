@@ -121,9 +121,12 @@ private:
 
     void drawDbap() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+        const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        float displaySize = size.get() * zoom;
+        float displaySize = customRegionContext.active
+            ? std::max(1.0f, std::min(customRegionContext.width, customRegionContext.height))
+            : size.get() * zoom;
         
         // Create invisible button for interaction area
         ImGui::InvisibleButton("DbapArea", ImVec2(displaySize, displaySize));

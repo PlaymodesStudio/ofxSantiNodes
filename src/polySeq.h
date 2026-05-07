@@ -41,7 +41,11 @@ public:
 			v.resize(10, 0);
 		}
 		
-		addCustomRegion(customWidget, [this]() {
+		addCustomRegion(customWidget.set("PolySeq", [this]() {
+			for (int i = 0; i < numSliders; i++) {
+				drawMultiSlider(i);
+			}
+		}), [this]() {
 			for (int i = 0; i < numSliders; i++) {
 				drawMultiSlider(i);
 			}
@@ -304,9 +308,13 @@ private:
 		};
 		
 		auto cursorPos = ImGui::GetCursorScreenPos();
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+		const ImVec2 frame_size = customRegionContext.active
+			? ImVec2(std::max(1.0f, customRegionContext.width), std::max(1.0f, customRegionContext.height / std::max(1, numSliders.get())))
+			: ImVec2(250, ImGui::GetFrameHeight() * 2);
 		
 		ImGui::PushID(index);
-		ImGui::InvisibleButton(("##InvBox" + ofToString(index)).c_str(), ImVec2(250, ImGui::GetFrameHeight() * 2));
+		ImGui::InvisibleButton(("##InvBox" + ofToString(index)).c_str(), frame_size);
 		
 		auto drawList = ImGui::GetWindowDrawList();
 		
@@ -314,7 +322,6 @@ private:
 		float scale_min = getValueForIndex(minVal, index);
 		float scale_max = getValueForIndex(maxVal, index);
 		int values_count = vectorValues[index].size();
-		ImVec2 frame_size = ImVec2(250, ImGui::GetFrameHeight() * 2);
 		
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const ImRect frame_bb(cursorPos, cursorPos + frame_size);

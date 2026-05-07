@@ -380,8 +380,9 @@ private:
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		
-		float width = buttonWidth.get() * zoom;
-		float height = buttonHeight.get() * zoom;
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+		float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : buttonWidth.get() * zoom;
+		float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : buttonHeight.get() * zoom;
 		float radius = cornerRadius.get() * zoom;
 		
 		// Create invisible button for interaction

@@ -53,9 +53,12 @@ private:
 
     void drawScheme() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+        const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        float displaySize = size.get() * zoom;
+        float displaySize = customRegionContext.active
+            ? std::max(1.0f, std::min(customRegionContext.width, customRegionContext.height))
+            : size.get() * zoom;
         float centerX = pos.x + displaySize/2;
         float centerY = pos.y + displaySize/2;
         

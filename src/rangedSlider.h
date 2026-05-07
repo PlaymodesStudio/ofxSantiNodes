@@ -495,8 +495,9 @@ private:
 			ImGui::Spacing();
 		}
 		
-		float width = sliderWidth.get() * zoom;
-		float height = sliderHeight.get() * zoom;
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+		float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : sliderWidth.get() * zoom;
+		float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : sliderHeight.get() * zoom;
 		float absMin = absoluteMin.get();
 		float absMax = absoluteMax.get();
 		float minVal = currentMinValue.get();

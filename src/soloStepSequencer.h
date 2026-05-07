@@ -67,7 +67,9 @@ public:
             resetGenerator();
         });
 
-        addCustomRegion(customWidget, [this]() {
+        addCustomRegion(customWidget.set("Step Sequencer", [this]() {
+            drawCustomWidget();
+        }), [this]() {
             drawCustomWidget();
         });
         
@@ -171,9 +173,10 @@ public:
 
     void drawCustomWidget() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+            const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
             ImGuiStyle& style = ImGui::GetStyle();
-            float width = guiWidth;
-            float height = trackHeight;
+            float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : guiWidth.get() * zoom;
+            float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height / std::max(1.0f, static_cast<float>(numTracks.get()))) : trackHeight.get() * zoom;
             ImVec2 p = ImGui::GetCursorScreenPos();
 
             float trackSpacing = 2.0f; // Spacing between tracks

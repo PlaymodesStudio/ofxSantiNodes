@@ -49,7 +49,7 @@ public:
         addParameter(mutSilence.set("SilMut",  0.1f, 0.0f, 1.0f));
         addParameter(mutateParam.set("Mutate"));
         addParameter(demutateParam.set("Demutate"));
-        addCustomRegion(melodyRegion, [this]() { drawMelodyViz(); });
+        addCustomRegion(melodyRegion.set("Melody Viz", [this]() { drawMelodyViz(); }), [this]() { drawMelodyViz(); });
         addInspectorParameter(widgetWidth.set("Widget Width",   240.0f, 80.0f, 600.0f));
         addInspectorParameter(widgetHeight.set("Widget Height",  90.0f, 50.0f, 300.0f));
 
@@ -497,11 +497,12 @@ private:
     void drawMelodyViz() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
         if (expandedScale.empty() || history.empty()) return;
+        const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 
         ImDrawList* dl  = ImGui::GetWindowDrawList();
         ImVec2      pos = ImGui::GetCursorScreenPos();
-        const float W   = widgetWidth.get() * zoom;
-        const float H   = widgetHeight.get() * zoom;
+        const float W   = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : widgetWidth.get() * zoom;
+        const float H   = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : widgetHeight.get() * zoom;
         const float pad = 5.0f * zoom;
         const float dW  = W - pad * 2.0f;
         const float dH  = H - pad * 2.0f;

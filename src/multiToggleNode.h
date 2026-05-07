@@ -33,9 +33,10 @@ public:
             output = vector<float>(n, 0.0f);
         }));
 
-        addCustomRegion(guiRegion, [this]() {
+        guiRegion.set("Multi Toggle", [this]() {
             drawGui();
         });
+        addCustomRegion(guiRegion, guiRegion.get());
     }
 
     void update(ofEventArgs &a) override {
@@ -111,14 +112,19 @@ private:
 
     void drawGui() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+        const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
         int n = size.get();
         if (n <= 0) return;
 
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-        const float totalWidth = (float)(ofxOceanodeShared::getNodeWidthWidget() + ofxOceanodeShared::getNodeWidthText()) * zoom;
-        const float btnH       = 25.0f * zoom;
+        const float totalWidth = customRegionContext.active
+            ? std::max(1.0f, customRegionContext.width)
+            : (float)(ofxOceanodeShared::getNodeWidthWidget() + ofxOceanodeShared::getNodeWidthText()) * zoom;
+        const float btnH       = customRegionContext.active
+            ? std::max(1.0f, customRegionContext.height)
+            : 25.0f * zoom;
         const float gap        = 1.0f * zoom;
         const float cellW      = totalWidth / n;
 

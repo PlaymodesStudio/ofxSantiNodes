@@ -1,5 +1,6 @@
 #include "globalSnapshots.h"
 #include "imgui.h"
+#include "ofxOceanodeShared.h"
 #include <vector>
 #include <cmath>
 #include <unordered_set>
@@ -380,6 +381,7 @@ void globalSnapshots::loadSnapshot(int slot) {
 
 void globalSnapshots::renderSnapshotMatrix() {
 	ImGui::PushID("GlobalSnapshots");
+	const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 	int rows = matrixRows.get();
 	int cols = matrixCols.get();
 
@@ -439,7 +441,10 @@ void globalSnapshots::renderSnapshotMatrix() {
 			}
 
 			// Use invisible button for interaction and custom rendering
-			ImVec2 buttonSize_vec(buttonSize.get(), buttonSize.get()/1.5f);
+			ImVec2 buttonSize_vec(
+				customRegionContext.active ? std::max(12.0f, customRegionContext.width / std::max(1, cols)) : buttonSize.get(),
+				customRegionContext.active ? std::max(10.0f, customRegionContext.height / std::max(1, rows)) : buttonSize.get()/1.5f
+			);
 			ImVec2 p0 = ImGui::GetCursorScreenPos();
 			
 			bool clicked = ImGui::InvisibleButton(("##btn" + ofToString(slot)).c_str(), buttonSize_vec);

@@ -42,7 +42,9 @@ public:
         output.setMin(vector<int>(1, 0));
         output.setMax(vector<int>(1, 1));
 
-        addCustomRegion(customMatrixRegion, [this]() {
+        addCustomRegion(customMatrixRegion.set("Matrix Region", [this]() {
+            drawCustomGui();
+        }), [this]() {
             drawCustomGui();
         });
         
@@ -184,12 +186,17 @@ private:
 
     void drawCustomGui() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+        const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
         int y = std::max(1, gridY.get());
-        float totalWidth = matrixWidth.get() * zoom;
-        float rowHeightValue = rowHeight.get() * zoom;
+        float totalWidth = customRegionContext.active
+            ? std::max(1.0f, customRegionContext.width)
+            : matrixWidth.get() * zoom;
+        float rowHeightValue = customRegionContext.active
+            ? std::max(1.0f, customRegionContext.height / std::max(1, y))
+            : rowHeight.get() * zoom;
 
         // Create a larger clickable area
         ImGui::InvisibleButton("MatrixArea", ImVec2(totalWidth, y * rowHeightValue));

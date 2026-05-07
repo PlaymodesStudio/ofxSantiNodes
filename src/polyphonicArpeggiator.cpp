@@ -56,7 +56,7 @@ void polyphonicArpeggiator::setup() {
 	// ── SNAPSHOTS ──
 	addSeparator("Snapshots", ofColor(200));
 	uiSnapshots.set("SnapshotsUI", [this](){ drawSnapshotSlots(); });
-	addCustomRegion(uiSnapshots, [this](){ drawSnapshotSlots(); });
+	addCustomRegion(uiSnapshots.set("Snapshots", [this](){ drawSnapshotSlots(); }), [this](){ drawSnapshotSlots(); });
 	addParameter(morphTime.set("Morph Time", 0.0f, 0.0f, 10.0f));
 	
 	// --- MODES ----
@@ -146,13 +146,13 @@ void polyphonicArpeggiator::setup() {
 	addInspectorParameter(euclideanHeight.set("Euclidean Height", 80.0f, 40.0f, 150.0f));
 
 	uiPattern.set("Pattern Display", [this](){ drawPatternDisplay(); });
-	addCustomRegion(uiPattern, [this](){ drawPatternDisplay(); });
+	addCustomRegion(uiPattern.set("Pattern", [this](){ drawPatternDisplay(); }), [this](){ drawPatternDisplay(); });
 
 	uiEuclidean.set("Euclidean Display", [this](){ drawEuclideanDisplay(); });
-	addCustomRegion(uiEuclidean, [this](){ drawEuclideanDisplay(); });
+	addCustomRegion(uiEuclidean.set("Euclidean", [this](){ drawEuclideanDisplay(); }), [this](){ drawEuclideanDisplay(); });
 
 	uiVelocity.set("Velocity Display", [this](){ drawVelocityDisplay(); });
-	addCustomRegion(uiVelocity, [this](){ drawVelocityDisplay(); });
+	addCustomRegion(uiVelocity.set("Velocity", [this](){ drawVelocityDisplay(); }), [this](){ drawVelocityDisplay(); });
 
 	// ── EVENT LISTENERS ──
 	listeners.push(trigger.newListener([this](void){ onTrigger(); }));
@@ -1248,10 +1248,11 @@ void polyphonicArpeggiator::presetRecallAfterSettingParameters(ofJson &json) {
 
 void polyphonicArpeggiator::drawPatternDisplay() {
 	float zoom = ofxOceanodeShared::getZoomLevel();
+	const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	ImVec2 p = ImGui::GetCursorScreenPos();
-	float width = guiWidth.get() * zoom;
-	float height = patternHeight.get() * zoom;
+	float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : guiWidth.get() * zoom;
+	float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : patternHeight.get() * zoom;
 
 	ImGui::InvisibleButton("##pattern", ImVec2(width, height));
 	drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(30, 30, 30, 255));
@@ -1297,10 +1298,11 @@ void polyphonicArpeggiator::drawPatternDisplay() {
 
 void polyphonicArpeggiator::drawEuclideanDisplay() {
 	float zoom = ofxOceanodeShared::getZoomLevel();
+	const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	ImVec2 p = ImGui::GetCursorScreenPos();
-	float width = guiWidth.get() * zoom;
-	float height = euclideanHeight.get() * zoom;
+	float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : guiWidth.get() * zoom;
+	float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : euclideanHeight.get() * zoom;
 
 	ImGui::InvisibleButton("##euclidean", ImVec2(width, height));
 
@@ -1370,10 +1372,11 @@ void polyphonicArpeggiator::drawEuclideanDisplay() {
 
 void polyphonicArpeggiator::drawVelocityDisplay() {
 	float zoom = ofxOceanodeShared::getZoomLevel();
+	const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	ImVec2 p = ImGui::GetCursorScreenPos();
-	float width = guiWidth.get() * zoom;
-	float height = 60.0f * zoom;
+	float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : guiWidth.get() * zoom;
+	float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : 60.0f * zoom;
 
 	ImGui::InvisibleButton("##velocity", ImVec2(width, height));
 	drawList->AddRectFilled(p, ImVec2(p.x + width, p.y + height), IM_COL32(30, 30, 30, 255));
@@ -1403,12 +1406,13 @@ void polyphonicArpeggiator::drawVelocityDisplay() {
 
 void polyphonicArpeggiator::drawSnapshotSlots() {
 	float zoom = ofxOceanodeShared::getZoomLevel();
+	const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	ImVec2 p = ImGui::GetCursorScreenPos();
-	float width = guiWidth.get() * zoom;
+	float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : guiWidth.get() * zoom;
 
-	float slotSize = width / 8.0f;
-	float height = slotSize * 2.0f;
+	float slotSize = customRegionContext.active ? std::min(std::max(1.0f, customRegionContext.width / 8.0f), std::max(1.0f, customRegionContext.height / 2.0f)) : width / 8.0f;
+	float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : slotSize * 2.0f;
 
 	ImGui::InvisibleButton("##Snapshots", ImVec2(width, height));
 	bool isActive = ImGui::IsItemActive();

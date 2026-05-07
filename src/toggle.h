@@ -453,8 +453,9 @@ private:
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		
-		float width = toggleWidth.get() * zoom;
-		float height = toggleHeight.get() * zoom;
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+		float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : toggleWidth.get() * zoom;
+		float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : toggleHeight.get() * zoom;
 		float radius = std::min(cornerRadius.get() * zoom, height * 0.5f);
 		
 		// Animate the toggle

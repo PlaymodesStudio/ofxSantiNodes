@@ -454,16 +454,19 @@ private:
 	
 	void drawMatrixDisplay() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		
 		if(matrix12x12.empty()) return;
 		
-		float cellSize = 18 * zoom;
 		float labelWidth = 20 * zoom;
+		float totalWidth = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : (18 * zoom) * 12 + labelWidth + 10 * zoom;
+		float totalHeight = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : (18 * zoom) * 12 + labelWidth + 60 * zoom;
+		float availableMatrixW = std::max(1.0f, totalWidth - labelWidth - 10 * zoom);
+		float availableMatrixH = std::max(1.0f, totalHeight - labelWidth - 60 * zoom);
+		float cellSize = std::max(1.0f, std::min(availableMatrixW / 12.0f, availableMatrixH / 12.0f));
 		float matrixSize = cellSize * 12;
-		float totalWidth = matrixSize + labelWidth + 10 * zoom;
-		float totalHeight = matrixSize + labelWidth + 60 * zoom;
 		
 		ImGui::InvisibleButton("MatrixDisplay", ImVec2(totalWidth, totalHeight));
 		

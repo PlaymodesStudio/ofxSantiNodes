@@ -59,7 +59,9 @@ public:
 		values = &storage[0];
 		
 		// Add the custom region for drawing the grid
-		addCustomRegion(customWidget, [this]() {
+		addCustomRegion(customWidget.set("MultiSlider Grid", [this]() {
+			drawMultiSliderGrid();
+		}), [this]() {
 			drawMultiSliderGrid();
 		});
 		
@@ -832,12 +834,16 @@ private:
 	
 	void drawMultiSliderGrid() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 		// Get ImGui IO to check key states
 		ImGuiIO& io = ImGui::GetIO();
 		
 		// Get cursor position and calculate widget dimensions
 		ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-		ImVec2 widgetSize(width * zoom, height * zoom);
+		ImVec2 widgetSize(
+			customRegionContext.active ? std::max(1.0f, customRegionContext.width) : width * zoom,
+			customRegionContext.active ? std::max(1.0f, customRegionContext.height) : height * zoom
+		);
 		
 		// Create invisible button for interaction area
 		ImGui::InvisibleButton("##MultiSliderGrid", widgetSize);

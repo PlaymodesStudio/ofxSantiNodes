@@ -60,17 +60,18 @@ public:
 		});
 
 		// In-node custom editor (fixed width; height via Editor Lines)
-		addCustomRegion(formulaEditorRegion, [this](){
+		formulaEditorRegion.set("Formula Editor", [this](){
 			float zoom = ofxOceanodeShared::getZoomLevel();
+			const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 			const float PADDING = 6.0f * zoom;
 
-			// Height in pixels by line count
+			// Height in pixels by line count unless a Custom GUI region provides explicit space
 			const float baseLineHeight = ImGui::GetTextLineHeightWithSpacing();
 			const int   lines          = editorLines.get();
-			const float boxH           = lines * baseLineHeight;
+			const float boxH           = customRegionContext.active ? std::max(1.0f, customRegionContext.height - 2.0f * PADDING) : lines * baseLineHeight;
 
-			// Fixed content width to avoid spilling
-			const float boxW = 240.0f * zoom;
+			// Fixed content width in node GUI, region width in Custom GUI
+			const float boxW = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : 240.0f * zoom;
 
 			ImGui::BeginChild("FormulaEditor",
 							  ImVec2(boxW, boxH + 2.0f*PADDING),
@@ -119,6 +120,7 @@ public:
 			ImGui::SetWindowFontScale(1.0f);
 			ImGui::EndChild();
 		});
+		addCustomRegion(formulaEditorRegion, formulaEditorRegion.get());
 
 		formulaBuf = formulaString.get();
 		formulaString.addListener(this, &formula::onFormulaParamChanged);

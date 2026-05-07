@@ -225,6 +225,8 @@
 // ─────────────────────────────────────────────
 #include "cameraInput.h"
 #include "pixelStretch.h"
+#include "paletteQuantizer.h"
+#include "paletteQuantizerGrey.h"
 #include "spectrogramShift.h"
 #include "textureFlip.h"
 #include "textureSnapshot.h"
@@ -566,6 +568,8 @@ void registerModels(ofxOceanode *o)
     // TEXTURES
     // ─────────────────────────────────────────────
     o->registerModel<cameraInput>("Santi/Textures");
+    o->registerModel<paletteQuantizer>("Santi/Textures");
+    o->registerModel<paletteQuantizerGrey>("Santi/Textures");
     o->registerModel<pixelStretch>("Santi/Textures");
     o->registerModel<spectrogramShift>("Santi/Textures");
     o->registerModel<textureFlip>("Santi/Textures");

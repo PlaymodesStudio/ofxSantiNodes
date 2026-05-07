@@ -2,6 +2,7 @@
 #define stringBox_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -30,12 +31,16 @@ public:
     
 private:
     void drawTextBox() {
+        const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+        float zoom = ofxOceanodeShared::getZoomLevel();
+        float childWidth = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : width.get() * zoom;
+        float childHeight = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : height.get() * zoom;
         // Set font size for this widget
         float fontScale = fontSize/14.0f; // 14 is ImGui's default font size
         ImGui::SetWindowFontScale(fontScale);
         
         // Create child window for scrolling
-        ImGui::BeginChild("ScrollRegion", ImVec2(width, height), true,
+        ImGui::BeginChild("ScrollRegion", ImVec2(childWidth, childHeight), true,
                          ImGuiWindowFlags_HorizontalScrollbar);
         
         // Display the text

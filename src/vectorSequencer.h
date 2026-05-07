@@ -44,7 +44,9 @@ public:
         }
 
         // Add custom region in the middle
-        addCustomRegion(customWidget, [this]() {
+        addCustomRegion(customWidget.set("Vector Sequencer", [this]() {
+            drawCustomWidget();
+        }), [this]() {
             drawCustomWidget();
         });
 
@@ -230,10 +232,11 @@ private:
     }
 
     void drawCustomWidget() {
+        const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 		float zoom = ofxOceanodeShared::getZoomLevel();
             ImGuiStyle& style = ImGui::GetStyle();
-            float width = guiWidth * zoom;
-            float height = guiHeight * zoom;
+            float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : guiWidth.get() * zoom;
+            float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : guiHeight.get() * zoom;
             ImVec2 p = ImGui::GetCursorScreenPos();
 
             float rowHeight = height / numInputs;

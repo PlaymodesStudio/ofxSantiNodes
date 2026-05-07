@@ -290,14 +290,16 @@ private:
 	
 	void drawAxisDisplay() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		
-		float totalWidth = 260 * zoom;
-		float axisBoxSize = 76 * zoom;
+		float totalWidth = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : 260 * zoom;
+		float totalHeight = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : 76 * zoom + 36 * zoom;
 		float spacing = 8 * zoom;
+		float axisBoxSize = std::max(1.0f, (totalWidth - 2.0f * spacing) / 3.0f);
+		axisBoxSize = std::min(axisBoxSize, totalHeight - 36.0f * zoom);
 		float poleRadius = 7 * zoom;
-		float totalHeight = axisBoxSize + 36 * zoom;
 		
 		ImGui::InvisibleButton("AxisDisplay", ImVec2(totalWidth, totalHeight));
 		

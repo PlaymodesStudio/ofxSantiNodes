@@ -135,9 +135,12 @@ private:
 
     void drawPad() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+        const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        float padSize = size.get() * zoom;
+        float padSize = customRegionContext.active
+            ? std::max(1.0f, std::min(customRegionContext.width, customRegionContext.height))
+            : size.get() * zoom;
         
         // Create invisible button for interaction
         ImGui::InvisibleButton("PadArea", ImVec2(padSize, padSize));

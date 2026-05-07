@@ -44,7 +44,9 @@ public:
             updateActiveButton();
         }));
 
-        addCustomRegion(customMatrixRegion, [this]() {
+        addCustomRegion(customMatrixRegion.set("Matrix Region", [this]() {
+            drawCustomGui();
+        }), [this]() {
             drawCustomGui();
         });
 
@@ -131,6 +133,7 @@ private:
 
     void drawCustomGui() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+        const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         
@@ -139,6 +142,13 @@ private:
         
         int currentX = x.get();
         int currentY = y.get();
+        if(customRegionContext.active) {
+            float availableWidth = std::max(1.0f, customRegionContext.width);
+            float availableHeight = std::max(1.0f, customRegionContext.height);
+            float maxWidthButton = (availableWidth - spacing * std::max(0, currentX - 1)) / std::max(1, currentX);
+            float maxHeightButton = (availableHeight - spacing * std::max(0, currentY - 1)) / std::max(1, currentY);
+            currentButtonSize = std::max(1.0f, std::min(maxWidthButton, maxHeightButton));
+        }
         vector<float> currentValues = buttonValues.get();
         
         for (int i = 0; i < currentY; ++i) {

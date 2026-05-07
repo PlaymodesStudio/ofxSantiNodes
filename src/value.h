@@ -390,7 +390,8 @@ private:
 			ImGui::Spacing();
 		}
 		
-		float width = inputWidth.get();
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+		float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : inputWidth.get() * ofxOceanodeShared::getZoomLevel();
 		ImGui::SetNextItemWidth(width);
 		
 		// Set font size

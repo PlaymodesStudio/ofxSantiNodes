@@ -12,12 +12,12 @@ public:
 
 	void setup() override {
 		// prepare section headers
-		inputSep.set("INPUT", [](){ drawSectionHeader("INPUT"); });
-		paramsSep.set("PARAMS", [](){ drawSectionHeader("PARAMS"); });
-		geomSep.set("GEOMETRY", [](){ drawSectionHeader("GEOMETRY"); });
-		shapeSep.set("SHAPE / RADIAL", [](){ drawSectionHeader("SHAPE / RADIAL"); });
-		derivSep.set("DERIVATIVES", [](){ drawSectionHeader("DERIVATIVES"); });
-		hiSep.set("HIGH-LEVEL / SONIFICATION", [](){ drawSectionHeader("HIGH-LEVEL / SONIFICATION"); });
+		inputSep.set("Input Separator", [](){ drawSectionHeader("INPUT"); });
+		paramsSep.set("Params Separator", [](){ drawSectionHeader("PARAMS"); });
+		geomSep.set("Geometry Separator", [](){ drawSectionHeader("GEOMETRY"); });
+		shapeSep.set("Shape Separator", [](){ drawSectionHeader("SHAPE / RADIAL"); });
+		derivSep.set("Derivatives Separator", [](){ drawSectionHeader("DERIVATIVES"); });
+		hiSep.set("HighLevel Separator", [](){ drawSectionHeader("HIGH-LEVEL / SONIFICATION"); });
 
 		// ─────────────────────────────────────────
 		// INPUT

@@ -98,12 +98,13 @@ private:
 	void drawDisplay() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
 		if(!showDisplay.get()) return;
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 		
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 		
-		const float dispW = displayWidth.get();
-		const float dispH = displayHeight.get();
+		const float dispW = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : displayWidth.get() * zoom;
+		const float dispH = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : displayHeight.get() * zoom;
 		
 		const int w = std::max(1, W.get());
 		const int h = std::max(1, H.get());

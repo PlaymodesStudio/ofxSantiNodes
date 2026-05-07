@@ -193,11 +193,12 @@ private:
 
 	void drawKeyboardForRange(const vector<KeyGeometry>& geom, int startNote, int endNote, bool useAvailableWidth = false) {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-		float scaledHeight = height * zoom;
-		float scaledWidth = width * zoom;
+		float scaledHeight = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : height * zoom;
+		float scaledWidth = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : width * zoom;
 
 		// If using available width (for floating window), get it from ImGui
 		if(useAvailableWidth) {
@@ -215,7 +216,7 @@ private:
 
 		// Calculate scale factor for geometry if using available width
 		float geomScale = 1.0f;
-		if(useAvailableWidth && width > 0) {
+		if((useAvailableWidth || customRegionContext.active) && width > 0) {
 			geomScale = scaledWidth / (width * zoom);
 		}
 

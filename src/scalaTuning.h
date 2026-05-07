@@ -199,12 +199,16 @@ public:
 	
 	// Draw description box using ImGui
 	void drawDescriptionBox() {
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+		float zoom = ofxOceanodeShared::getZoomLevel();
+		float descWidth = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : descBoxWidth * zoom;
+		float descHeight = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : descBoxHeight * zoom;
 		// Set font size for this widget
 		float fontScale = descFontSize/14.0f; // 14 is ImGui's default font size
 		ImGui::SetWindowFontScale(fontScale);
 		
 		// Create child window for scrolling
-		ImGui::BeginChild("ScalaDescription", ImVec2(descBoxWidth, descBoxHeight), true,
+		ImGui::BeginChild("ScalaDescription", ImVec2(descWidth, descHeight), true,
 						 ImGuiWindowFlags_HorizontalScrollbar);
 		
 		// Display the text
@@ -219,14 +223,14 @@ public:
 	// Draw scale pitch visualization
 	void drawScaleVisualization() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 		if ((scaleRatios.empty() || (!useCustomRatios && !scaleFiles.size())) && !bypass) {
 			ImGui::Text("No scale loaded");
 			return;
 		}
 		
-		// Fixed dimensions
-		const float width = 240.0f;
-		const float height = 50.0f;
+		const float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : 240.0f * zoom;
+		const float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : 50.0f * zoom;
 		
 		// Set up drawing canvas with fixed size
 		ImGui::BeginChild("ScaleVisualization", ImVec2(width, height), true, ImGuiWindowFlags_NoScrollbar);

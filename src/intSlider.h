@@ -318,8 +318,9 @@ private:
 
 		ImVec2 pos      = ImGui::GetCursorScreenPos();
 		ImDrawList *dl  = ImGui::GetWindowDrawList();
-		float width     = sliderWidth.get() * zoom;
-		float height    = sliderHeight.get() * zoom;
+		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+		float width     = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : sliderWidth.get() * zoom;
+		float height    = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : sliderHeight.get() * zoom;
 		int   minV      = minValue.get();
 		int   maxV      = maxValue.get();
 		if (minV >= maxV) maxV = minV + 1;
