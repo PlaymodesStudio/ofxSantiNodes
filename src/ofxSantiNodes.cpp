@@ -129,6 +129,7 @@
 #include "mergeVoid.h"
 #include "order.h"
 #include "permutations.h"
+#include "pitchGateFilter.h"
 #include "radialIndexer.h"
 #include "segmentLength.h"
 #include "splitMinMax.h"
@@ -224,6 +225,7 @@
 // TEXTURES
 // ─────────────────────────────────────────────
 #include "cameraInput.h"
+#include "colorTracker.h"
 #include "pixelStretch.h"
 #include "paletteQuantizer.h"
 #include "paletteQuantizerGrey.h"
@@ -472,6 +474,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<mergeVoid>("Santi/Vectors");
     o->registerModel<order>("Santi/Vectors");
     o->registerModel<permutations>("Santi/Vectors");
+    o->registerModel<pitchGateFilter>("Santi/Vectors");
     o->registerModel<radialIndexer>("Santi/Vectors");
     o->registerModel<segmentLength>("Santi/Vectors");
     o->registerModel<splitMinMax>("Santi/Vectors");
@@ -568,6 +571,7 @@ void registerModels(ofxOceanode *o)
     // TEXTURES
     // ─────────────────────────────────────────────
     o->registerModel<cameraInput>("Santi/Textures");
+    o->registerModel<colorTracker>("Santi/Textures");
     o->registerModel<paletteQuantizer>("Santi/Textures");
     o->registerModel<paletteQuantizerGrey>("Santi/Textures");
     o->registerModel<pixelStretch>("Santi/Textures");

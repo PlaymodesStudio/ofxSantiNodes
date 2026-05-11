@@ -11,8 +11,8 @@
 class pianoKeyboard : public ofxOceanodeNodeModel {
 public:
 	pianoKeyboard() : ofxOceanodeNodeModel("Piano Keyboard"),
-		width(400),    // Initialize with default values
-		height(100),
+		width(getDefaultNodeGuiWidth()),
+		height(70),
 		loNote(48),
 		hiNote(72)
 	{}
@@ -23,7 +23,7 @@ public:
 		// Add all parameters before creating GUI
 		addParameter(pitch.set("Pitch[]", {60}, {0}, {127}));
 		addParameter(gate.set("Gate[]", {0}, {0}, {1}));
-		addParameter(width.set("Width", 400, 100, 1000));
+		addParameter(width.set("Width", getDefaultNodeGuiWidth(), 100, 1000));
 		addParameter(height.set("Height", 100, 50, 300));
 		addParameter(loNote.set("Lo Note", 48, 0, 127));
 		addParameter(hiNote.set("Hi Note", 72, 0, 127));
@@ -112,6 +112,10 @@ private:
 
 	vector<KeyGeometry> keyGeometry;
 	vector<KeyGeometry> fullKeyGeometry;
+
+	static int getDefaultNodeGuiWidth() {
+		return ofxOceanodeShared::getNodeWidthText() + ofxOceanodeShared::getNodeWidthWidget();
+	}
 	
 	void buildKeyboardGeometryForRange(vector<KeyGeometry>& geom, int startNote, int endNote) {
 		geom.clear();
@@ -342,11 +346,18 @@ private:
 	}
 
 	void draw(ofEventArgs &e) override {
+		if(!showWindow.get()) return;
+
 		bool windowOpen = showWindow.get();
-		if(ImGui::Begin("Piano Keyboard", &windowOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
+		std::string windowName =
+			(canvasID == "Canvas" ? "" : canvasID + "/") +
+			"Piano Keyboard " + ofToString(getNumIdentifier());
+
+		ImGui::SetNextWindowSize(ImVec2(900, 180), ImGuiCond_FirstUseEver);
+		if(ImGui::Begin(windowName.c_str(), &windowOpen)) {
 			drawFullKeyboard();
-			ImGui::End();
 		}
+		ImGui::End();
 		showWindow.set(windowOpen);
 	}
 };
