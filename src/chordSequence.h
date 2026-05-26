@@ -2,6 +2,7 @@
 
 #include "ofxOceanodeNodeModel.h"
 #include <array>
+#include <random>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -11,16 +12,33 @@ struct chordSequenceLibraryItem {
     std::vector<float> values;
 };
 
+struct chordSequenceFunctionalVariant {
+    std::string label;
+    int degree = 1;
+};
+
 struct chordSequenceEntry {
     enum Mode {
         Chord = 0,
         Scale = 1,
-        Cypher = 2
+        Cypher = 2,
+        Degree = 3,
+        Functional = 4
     };
 
     int mode = Chord;
     int itemIndex = 0;
     std::string itemName;
+    int functionalGroup = 0;
+    int functionalVariantIndex = 0;
+    std::string functionalVariantLabel;
+    int degree = 1;
+    int chordSize = 4;
+    int stepInterval = 2;
+    float diatonicDeviationProbability = 0.0f;
+    int diatonicDeviationRange = 0;
+    float beatDuration = 1.0f;
+    std::vector<float> markovWeights;
     int transpose = 0;
     int inversion = 0;
 
@@ -28,16 +46,56 @@ struct chordSequenceEntry {
     static chordSequenceEntry fromJson(const ofJson &json);
 };
 
-struct chordSequenceSnapshot {
-    std::vector<chordSequenceEntry> entries;
-    std::string name;
+struct chordSequenceOutputConfig {
+    enum VoicingMode {
+        None = 0,
+        Close = 1,
+        Open = 2,
+        Drop2 = 3,
+        Drop3 = 4,
+        Shell = 5
+    };
+
+    int octave = 0;
+    int transpose = 0;
+    float pitchBend = 0.0f;
+    float perNoteDetune = 0.0f;
+    float octaveRandomProbability = 0.0f;
+    int octaveRandomRange = 0;
+    float chromaticDeviationProbability = 0.0f;
+    int chromaticDeviationRange = 0;
+    bool scaleOnly = false;
+    bool addBass = false;
+    int bassOct = -2;
+    int inversion = 0;
+    int voicingMode = None;
+    float voicingSpread = 0.0f;
+    bool rootOnly = false;
+    bool keyOnly = false;
+    bool fold12 = false;
+    float glideMs = 0.0f;
     int outputSize = 4;
     bool expandOutput = false;
     bool sortOutput = false;
+
+    ofJson toJson() const;
+    static chordSequenceOutputConfig fromJson(const ofJson &json);
+};
+
+struct chordSequenceSnapshot {
+    std::vector<chordSequenceEntry> entries;
+    std::vector<chordSequenceOutputConfig> outputs;
+    std::string name;
+    int numOutputs = 1;
+    int globalKey = 0;
+    int globalScaleIndex = 0;
+    std::string globalScaleName;
     int globalTranspose = 0;
     int globalInvert = 0;
-    float pitchBend = 0.0f;
-    float glideMs = 0.0f;
+    float globalPitchBend = 0.0f;
+    bool internalTimingEnabled = false;
+    bool markovEnabled = false;
+    int internalActiveStep = 0;
     bool hasData = false;
 
     ofJson toJson() const;
@@ -51,17 +109,23 @@ public:
     void setup() override;
     void update(ofEventArgs &e) override;
     void draw(ofEventArgs &e) override;
+    void setBpm(float bpm) override;
     void presetSave(ofJson &json) override;
     void presetRecallAfterSettingParameters(ofJson &json) override;
     void presetHasLoaded() override;
+    void loadBeforeConnections(ofJson &json) override;
 
 private:
     static constexpr int SnapshotSlots = 16;
     static constexpr int DefaultSequenceSize = 4;
+    static constexpr int MaxOutputs = 16;
 
     ofParameter<int> indexInput;
-    ofParameter<std::vector<float>> chordOut;
-
+    ofParameter<int> numChordsParameter;
+    ofParameter<int> transposeParameter;
+    ofParameter<float> pitchBendParameter;
+    ofParameter<int> inversionParameter;
+    ofParameter<void> resetSequenceParameter;
     ofParameter<bool> showEditor;
     ofParameter<float> editorWidth;
     ofParameter<float> editorHeight;
@@ -70,6 +134,7 @@ private:
 
     std::vector<chordSequenceLibraryItem> chordLibrary;
     std::vector<chordSequenceLibraryItem> scaleLibrary;
+    std::unordered_map<std::string, std::array<std::vector<chordSequenceFunctionalVariant>, 3>> functionalHarmonyLibrary;
     std::unordered_map<std::string, std::string> chordAliases;
     std::vector<chordSequenceEntry> progression;
     ofJson importedProgressionDatabase;
@@ -87,32 +152,59 @@ private:
     int defaultScaleIndex = 0;
     int activeSnapshotSlot = -1;
 
-    int outputSize = 4;
-    bool expandOutput = false;
-    bool sortOutput = false;
+    int numOutputs = 1;
+    int globalKey = 0;
+    int globalScaleIndex = 0;
+    std::string globalScaleName;
     int globalTranspose = 0;
     int globalInvert = 0;
-    float pitchBend = 0.0f;
-    float glideMs = 0.0f;
+    float globalPitchBend = 0.0f;
+    bool internalTimingEnabled = false;
+    bool markovEnabled = false;
+    float currentBPM = 120.0f;
+    int internalActiveStep = 0;
+    uint64_t nextInternalStepTimeMs = 0;
+    int lastRefreshedActiveIndex = -1;
+    bool outputBuildDirty = true;
+    std::mt19937 randomEngine;
+    bool snapshotsSectionExpanded = true;
+    bool globalSectionExpanded = true;
+    bool cypherSectionExpanded = true;
+    bool stepsSectionExpanded = true;
+    bool outputsSectionExpanded = true;
 
-    std::vector<float> currentOutput;
-    std::vector<float> targetOutput;
-    std::vector<float> glideStartOutput;
-    bool isGliding = false;
-    uint64_t glideStartTimeMs = 0;
+    std::vector<ofParameter<std::vector<float>>> outputs;
+    std::vector<std::shared_ptr<ofParameter<int>>> outputSizeParameters;
+    std::vector<std::unique_ptr<ofEventListener>> outputSizeParameterListeners;
+    std::vector<chordSequenceOutputConfig> outputConfigs;
+    std::vector<std::vector<float>> currentOutputs;
+    std::vector<std::vector<float>> targetOutputs;
+    std::vector<std::vector<float>> glideStartOutputs;
+    std::vector<bool> outputIsGliding;
+    std::vector<uint64_t> outputGlideStartTimeMs;
 
     void loadLibraries();
     void loadCypherAliases();
+    void loadFunctionalHarmony();
     std::string resolvePitchClassFile(const std::string &fileName) const;
     std::vector<chordSequenceLibraryItem> parsePitchClassFile(const std::string &path) const;
     void loadImportSources();
     void reloadLibraries();
 
+    void ensureOutputCount(int newCount);
+    std::string outputName(int index) const;
+    std::string outputSizeParameterName(int index) const;
+    void rebuildOutputSizeParameters();
+    void syncNodeGuiParametersFromState();
+
     void initializeDefaultProgression();
     void resizeProgression(int newSize);
     void sanitizeProgression();
     void sanitizeEntry(chordSequenceEntry &entry);
+    void sanitizeMarkovRows();
+    void sanitizeGlobalScaleSelection();
     bool parseChordTokenToEntry(const std::string &token, chordSequenceEntry &entry) const;
+    bool parseCypherRootAndQuality(const std::string &input, float &rootValue, std::string &quality) const;
     std::string normalizeChordQuality(const std::string &quality) const;
     int getNoteValue(const std::string &note) const;
     std::vector<std::string> parseChordSequenceString(const std::string &chordString) const;
@@ -126,17 +218,39 @@ private:
     int getDefaultIndexForMode(int mode) const;
     std::string getItemLabel(const chordSequenceEntry &entry) const;
     const std::vector<chordSequenceLibraryItem> &getLibraryForMode(int mode) const;
-    std::vector<float> buildEntryCoreOutput(const chordSequenceEntry &entry) const;
-    std::vector<float> buildEntryOutput(const chordSequenceEntry &entry) const;
-    std::vector<float> adaptOutputSize(const std::vector<float> &values) const;
+    int getGlobalScaleSafeIndex() const;
+    int getResolvedEntryDegree(const chordSequenceEntry &entry) const;
+    const std::array<std::vector<chordSequenceFunctionalVariant>, 3> *getCurrentFunctionalGroups() const;
+    const std::vector<chordSequenceFunctionalVariant> &getFunctionalVariants(int functionalGroup) const;
+    void applyFunctionalVariantToEntry(chordSequenceEntry &entry) const;
+    std::vector<float> buildDegreeValues(const chordSequenceEntry &entry) const;
+    std::vector<float> buildEntryIntervals(const chordSequenceEntry &entry) const;
+    std::vector<float> getDiatonicReferenceScale(const chordSequenceEntry &entry) const;
+    std::vector<float> applyDiatonicDeviation(const std::vector<float> &values, const chordSequenceEntry &entry) const;
+    std::vector<float> applyChromaticDeviation(const std::vector<float> &values,
+                                               float probability,
+                                               int range) const;
+    float getEntryRootValue(const chordSequenceEntry &entry) const;
+    std::vector<float> buildEntryPreviewOutput(const chordSequenceEntry &entry) const;
+    std::vector<float> applyVoicing(const std::vector<float> &values, int voicingMode) const;
+    std::vector<float> applyVoicingSpread(const std::vector<float> &values, float spread) const;
+    std::vector<float> buildOutputValues(const chordSequenceEntry &entry, const chordSequenceOutputConfig &config) const;
+    std::vector<float> adaptOutputSize(const std::vector<float> &values,
+                                       int requestedSize,
+                                       bool expandOutput,
+                                       bool sortOutput) const;
     std::vector<float> applyInversion(const std::vector<float> &values, int inversion) const;
     int resolveActiveIndex() const;
-    float getSingleColumnWidth(float availableWidth) const;
+    float getStepDurationMs(int stepIndex) const;
+    void resetInternalSequence(bool forceInstant);
+    int chooseNextInternalStep(int currentStep) const;
+    void advanceInternalSequence();
 
-    void refreshTargetOutput(bool forceInstant = false);
-    void beginGlideTo(const std::vector<float> &nextTarget, bool forceInstant);
-    std::vector<float> getInterpolatedOutput(float progress) const;
-    float getGlideProgress() const;
+    void refreshAllOutputs(bool forceInstant = false);
+    void beginGlideTo(int outputIndex, const std::vector<float> &nextTarget, bool forceInstant);
+    std::vector<float> getInterpolatedOutput(int outputIndex, float progress) const;
+    float getGlideProgress(int outputIndex) const;
+    std::vector<float> getDisplayedOutput(int outputIndex) const;
     float sampleVector(const std::vector<float> &values, size_t index) const;
 
     void drawEditor();
@@ -144,8 +258,9 @@ private:
     void drawImportTools();
     void drawEntries();
     void drawEntryEditor(int index, float width);
+    void drawOutputs();
+    void drawOutputEditor(int index, float width);
     void drawSnapshotManager();
-    void drawOutputPreview();
 
     ofJson serializeCurrentState() const;
     void deserializeState(const ofJson &json, bool forceInstant);
