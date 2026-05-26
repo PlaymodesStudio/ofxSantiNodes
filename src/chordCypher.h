@@ -1,15 +1,14 @@
 #ifndef CHORD_CYPHER_H
 #define CHORD_CYPHER_H
 
+#include "chordCypherAliases.h"
 #include "ofxOceanodeNodeModel.h"
 #include <regex>
 #include <unordered_map>
 
 class chordCypher : public ofxOceanodeNodeModel {
 public:
-	chordCypher() : ofxOceanodeNodeModel("Chord Cypher"){
-		setupChordMap();
-	}
+	chordCypher() : ofxOceanodeNodeModel("Chord Cypher"){}
 	
 	void setup() {
 			chordInput.set("Chord", "CM7");
@@ -40,6 +39,7 @@ public:
 				updateChord();
 			}));
 			
+			loadChordAliases();
 			loadChordDefinitions();
 		}
 
@@ -53,6 +53,13 @@ private:
 	
 	std::unordered_map<string, std::vector<int>> chordDefinitions;
 	std::unordered_map<string, string> chordAliases;
+
+	void loadChordAliases() {
+		chordAliases.clear();
+		if(chordCypherAliases::mergeAliasesFromFile(chordAliases, "ChordCypher") == 0) {
+			setupChordMap();
+		}
+	}
 	
 	void setupChordMap() {
 		chordAliases = {
