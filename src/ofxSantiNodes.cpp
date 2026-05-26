@@ -183,6 +183,7 @@
 // PITCH
 // ─────────────────────────────────────────────
 #include "chordCypher.h"
+#include "chordSequence.h"
 #include "chordProgressions.h"
 #include "fitNotesInRange.h"
 #include "harmonyDetector.h"
@@ -233,6 +234,7 @@
 #include "textureFlip.h"
 #include "textureSnapshot.h"
 #include "texUniForms.h"
+#include "zdepthConverter.h"
 
 // ─────────────────────────────────────────────
 // STRINGS
@@ -528,6 +530,7 @@ void registerModels(ofxOceanode *o)
     // PITCH
     // ─────────────────────────────────────────────
     o->registerModel<chordCypher>("Santi/Pitch");
+    o->registerModel<chordSequence>("Santi/Pitch");
     o->registerModel<chordProgressions>("Santi/Pitch");
     o->registerModel<fitNotesInRange>("Santi/Pitch");
     o->registerModel<harmonyDetector>("Santi/Pitch");
@@ -579,6 +582,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<textureFlip>("Santi/Textures");
     o->registerModel<textureSnapshot>("Santi/Textures");
     o->registerModel<texUniForms>("Santi/Textures");
+    o->registerModel<zdepthConverter>("Santi/Textures");
 
     // ─────────────────────────────────────────────
     // STRINGS
