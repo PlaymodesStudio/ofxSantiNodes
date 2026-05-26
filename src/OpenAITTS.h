@@ -2,10 +2,15 @@
 #define OpenAITTS_h
 
 #include "ofxOceanodeNodeModel.h"
+#include "ofxOceanodeShared.h"
+#include "imgui.h"
+#include <algorithm>
 #include <future>
 #include <thread>
 #include <array>
 #include <cstdio>
+#include <cstring>
+#include <vector>
 
 class OpenAITTS : public ofxOceanodeNodeModel {
 public:
@@ -25,24 +30,31 @@ public:
     }
     
     void setup() {
-		description = "Text-to-Speech node using OpenAI's API. Generates natural sounding speech. Requires: 1) Miniconda installed via 'brew install --cask miniconda', 2) OpenAI Python package installed via '/opt/homebrew/Caskroom/miniconda/base/bin/pip install openai', and 3) SoX audio utility installed via 'brew install sox'. Supports multiple voice options.";
+		description = "Text-to-Speech node using OpenAI's speech API. Uses gpt-4o-mini-tts by default with the latest OpenAI voices. Requires: 1) Miniconda installed via 'brew install --cask miniconda', 2) OpenAI Python package installed via '/opt/homebrew/Caskroom/miniconda/base/bin/pip install openai', 3) SoX audio utility installed via 'brew install sox', and 4) OPENAI_API_KEY set in the environment or stored in data/openai/openai_api_key.txt.";
         
-		vector<string> voiceOptions = {"alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"};
-			addParameterDropdown(selectedVoice, "Voice", 7, voiceOptions); // Default to 'nova' (index 7)
-			
-			// Add emotion/speed instructions
-			addParameter(instructionsText.set("Instructions", ""));
-			
-			
-			addParameter(inputText.set("Text", ""));
-			addParameter(writeButton.set("Write"));
-			addParameter(lastGeneratedFile.set("File", ""));
-			addOutputParameter(trigger.set("Trigger", 0, 0, 1));
-			
-			listeners.push(writeButton.newListener([this](){
-				executeTTSWrite();
-			}));
-		}
+		addParameterDropdown(selectedVoice, "Voice", getDefaultVoiceIndex(), getVoiceOptions());
+		addParameter(instructionsText.set("Instructions", ""));
+		addInspectorParameter(inputText.set("Text", ""));
+        addInspectorParameter(editorWidth.set("Editor Width", 380.0f, 200.0f, 900.0f));
+        addInspectorParameter(editorHeight.set("Editor Height", 220.0f, 100.0f, 700.0f));
+
+        textEditorRegion.set("Text Editor", [this](){
+            drawTextEditor();
+        });
+        addCustomRegion(textEditorRegion, textEditorRegion.get());
+
+		addParameter(writeButton.set("Write"));
+		addParameter(lastGeneratedFile.set("File", ""));
+		addOutputParameter(trigger.set("Trigger", 0, 0, 1));
+
+        syncBufferFromParam(inputText.get());
+        listeners.push(inputText.newListener([this](string &text){
+            syncBufferFromParam(text);
+        }));
+		listeners.push(writeButton.newListener([this](){
+			executeTTSWrite();
+		}));
+	}
     
     void update(ofEventArgs &a) override {
         if (writeInProgress && writeFuture.valid()) {
@@ -67,6 +79,80 @@ public:
     }
     
 private:
+    const vector<string>& getVoiceOptions() const {
+        static const vector<string> voiceOptions = {
+            "alloy", "ash", "ballad", "coral", "echo", "fable",
+            "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"
+        };
+        return voiceOptions;
+    }
+
+    int getDefaultVoiceIndex() const {
+        const auto &voiceOptions = getVoiceOptions();
+        auto it = std::find(voiceOptions.begin(), voiceOptions.end(), "marin");
+        return it == voiceOptions.end() ? 0 : static_cast<int>(std::distance(voiceOptions.begin(), it));
+    }
+
+    string shellQuote(const string &value) const {
+        string escaped = value;
+        ofStringReplace(escaped, "'", "'\"'\"'");
+        return "'" + escaped + "'";
+    }
+
+    void syncBufferFromParam(const string &text) {
+        inputTextBuffer.assign(text.begin(), text.end());
+        inputTextBuffer.push_back('\0');
+    }
+
+    void drawTextEditor() {
+        const auto &customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+        float zoom = ofxOceanodeShared::getZoomLevel();
+        const float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : editorWidth.get() * zoom;
+        const float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : editorHeight.get() * zoom;
+        const float padding = 6.0f * zoom;
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(18, 22, 30, 255));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(18, 22, 30, 255));
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(195, 220, 175, 255));
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, IM_COL32(10, 12, 18, 200));
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, IM_COL32(60, 80, 120, 200));
+
+        ImGui::BeginChild("OpenAITTSTextEditor",
+                          ImVec2(width, height + padding * 2.0f),
+                          true,
+                          ImGuiWindowFlags_None);
+        ImGui::SetCursorPos(ImVec2(padding, padding));
+
+        if(inputTextBuffer.empty()) {
+            inputTextBuffer.push_back('\0');
+        }
+
+        const bool changed = ImGui::InputTextMultiline(
+            "##openai_tts_text",
+            inputTextBuffer.data(),
+            inputTextBuffer.size(),
+            ImVec2(width - padding * 2.0f, height),
+            ImGuiInputTextFlags_AllowTabInput |
+            ImGuiInputTextFlags_CallbackResize,
+            [](ImGuiInputTextCallbackData *data) -> int {
+                if(data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+                    auto *buffer = reinterpret_cast<std::vector<char>*>(data->UserData);
+                    buffer->resize(data->BufTextLen + 1);
+                    data->Buf = buffer->data();
+                }
+                return 0;
+            },
+            &inputTextBuffer
+        );
+
+        if(changed) {
+            inputText.set(string(inputTextBuffer.data()));
+        }
+
+        ImGui::EndChild();
+        ImGui::PopStyleColor(5);
+    }
+
     string executeCommand(const string& cmd) {
             string result;
             FILE* pipe = popen(cmd.c_str(), "r");
@@ -107,26 +193,24 @@ private:
                 string timestamp = ofGetTimestampString();
                 string tempFile = ofToDataPath("tts/temp_tts.wav", true);
                 string outputFile = ofToDataPath("tts/tts_" + timestamp + ".wav", true);
-                
-                string escapedText = inputText.get();
-                ofStringReplace(escapedText, "'", "'\"'\"'");
-                
-                // Get the selected voice option
-				vector<string> voiceOptions = {"alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"};
-                string selectedVoiceStr = voiceOptions[selectedVoice];
-				
-				// Process instructions (if any)
-					string instructionsParam = "";
-					if (!instructionsText.get().empty()) {
-						string escapedInstructions = instructionsText.get();
-						ofStringReplace(escapedInstructions, "'", "'\"'\"'");
-						instructionsParam = " \"" + escapedInstructions + "\"";
-					}
-                
-                // Execute Python script with explicit response_format="wav" and selected voice
-				string pythonCmd = "PYTHONPATH=\"" + pythonSitePackages + "\" " +
-									 "\"" + pythonBin + "\" \"" + pythonPath + "\" '" + escapedText + "' \"" + tempFile +
-									 "\" wav \"" + selectedVoiceStr + "\"" + instructionsParam + " 2>&1";
+
+                const auto &voiceOptions = getVoiceOptions();
+                int clampedVoiceIndex = ofClamp(selectedVoice.get(), 0, static_cast<int>(voiceOptions.size()) - 1);
+                string selectedVoiceStr = voiceOptions[clampedVoiceIndex];
+
+                string pythonCmd = "PYTHONPATH=\"" + pythonSitePackages + "\" " +
+                                   "\"" + pythonBin + "\" \"" + pythonPath + "\"" +
+                                   " --text " + shellQuote(inputText.get()) +
+                                   " --output " + shellQuote(tempFile) +
+                                   " --format wav" +
+                                   " --voice " + shellQuote(selectedVoiceStr) +
+                                   " --model gpt-4o-mini-tts";
+
+                if(!instructionsText.get().empty()) {
+                    pythonCmd += " --instructions " + shellQuote(instructionsText.get());
+                }
+
+                pythonCmd += " 2>&1";
                 
                 ofLogNotice("OpenAITTS") << "Executing command: " << pythonCmd;
                 string pythonOutput = executeCommand(pythonCmd);
@@ -190,8 +274,12 @@ private:
     ofParameter<void> writeButton;
     ofParameter<string> lastGeneratedFile;
     ofParameter<int> trigger;
-    ofParameter<int> selectedVoice;  // New parameter for voice selection
+    ofParameter<int> selectedVoice;
 	ofParameter<string> instructionsText;
+    ofParameter<float> editorWidth;
+    ofParameter<float> editorHeight;
+    customGuiRegion textEditorRegion;
+    std::vector<char> inputTextBuffer;
 
         
     bool writeInProgress;
