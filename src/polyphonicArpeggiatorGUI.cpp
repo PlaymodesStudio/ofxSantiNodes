@@ -457,49 +457,53 @@ void polyphonicArpeggiatorGUI::draw(ofEventArgs &) {
 void polyphonicArpeggiatorGUI::drawEditor() {
     float gap = 6.0f;
     float availableWidth = ImGui::GetContentRegionAvail().x;
-    float columnWidth = (availableWidth - gap * 2.0f) / 3.0f;
-    float topHeight = 320.0f;
-    float middleHeight = 430.0f;
+    float topWidgetWidth = (availableWidth - gap * 5.0f) / 6.0f;
+    float bottomWidgetWidth = (availableWidth - gap) * 0.5f;
+    float topHeight = 430.0f;
+    float bottomHeight = 420.0f;
 
-    beginColoredSection("ArpSnapshots", "Snapshots", ImVec2(columnWidth, topHeight), snapshotsBg, snapshotsTitle, snapshotsSectionExpanded);
+    beginColoredSection("ArpSnapshots", "Snapshots", ImVec2(topWidgetWidth, topHeight), snapshotsBg, snapshotsTitle, snapshotsSectionExpanded);
     if(snapshotsSectionExpanded) drawSnapshotsSection();
     ImGui::EndChild();
 
     ImGui::SameLine(0.0f, gap);
-    beginColoredSection("ArpSource", "Source", ImVec2(columnWidth, topHeight), sourceBg, sourceTitle, sourceSectionExpanded);
+    beginColoredSection("ArpSource", "Source", ImVec2(topWidgetWidth, topHeight), sourceBg, sourceTitle, sourceSectionExpanded);
     if(sourceSectionExpanded) drawSourceSection();
     ImGui::EndChild();
 
     ImGui::SameLine(0.0f, gap);
-    beginColoredSection("ArpPattern", "Pattern", ImVec2(columnWidth, topHeight), patternBg, patternTitle, patternSectionExpanded);
+    beginColoredSection("ArpPattern", "Pattern", ImVec2(topWidgetWidth, topHeight), patternBg, patternTitle, patternSectionExpanded);
     if(patternSectionExpanded) drawPatternSection();
     ImGui::EndChild();
 
-    beginColoredSection("ArpPoly", "Polyphony", ImVec2(columnWidth, middleHeight), polyBg, polyTitle, polyphonySectionExpanded);
+    ImGui::SameLine(0.0f, gap);
+    beginColoredSection("ArpPoly", "Polyphony", ImVec2(topWidgetWidth, topHeight), polyBg, polyTitle, polyphonySectionExpanded);
     if(polyphonySectionExpanded) drawPolyphonySection();
     ImGui::EndChild();
 
     ImGui::SameLine(0.0f, gap);
-    beginColoredSection("ArpEuclidean", "Euclidean", ImVec2(columnWidth, middleHeight), euclidBg, euclidTitle, euclideanSectionExpanded);
+    beginColoredSection("ArpEuclidean", "Euclid", ImVec2(topWidgetWidth, topHeight), euclidBg, euclidTitle, euclideanSectionExpanded);
     if(euclideanSectionExpanded) drawEuclideanSection();
     ImGui::EndChild();
 
     ImGui::SameLine(0.0f, gap);
-    beginColoredSection("ArpVelDur", "Velocity / Duration", ImVec2(columnWidth, middleHeight), velocityBg, velocityTitle, velocityDurationSectionExpanded);
+    beginColoredSection("ArpVelDur", "Vel / Dur", ImVec2(topWidgetWidth, topHeight), velocityBg, velocityTitle, velocityDurationSectionExpanded);
     if(velocityDurationSectionExpanded) drawVelocityDurationSection();
     ImGui::EndChild();
 
-    beginColoredSection("ArpVisualization", "Visualization", ImVec2(0, 420.0f), visualizationBg, visualizationTitle, visualizationSectionExpanded);
+    beginColoredSection("ArpVisualization", "Visualization", ImVec2(bottomWidgetWidth, bottomHeight), visualizationBg, visualizationTitle, visualizationSectionExpanded);
     if(visualizationSectionExpanded) drawVisualizationSection();
     ImGui::EndChild();
 
-    beginColoredSection("ArpOutput", "Output", ImVec2(0, 240.0f), outputBg, outputTitle, outputSectionExpanded);
+    ImGui::SameLine(0.0f, gap);
+    beginColoredSection("ArpOutput", "Output", ImVec2(0, bottomHeight), outputBg, outputTitle, outputSectionExpanded);
     if(outputSectionExpanded) drawOutputSection();
     ImGui::EndChild();
 }
 
 void polyphonicArpeggiatorGUI::drawSnapshotsSection() {
-    ImGui::TextDisabled("Shift+Click store, Right-Click delete");
+    float compactWidth = std::min(80.0f, ImGui::GetContentRegionAvail().x * 0.62f);
+    ImGui::TextDisabled("Shift saves");
 
     float slotSize = 22.0f;
     float slotGap = 4.0f;
@@ -548,10 +552,10 @@ void polyphonicArpeggiatorGUI::drawSnapshotsSection() {
 
     std::string preview = selectedSlot >= 0
         ? ofToString(selectedSlot + 1) + ": " + snapshotSlots[selectedSlot].name
-        : std::string("Select snapshot");
+        : std::string("Select");
 
-    ImGui::SetNextItemWidth(std::min(240.0f, ImGui::GetContentRegionAvail().x));
-    if(ImGui::BeginCombo("Recall", preview.c_str())) {
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::BeginCombo("Load", preview.c_str())) {
         for(int i = 0; i < SnapshotSlots; i++) {
             if(!snapshotSlots[i].hasData) continue;
             bool selected = i == activeSnapshotSlot;
@@ -565,23 +569,25 @@ void polyphonicArpeggiatorGUI::drawSnapshotsSection() {
     if(activeSnapshotSlot >= 0 && snapshotSlots[activeSnapshotSlot].hasData) {
         char nameBuf[128];
         std::snprintf(nameBuf, sizeof(nameBuf), "%s", snapshotSlots[activeSnapshotSlot].name.c_str());
-        ImGui::SetNextItemWidth(std::min(240.0f, ImGui::GetContentRegionAvail().x));
-        if(ImGui::InputText("Name", nameBuf, sizeof(nameBuf))) {
+        ImGui::SetNextItemWidth(compactWidth);
+        if(ImGui::InputText("Nm", nameBuf, sizeof(nameBuf))) {
             snapshotSlots[activeSnapshotSlot].name = nameBuf;
             saveSnapshotToDisk(activeSnapshotSlot);
         }
     }
 
     float morph = morphTime.get();
-    ImGui::SetNextItemWidth(std::min(220.0f, ImGui::GetContentRegionAvail().x));
-    if(drawDraggableFloatWithPopup("Morph Time", morph, 0.02f, 0.0f, 10.0f, "%.2f")) {
+    ImGui::SetNextItemWidth(compactWidth);
+    if(drawDraggableFloatWithPopup("Morph", morph, 0.02f, 0.0f, 10.0f, "%.2f")) {
         morphTime = morph;
     }
 }
 
 void polyphonicArpeggiatorGUI::drawSourceSection() {
+    float compactWidth = std::min(84.0f, ImGui::GetContentRegionAvail().x * 0.62f);
     int srcMode = sourceMode.get();
-    if(ImGui::BeginCombo("Source Mode", srcMode == Scale ? "Scale" : "Chord Pool")) {
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::BeginCombo("Mode", srcMode == Scale ? "Scale" : "Pool")) {
         if(ImGui::Selectable("Scale", srcMode == Scale)) sourceMode = Scale;
         if(ImGui::Selectable("Chord Pool", srcMode == ChordPool)) sourceMode = ChordPool;
         ImGui::EndCombo();
@@ -589,20 +595,21 @@ void polyphonicArpeggiatorGUI::drawSourceSection() {
 
     if(srcMode == ChordPool) {
         bool sort = sortPool.get();
-        if(ImGui::Checkbox("Sort Pool", &sort)) sortPool = sort;
+        if(ImGui::Checkbox("Sort", &sort)) sortPool = sort;
 
         int changeMode = sourceChangeMode.get();
-        const char *changeLabel = changeMode == KeepPhase ? "Keep Phase" : "Reset Pattern";
-        if(ImGui::BeginCombo("On Source Change", changeLabel)) {
+        const char *changeLabel = changeMode == KeepPhase ? "Keep" : "Reset";
+        ImGui::SetNextItemWidth(compactWidth);
+        if(ImGui::BeginCombo("On Src", changeLabel)) {
             if(ImGui::Selectable("Keep Phase", changeMode == KeepPhase)) sourceChangeMode = KeepPhase;
             if(ImGui::Selectable("Reset Pattern", changeMode == ResetPattern)) sourceChangeMode = ResetPattern;
             ImGui::EndCombo();
         }
     } else {
-        ImGui::TextWrapped("Scale mode keeps the original degree-based source behavior.");
+        ImGui::TextWrapped("Scale degrees.");
     }
 
-    ImGui::TextDisabled("%s notes: %zu", srcMode == Scale ? "Source" : "Pool", activeSourceValues.size());
+    ImGui::TextDisabled("%s n:%zu", srcMode == Scale ? "Src" : "Pool", activeSourceValues.size());
 
     float previewHeight = 54.0f;
     drawSourcePoolPreview(ImGui::GetContentRegionAvail().x, previewHeight);
@@ -617,22 +624,25 @@ void polyphonicArpeggiatorGUI::drawSourceSection() {
 }
 
 void polyphonicArpeggiatorGUI::drawPatternSection() {
+    float compactWidth = std::min(78.0f, ImGui::GetContentRegionAvail().x * 0.6f);
     const bool poolMode = sourceMode.get() == ChordPool;
-    const char *startLabel = poolMode ? "Pool Start" : "Degree Start";
-    const char *strideLabel = poolMode ? "Pool Stride" : "Degree Stride";
+    const char *startLabel = poolMode ? "Pool Start" : "Deg Start";
+    const char *strideLabel = poolMode ? "Pool Stride" : "Deg Stride";
 
-    if(ImGui::Button("Trigger")) onTrigger();
+    if(ImGui::Button("Trig")) onTrigger();
     ImGui::SameLine();
     if(ImGui::Button("Reset")) onReset();
     ImGui::SameLine();
-    if(ImGui::Button("Reset Next")) onResetNext();
+    if(ImGui::Button("Reset N")) onResetNext();
 
     int sizeValue = seqSize.get();
-    if(ImGui::InputInt("Sequence Size", &sizeValue)) seqSize = ofClamp(sizeValue, seqSize.getMin(), seqSize.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Seq", &sizeValue)) seqSize = ofClamp(sizeValue, seqSize.getMin(), seqSize.getMax());
 
     int modeValue = patternMode.get();
-    const char *modeLabel = modeValue == 0 ? "Ascending" : modeValue == 1 ? "Descending" : modeValue == 2 ? "Random" : "User";
-    if(ImGui::BeginCombo("Traversal", modeLabel)) {
+    const char *modeLabel = modeValue == 0 ? "Asc" : modeValue == 1 ? "Desc" : modeValue == 2 ? "Rnd" : "User";
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::BeginCombo("Travel", modeLabel)) {
         if(ImGui::Selectable("Ascending", modeValue == 0)) patternMode = 0;
         if(ImGui::Selectable("Descending", modeValue == 1)) patternMode = 1;
         if(ImGui::Selectable("Random", modeValue == 2)) patternMode = 2;
@@ -641,48 +651,58 @@ void polyphonicArpeggiatorGUI::drawPatternSection() {
     }
 
     int startValue = sourceStart.get();
+    ImGui::SetNextItemWidth(compactWidth);
     if(ImGui::InputInt(startLabel, &startValue)) sourceStart = ofClamp(startValue, sourceStart.getMin(), sourceStart.getMax());
 
     int strideValue = sourceStride.get();
+    ImGui::SetNextItemWidth(compactWidth);
     if(ImGui::InputInt(strideLabel, &strideValue)) sourceStride = ofClamp(strideValue, sourceStride.getMin(), sourceStride.getMax());
 
     int transposeValue = transpose.get();
-    if(ImGui::InputInt("Transpose", &transposeValue)) transpose = ofClamp(transposeValue, transpose.getMin(), transpose.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Transp", &transposeValue)) transpose = ofClamp(transposeValue, transpose.getMin(), transpose.getMax());
 
     bool dynamic = dynamicMode.get();
-    if(ImGui::Checkbox("Dynamic Climb", &dynamic)) dynamicMode = dynamic;
+    if(ImGui::Checkbox("Dynamic", &dynamic)) dynamicMode = dynamic;
 
     bool accentMode = accentOnsetMode.get();
-    if(ImGui::Checkbox("Accent By Onsets", &accentMode)) accentOnsetMode = accentMode;
+    if(ImGui::Checkbox("Onset Acc", &accentMode)) accentOnsetMode = accentMode;
 
     if(patternMode.get() == 3) {
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
-        ImGui::TextWrapped("User order: %s", summarizeIntVector(idxPattern.get(), 18).c_str());
+        ImGui::TextWrapped("User: %s", summarizeIntVector(idxPattern.get(), 18).c_str());
         ImGui::PopTextWrapPos();
     }
 
-    ImGui::TextDisabled("Playhead step: %d", wrapIndex(highlightedStep, std::max(1, seqSize.get())) + 1);
+    ImGui::TextDisabled("Step: %d", wrapIndex(highlightedStep, std::max(1, seqSize.get())) + 1);
 }
 
 void polyphonicArpeggiatorGUI::drawPolyphonySection() {
+    float compactWidth = std::min(78.0f, ImGui::GetContentRegionAvail().x * 0.6f);
     int polyValue = polyphony.get();
-    if(ImGui::InputInt("Polyphony", &polyValue)) polyphony = ofClamp(polyValue, polyphony.getMin(), polyphony.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Poly", &polyValue)) polyphony = ofClamp(polyValue, polyphony.getMin(), polyphony.getMax());
 
     int intervalValue = polyInterval.get();
-    if(ImGui::InputInt("Voice Stride", &intervalValue)) polyInterval = ofClamp(intervalValue, polyInterval.getMin(), polyInterval.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Voice Str", &intervalValue)) polyInterval = ofClamp(intervalValue, polyInterval.getMin(), polyInterval.getMax());
 
     int skipValue = skipSteps.get();
-    if(ImGui::InputInt("Skip Steps", &skipValue)) skipSteps = ofClamp(skipValue, skipSteps.getMin(), skipSteps.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Skip", &skipValue)) skipSteps = ofClamp(skipValue, skipSteps.getMin(), skipSteps.getMax());
 
     float strumValue = strum.get();
+    ImGui::SetNextItemWidth(compactWidth);
     if(drawDraggableFloatWithPopup("Strum", strumValue, 1.0f, 0.0f, 500.0f, "%.1f")) strum = strumValue;
 
     float strumRnd = strumRndm.get();
-    if(drawDraggableFloatWithPopup("Strum Random", strumRnd, 1.0f, 0.0f, 200.0f, "%.1f")) strumRndm = strumRnd;
+    ImGui::SetNextItemWidth(compactWidth);
+    if(drawDraggableFloatWithPopup("Str Rnd", strumRnd, 1.0f, 0.0f, 200.0f, "%.1f")) strumRndm = strumRnd;
 
     int direction = strumDir.get();
-    const char *dirLabel = direction == 0 ? "Ascending" : direction == 1 ? "Descending" : "Random";
-    if(ImGui::BeginCombo("Strum Direction", dirLabel)) {
+    const char *dirLabel = direction == 0 ? "Asc" : direction == 1 ? "Desc" : "Rnd";
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::BeginCombo("Str Dir", dirLabel)) {
         if(ImGui::Selectable("Ascending", direction == 0)) strumDir = 0;
         if(ImGui::Selectable("Descending", direction == 1)) strumDir = 1;
         if(ImGui::Selectable("Random", direction == 2)) strumDir = 2;
@@ -692,78 +712,101 @@ void polyphonicArpeggiatorGUI::drawPolyphonySection() {
     ImGui::Separator();
 
     float octProb = octaveDev.get();
-    if(drawDraggableFloatWithPopup("Octave Dev", octProb, 0.01f, 0.0f, 1.0f, "%.2f")) octaveDev = octProb;
+    ImGui::SetNextItemWidth(compactWidth);
+    if(drawDraggableFloatWithPopup("Oct Prob", octProb, 0.01f, 0.0f, 1.0f, "%.2f")) octaveDev = octProb;
     int octRange = octaveDevRng.get();
-    if(ImGui::InputInt("Octave Range", &octRange)) octaveDevRng = ofClamp(octRange, octaveDevRng.getMin(), octaveDevRng.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Oct Range", &octRange)) octaveDevRng = ofClamp(octRange, octaveDevRng.getMin(), octaveDevRng.getMax());
 
     float idxProb = idxDev.get();
-    if(drawDraggableFloatWithPopup("Index Dev", idxProb, 0.01f, 0.0f, 1.0f, "%.2f")) idxDev = idxProb;
+    ImGui::SetNextItemWidth(compactWidth);
+    if(drawDraggableFloatWithPopup("Idx Prob", idxProb, 0.01f, 0.0f, 1.0f, "%.2f")) idxDev = idxProb;
     int idxRange = idxDevRng.get();
-    if(ImGui::InputInt("Index Range", &idxRange)) idxDevRng = ofClamp(idxRange, idxDevRng.getMin(), idxDevRng.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Idx Range", &idxRange)) idxDevRng = ofClamp(idxRange, idxDevRng.getMin(), idxDevRng.getMax());
 
     float pitchProb = pitchDev.get();
-    if(drawDraggableFloatWithPopup("Pitch Dev", pitchProb, 0.01f, 0.0f, 1.0f, "%.2f")) pitchDev = pitchProb;
+    ImGui::SetNextItemWidth(compactWidth);
+    if(drawDraggableFloatWithPopup("Pitch Prob", pitchProb, 0.01f, 0.0f, 1.0f, "%.2f")) pitchDev = pitchProb;
     int pitchRange = pitchDevRng.get();
-    if(ImGui::InputInt("Pitch Range", &pitchRange)) pitchDevRng = ofClamp(pitchRange, pitchDevRng.getMin(), pitchDevRng.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Pitch Rng", &pitchRange)) pitchDevRng = ofClamp(pitchRange, pitchDevRng.getMin(), pitchDevRng.getMax());
 }
 
 void polyphonicArpeggiatorGUI::drawEuclideanSection() {
+    float compactWidth = std::min(78.0f, ImGui::GetContentRegionAvail().x * 0.6f);
     int gateLen = eucLen.get();
-    if(ImGui::InputInt("Gate Length", &gateLen)) eucLen = ofClamp(gateLen, eucLen.getMin(), eucLen.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Gate Len", &gateLen)) eucLen = ofClamp(gateLen, eucLen.getMin(), eucLen.getMax());
     int gateHits = eucHits.get();
+    ImGui::SetNextItemWidth(compactWidth);
     if(ImGui::InputInt("Gate Hits", &gateHits)) eucHits = ofClamp(gateHits, eucHits.getMin(), eucHits.getMax());
     int gateOff = eucOff.get();
-    if(ImGui::InputInt("Gate Offset", &gateOff)) eucOff = ofClamp(gateOff, eucOff.getMin(), eucOff.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Gate Off", &gateOff)) eucOff = ofClamp(gateOff, eucOff.getMin(), eucOff.getMax());
 
     int accLenValue = eucAccLen.get();
-    if(ImGui::InputInt("Accent Length", &accLenValue)) eucAccLen = ofClamp(accLenValue, eucAccLen.getMin(), eucAccLen.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Acc Len", &accLenValue)) eucAccLen = ofClamp(accLenValue, eucAccLen.getMin(), eucAccLen.getMax());
     int accHitsValue = eucAccHits.get();
-    if(ImGui::InputInt("Accent Hits", &accHitsValue)) eucAccHits = ofClamp(accHitsValue, eucAccHits.getMin(), eucAccHits.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Acc Hits", &accHitsValue)) eucAccHits = ofClamp(accHitsValue, eucAccHits.getMin(), eucAccHits.getMax());
     int accOffValue = eucAccOff.get();
-    if(ImGui::InputInt("Accent Offset", &accOffValue)) eucAccOff = ofClamp(accOffValue, eucAccOff.getMin(), eucAccOff.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Acc Off", &accOffValue)) eucAccOff = ofClamp(accOffValue, eucAccOff.getMin(), eucAccOff.getMax());
 
     int durLenValue = eucDurLen.get();
-    if(ImGui::InputInt("Duration Length", &durLenValue)) eucDurLen = ofClamp(durLenValue, eucDurLen.getMin(), eucDurLen.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Dur Len", &durLenValue)) eucDurLen = ofClamp(durLenValue, eucDurLen.getMin(), eucDurLen.getMax());
     int durHitsValue = eucDurHits.get();
-    if(ImGui::InputInt("Duration Hits", &durHitsValue)) eucDurHits = ofClamp(durHitsValue, eucDurHits.getMin(), eucDurHits.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Dur Hits", &durHitsValue)) eucDurHits = ofClamp(durHitsValue, eucDurHits.getMin(), eucDurHits.getMax());
     int durOffValue = eucDurOff.get();
-    if(ImGui::InputInt("Duration Offset", &durOffValue)) eucDurOff = ofClamp(durOffValue, eucDurOff.getMin(), eucDurOff.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Dur Off", &durOffValue)) eucDurOff = ofClamp(durOffValue, eucDurOff.getMin(), eucDurOff.getMax());
 
     float stepProb = stepChance.get();
-    if(drawDraggableFloatWithPopup("Step Chance", stepProb, 0.01f, 0.0f, 1.0f, "%.2f")) stepChance = stepProb;
+    ImGui::SetNextItemWidth(compactWidth);
+    if(drawDraggableFloatWithPopup("Step%", stepProb, 0.01f, 0.0f, 1.0f, "%.2f")) stepChance = stepProb;
     float noteProb = noteChance.get();
-    if(drawDraggableFloatWithPopup("Note Chance", noteProb, 0.01f, 0.0f, 1.0f, "%.2f")) noteChance = noteProb;
+    ImGui::SetNextItemWidth(compactWidth);
+    if(drawDraggableFloatWithPopup("Note%", noteProb, 0.01f, 0.0f, 1.0f, "%.2f")) noteChance = noteProb;
 
     ImGui::Spacing();
     drawEuclideanPreview(ImGui::GetContentRegionAvail().x, 86.0f);
 }
 
 void polyphonicArpeggiatorGUI::drawVelocityDurationSection() {
+    float compactWidth = std::min(78.0f, ImGui::GetContentRegionAvail().x * 0.6f);
     float baseVel = velBase.get();
-    if(drawDraggableFloatWithPopup("Base Velocity", baseVel, 0.01f, 0.0f, 1.0f, "%.2f")) velBase = baseVel;
+    ImGui::SetNextItemWidth(compactWidth);
+    if(drawDraggableFloatWithPopup("Vel", baseVel, 0.01f, 0.0f, 1.0f, "%.2f")) velBase = baseVel;
     float randomVel = velRndm.get();
-    if(drawDraggableFloatWithPopup("Velocity Random", randomVel, 0.01f, 0.0f, 1.0f, "%.2f")) velRndm = randomVel;
+    ImGui::SetNextItemWidth(compactWidth);
+    if(drawDraggableFloatWithPopup("Vel Rnd", randomVel, 0.01f, 0.0f, 1.0f, "%.2f")) velRndm = randomVel;
     float accentStrength = eucAccStrength.get();
-    if(drawDraggableFloatWithPopup("Accent Strength", accentStrength, 0.01f, 0.0f, 1.0f, "%.2f")) eucAccStrength = accentStrength;
+    ImGui::SetNextItemWidth(compactWidth);
+    if(drawDraggableFloatWithPopup("Acc Amt", accentStrength, 0.01f, 0.0f, 1.0f, "%.2f")) eucAccStrength = accentStrength;
 
     int baseDuration = durBase.get();
-    if(ImGui::InputInt("Base Duration", &baseDuration)) durBase = ofClamp(baseDuration, durBase.getMin(), durBase.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Dur", &baseDuration)) durBase = ofClamp(baseDuration, durBase.getMin(), durBase.getMax());
     int randomDuration = durRndm.get();
-    if(ImGui::InputInt("Duration Random", &randomDuration)) durRndm = ofClamp(randomDuration, durRndm.getMin(), durRndm.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Dur Rnd", &randomDuration)) durRndm = ofClamp(randomDuration, durRndm.getMin(), durRndm.getMax());
     int durationAccent = durEucStrength.get();
-    if(ImGui::InputInt("Duration Accent", &durationAccent)) durEucStrength = ofClamp(durationAccent, durEucStrength.getMin(), durEucStrength.getMax());
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Dur Acc", &durationAccent)) durEucStrength = ofClamp(durationAccent, durEucStrength.getMin(), durEucStrength.getMax());
 
     ImGui::Separator();
-    ImGui::TextDisabled("Preview");
-    ImGui::Text("Velocity %.2f .. %.2f", velBase.get(), ofClamp(velBase.get() + velRndm.get() + eucAccStrength.get(), 0.0f, 1.0f));
-    ImGui::Text("Duration %d .. %d ms", std::max(1, durBase.get() + std::min(0, durEucStrength.get())), std::min(60000, durBase.get() + durRndm.get() + std::max(0, durEucStrength.get())));
+    ImGui::TextDisabled("Prev");
+    ImGui::Text("Vel %.2f..%.2f", velBase.get(), ofClamp(velBase.get() + velRndm.get() + eucAccStrength.get(), 0.0f, 1.0f));
+    ImGui::Text("Dur %d..%d", std::max(1, durBase.get() + std::min(0, durEucStrength.get())), std::min(60000, durBase.get() + durRndm.get() + std::max(0, durEucStrength.get())));
 }
 
 void polyphonicArpeggiatorGUI::drawVisualizationSection() {
     float width = ImGui::GetContentRegionAvail().x;
-    drawArpGrid(width, 306.0f);
-    ImGui::Spacing();
-    drawEuclideanPreview(width, 92.0f);
+    drawArpGrid(width, 360.0f);
 }
 
 void polyphonicArpeggiatorGUI::drawOutputSection() {
