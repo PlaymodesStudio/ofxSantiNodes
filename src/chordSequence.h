@@ -56,6 +56,14 @@ struct chordSequenceOutputConfig {
         Shell = 5
     };
 
+    enum SourceMode {
+        Chord = 0,
+        Scale = 1,
+        Root = 2,
+        Key = 3,
+        ChordSum = 4
+    };
+
     int octave = 0;
     int transpose = 0;
     float pitchBend = 0.0f;
@@ -64,14 +72,15 @@ struct chordSequenceOutputConfig {
     int octaveRandomRange = 0;
     float chromaticDeviationProbability = 0.0f;
     int chromaticDeviationRange = 0;
-    bool scaleOnly = false;
+    bool voiceLeading = false;
+    int minNote = 0;
+    int maxNote = 127;
+    int sourceMode = Chord;
     bool addBass = false;
     int bassOct = -2;
     int inversion = 0;
     int voicingMode = None;
     float voicingSpread = 0.0f;
-    bool rootOnly = false;
-    bool keyOnly = false;
     bool fold12 = false;
     float glideMs = 0.0f;
     int outputSize = 4;
@@ -230,11 +239,24 @@ private:
     std::vector<float> applyChromaticDeviation(const std::vector<float> &values,
                                                float probability,
                                                int range) const;
+    std::vector<float> buildChordSumValues() const;
+    std::vector<float> buildOutputSourceValues(const chordSequenceEntry &entry,
+                                               const chordSequenceOutputConfig &config,
+                                               float &outputRoot) const;
     float getEntryRootValue(const chordSequenceEntry &entry) const;
     std::vector<float> buildEntryPreviewOutput(const chordSequenceEntry &entry) const;
     std::vector<float> applyVoicing(const std::vector<float> &values, int voicingMode) const;
     std::vector<float> applyVoicingSpread(const std::vector<float> &values, float spread) const;
-    std::vector<float> buildOutputValues(const chordSequenceEntry &entry, const chordSequenceOutputConfig &config) const;
+    std::vector<float> applyVoiceLeading(const std::vector<float> &previousValues,
+                                         const std::vector<float> &nextValues,
+                                         int minNote,
+                                         int maxNote) const;
+    std::vector<float> applyRangeConstraints(const std::vector<float> &values,
+                                             int minNote,
+                                             int maxNote) const;
+    std::vector<float> buildOutputValues(const chordSequenceEntry &entry,
+                                         const chordSequenceOutputConfig &config,
+                                         const std::vector<float> &previousValues) const;
     std::vector<float> adaptOutputSize(const std::vector<float> &values,
                                        int requestedSize,
                                        bool expandOutput,

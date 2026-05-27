@@ -19,11 +19,17 @@ namespace {
     const char *functionalGroupKeys[] = {"tonic", "subdominant", "dominant"};
     const char *functionalGroupLabels[] = {"Tonic", "Subdominant", "Dominant"};
     const char *voicingLabels[] = {"None", "Close", "Open", "Drop 2", "Drop 3", "Shell"};
+    const char *outputSourceLabels[] = {"Chord", "Scale", "Root", "Key", "Chord Sum"};
 
     bool modeSupportsDiatonicDeviation(int mode) {
         return mode == chordSequenceEntry::Scale ||
                mode == chordSequenceEntry::Degree ||
                mode == chordSequenceEntry::Functional;
+    }
+
+    bool outputSourceUsesScaleLikeMaterial(int sourceMode) {
+        return sourceMode == chordSequenceOutputConfig::Scale ||
+               sourceMode == chordSequenceOutputConfig::ChordSum;
     }
 
     const ImVec4 snapshotsBg = ImVec4(0.12f, 0.17f, 0.24f, 0.94f);
@@ -125,19 +131,6 @@ namespace {
         return notes;
     }
 
-    std::vector<int> centerNotesToPitchClassDisplay(const std::vector<int> &notes) {
-        std::vector<int> centeredNotes;
-        centeredNotes.reserve(notes.size());
-        constexpr int centeredDisplayBase = 60; // C4
-
-        for(int note : notes) {
-            int pitchClass = ((note % 12) + 12) % 12;
-            centeredNotes.push_back(centeredDisplayBase + pitchClass);
-        }
-
-        return centeredNotes;
-    }
-
     std::pair<int, int> computeKeyboardRange(const std::vector<int> &notes,
                                              int defaultLow,
                                              int defaultHigh,
@@ -179,12 +172,8 @@ namespace {
                              float width,
                              float height,
                              bool active,
-                             bool compact = false,
-                             bool centerPitchClasses = false) {
+                             bool compact = false) {
         std::vector<int> resizedNotes = toDisplayNotes(values);
-        if(centerPitchClasses) {
-            resizedNotes = centerNotesToPitchClassDisplay(resizedNotes);
-        }
         std::map<int, int> noteCounts;
         for(int note : resizedNotes) {
             noteCounts[note]++;
@@ -349,9 +338,9 @@ namespace {
         float rowHeight = ImGui::GetFrameHeightWithSpacing();
         float textHeight = ImGui::GetTextLineHeightWithSpacing();
         float height = 24.0f; // header
-        float controlRows = 12.0f; // always-visible rows
-        if(!config.scaleOnly) {
-            controlRows += 4.0f; // root/key, inversion, voicing, spread
+        float controlRows = 15.0f; // always-visible rows
+        if(!outputSourceUsesScaleLikeMaterial(config.sourceMode)) {
+            controlRows += 5.0f; // root/key, addBass, inversion, voicing, spread
             if(config.addBass) controlRows += 1.0f; // bass octave
         }
         height += rowHeight * controlRows;
@@ -462,14 +451,15 @@ ofJson chordSequenceOutputConfig::toJson() const {
         {"octaveRandomRange", octaveRandomRange},
         {"chromaticDeviationProbability", chromaticDeviationProbability},
         {"chromaticDeviationRange", chromaticDeviationRange},
-        {"scaleOnly", scaleOnly},
+        {"voiceLeading", voiceLeading},
+        {"minNote", minNote},
+        {"maxNote", maxNote},
+        {"sourceMode", sourceMode},
         {"addBass", addBass},
         {"bassOct", bassOct},
         {"inversion", inversion},
         {"voicingMode", voicingMode},
         {"voicingSpread", voicingSpread},
-        {"rootOnly", rootOnly},
-        {"keyOnly", keyOnly},
         {"fold12", fold12},
         {"glideMs", glideMs},
         {"outputSize", outputSize},
@@ -488,7 +478,23 @@ chordSequenceOutputConfig chordSequenceOutputConfig::fromJson(const ofJson &json
     config.octaveRandomRange = std::max(0, json.value("octaveRandomRange", 0));
     config.chromaticDeviationProbability = ofClamp(json.value("chromaticDeviationProbability", 0.0f), 0.0f, 100.0f);
     config.chromaticDeviationRange = std::max(0, json.value("chromaticDeviationRange", 0));
-    config.scaleOnly = json.value("scaleOnly", false);
+    config.voiceLeading = json.value("voiceLeading", false);
+    config.minNote = ofClamp(json.value("minNote", 0), 0, 127);
+    config.maxNote = ofClamp(json.value("maxNote", 127), 0, 127);
+    if(config.minNote > config.maxNote) std::swap(config.minNote, config.maxNote);
+    if(json.contains("sourceMode")) {
+        config.sourceMode = ofClamp(json.value("sourceMode", chordSequenceOutputConfig::Chord),
+                                    chordSequenceOutputConfig::Chord,
+                                    chordSequenceOutputConfig::ChordSum);
+    } else if(json.value("scaleOnly", false)) {
+        config.sourceMode = chordSequenceOutputConfig::Scale;
+    } else if(json.value("keyOnly", false)) {
+        config.sourceMode = chordSequenceOutputConfig::Key;
+    } else if(json.value("rootOnly", false)) {
+        config.sourceMode = chordSequenceOutputConfig::Root;
+    } else {
+        config.sourceMode = chordSequenceOutputConfig::Chord;
+    }
     config.addBass = json.value("addBass", false);
     config.bassOct = json.value("bassOct", -2);
     config.inversion = json.value("inversion", 0);
@@ -496,8 +502,6 @@ chordSequenceOutputConfig chordSequenceOutputConfig::fromJson(const ofJson &json
                                  chordSequenceOutputConfig::None,
                                  chordSequenceOutputConfig::Shell);
     config.voicingSpread = std::max(0.0f, json.value("voicingSpread", 0.0f));
-    config.rootOnly = json.value("rootOnly", false);
-    config.keyOnly = json.value("keyOnly", false);
     config.fold12 = json.value("fold12", false);
     config.glideMs = json.value("glideMs", 0.0f);
     config.outputSize = std::max(1, json.value("outputSize", 4));
@@ -1560,6 +1564,64 @@ std::vector<float> chordSequence::applyChromaticDeviation(const std::vector<floa
     return deviated;
 }
 
+std::vector<float> chordSequence::buildChordSumValues() const {
+    std::set<int> distinctPitchClasses;
+    for(const auto &progressionEntry : progression) {
+        std::vector<float> entryValues = buildEntryPreviewOutput(progressionEntry);
+        for(float value : entryValues) {
+            int pitchClass = wrapIndex(static_cast<int>(std::round(value)), 12);
+            if(pitchClass >= 0) distinctPitchClasses.insert(pitchClass);
+        }
+    }
+
+    if(distinctPitchClasses.empty()) {
+        return {static_cast<float>(globalKey)};
+    }
+
+    std::vector<float> values;
+    values.reserve(distinctPitchClasses.size());
+    for(int pitchClass : distinctPitchClasses) {
+        values.push_back(static_cast<float>(pitchClass));
+    }
+    return values;
+}
+
+std::vector<float> chordSequence::buildOutputSourceValues(const chordSequenceEntry &entry,
+                                                          const chordSequenceOutputConfig &config,
+                                                          float &outputRoot) const {
+    if(config.sourceMode == chordSequenceOutputConfig::Scale) {
+        outputRoot = static_cast<float>(globalKey);
+        int safeScaleIndex = getGlobalScaleSafeIndex();
+        if(safeScaleIndex >= 0 && safeScaleIndex < static_cast<int>(scaleLibrary.size())) {
+            std::vector<float> values = scaleLibrary[safeScaleIndex].values;
+            for(auto &value : values) {
+                value += static_cast<float>(globalKey);
+            }
+            return values;
+        }
+        return std::vector<float>{outputRoot};
+    }
+
+    if(config.sourceMode == chordSequenceOutputConfig::ChordSum) {
+        outputRoot = static_cast<float>(globalKey);
+        return buildChordSumValues();
+    }
+
+    if(config.sourceMode == chordSequenceOutputConfig::Key) {
+        outputRoot = static_cast<float>(globalKey);
+        return std::vector<float>{outputRoot};
+    }
+
+    if(config.sourceMode == chordSequenceOutputConfig::Root) {
+        outputRoot = getEntryRootValue(entry);
+        return std::vector<float>{outputRoot};
+    }
+
+    outputRoot = getEntryRootValue(entry);
+    std::vector<float> values = buildEntryPreviewOutput(entry);
+    return applyDiatonicDeviation(values, entry);
+}
+
 float chordSequence::getEntryRootValue(const chordSequenceEntry &entry) const {
     if(entry.mode == chordSequenceEntry::Cypher) {
         float rootValue = 0.0f;
@@ -1595,6 +1657,89 @@ std::vector<float> chordSequence::buildEntryPreviewOutput(const chordSequenceEnt
     }
 
     return values;
+}
+
+std::vector<float> chordSequence::applyVoiceLeading(const std::vector<float> &previousValues,
+                                                    const std::vector<float> &nextValues,
+                                                    int minNote,
+                                                    int maxNote) const {
+    if(previousValues.empty() || nextValues.empty()) return nextValues;
+
+    minNote = ofClamp(minNote, 0, 127);
+    maxNote = ofClamp(maxNote, 0, 127);
+    if(minNote > maxNote) std::swap(minNote, maxNote);
+
+    std::vector<float> voiced = nextValues;
+    for(size_t i = 0; i < voiced.size(); i++) {
+        float reference = sampleVector(previousValues, i);
+        float bestValue = voiced[i];
+        float bestDistance = std::numeric_limits<float>::max();
+
+        // Find the octave displacement that keeps each note closest to the
+        // previous emitted output while respecting the configured register.
+        for(int octaveShift = -8; octaveShift <= 8; octaveShift++) {
+            float candidate = voiced[i] + static_cast<float>(octaveShift * 12);
+            if(candidate < minNote || candidate > maxNote) continue;
+
+            float distance = std::abs(candidate - reference);
+            if(distance < bestDistance) {
+                bestDistance = distance;
+                bestValue = candidate;
+            }
+        }
+
+        if(bestDistance == std::numeric_limits<float>::max()) {
+            for(int octaveShift = -8; octaveShift <= 8; octaveShift++) {
+                float candidate = voiced[i] + static_cast<float>(octaveShift * 12);
+                float distance = std::abs(candidate - reference);
+                if(distance < bestDistance) {
+                    bestDistance = distance;
+                    bestValue = candidate;
+                }
+            }
+        }
+
+        voiced[i] = bestValue;
+    }
+
+    return voiced;
+}
+
+std::vector<float> chordSequence::applyRangeConstraints(const std::vector<float> &values,
+                                                        int minNote,
+                                                        int maxNote) const {
+    if(values.empty()) return values;
+
+    minNote = ofClamp(minNote, 0, 127);
+    maxNote = ofClamp(maxNote, 0, 127);
+    if(minNote > maxNote) std::swap(minNote, maxNote);
+
+    std::vector<float> constrained = values;
+    for(auto &value : constrained) {
+        float bestValue = value;
+        float bestDistance = std::numeric_limits<float>::max();
+
+        // Prefer octave-equivalent placements inside the range before falling
+        // back to a direct clamp when no octave placement can fit.
+        for(int octaveShift = -8; octaveShift <= 8; octaveShift++) {
+            float candidate = value + static_cast<float>(octaveShift * 12);
+            if(candidate < minNote || candidate > maxNote) continue;
+
+            float distance = std::abs(candidate - value);
+            if(distance < bestDistance) {
+                bestDistance = distance;
+                bestValue = candidate;
+            }
+        }
+
+        if(bestDistance == std::numeric_limits<float>::max()) {
+            bestValue = ofClamp(value, static_cast<float>(minNote), static_cast<float>(maxNote));
+        }
+
+        value = bestValue;
+    }
+
+    return constrained;
 }
 
 std::vector<float> chordSequence::applyVoicing(const std::vector<float> &values, int voicingMode) const {
@@ -1664,33 +1809,14 @@ std::vector<float> chordSequence::applyVoicingSpread(const std::vector<float> &v
 }
 
 std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &entry,
-                                                    const chordSequenceOutputConfig &config) const {
-    std::vector<float> values;
+                                                    const chordSequenceOutputConfig &config,
+                                                    const std::vector<float> &previousValues) const {
     float outputRoot = 0.0f;
-    if(config.scaleOnly) {
-        outputRoot = static_cast<float>(globalKey);
-        int safeScaleIndex = getGlobalScaleSafeIndex();
-        if(safeScaleIndex >= 0 && safeScaleIndex < static_cast<int>(scaleLibrary.size())) {
-            values = scaleLibrary[safeScaleIndex].values;
-            for(auto &value : values) {
-                value += static_cast<float>(globalKey);
-            }
-        } else {
-            values = std::vector<float>{outputRoot};
-        }
-    } else if(config.keyOnly) {
-        outputRoot = static_cast<float>(globalKey);
-        values = std::vector<float>{outputRoot};
-    } else if(config.rootOnly) {
-        outputRoot = getEntryRootValue(entry);
-        values = std::vector<float>{outputRoot};
-    } else {
-        values = buildEntryPreviewOutput(entry);
-        outputRoot = getEntryRootValue(entry);
-        values = applyDiatonicDeviation(values, entry);
-    }
+    std::vector<float> values = buildOutputSourceValues(entry, config, outputRoot);
 
-    if(!config.scaleOnly) {
+    // Output processing intentionally flows from harmonic source -> voicing/size ->
+    // stochastic color -> absolute register -> optional continuity/range cleanup.
+    if(!outputSourceUsesScaleLikeMaterial(config.sourceMode)) {
         values = applyInversion(values, globalInvert + config.inversion);
     }
 
@@ -1701,17 +1827,15 @@ std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &en
         }
     }
 
-    if(!config.scaleOnly) {
+    if(!outputSourceUsesScaleLikeMaterial(config.sourceMode)) {
         values = applyVoicing(values, config.voicingMode);
         values = applyVoicingSpread(values, config.voicingSpread);
     }
 
-    int requestedBodySize = std::max(0, config.outputSize - ((!config.scaleOnly && config.addBass) ? 1 : 0));
-    if(requestedBodySize == 0) {
-        values.clear();
-    } else {
-        values = adaptOutputSize(values, requestedBodySize, config.expandOutput, false);
-    }
+    int requestedBodySize = std::max(0, config.outputSize - ((!outputSourceUsesScaleLikeMaterial(config.sourceMode) && config.addBass) ? 1 : 0));
+    values = requestedBodySize == 0
+                 ? std::vector<float>{}
+                 : adaptOutputSize(values, requestedBodySize, config.expandOutput, false);
 
     if(config.octaveRandomProbability > 0.0f && config.octaveRandomRange > 0) {
         for(auto &value : values) {
@@ -1728,7 +1852,7 @@ std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &en
                                      config.chromaticDeviationProbability,
                                      config.chromaticDeviationRange);
 
-    if(!config.scaleOnly && config.addBass) {
+    if(!outputSourceUsesScaleLikeMaterial(config.sourceMode) && config.addBass) {
         float rootPitchClass = std::fmod(outputRoot, 12.0f);
         if(rootPitchClass < 0.0f) rootPitchClass += 12.0f;
         values.insert(values.begin(), rootPitchClass + static_cast<float>(config.bassOct * 12));
@@ -1742,6 +1866,11 @@ std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &en
             value += ofRandom(-config.perNoteDetune, config.perNoteDetune);
         }
     }
+
+    if(config.voiceLeading) {
+        values = applyVoiceLeading(previousValues, values, config.minNote, config.maxNote);
+    }
+    values = applyRangeConstraints(values, config.minNote, config.maxNote);
 
     if(config.sortOutput) {
         std::sort(values.begin(), values.end());
@@ -1895,7 +2024,11 @@ void chordSequence::refreshAllOutputs(bool forceInstant) {
         if(activeIndex < 0 || activeIndex >= static_cast<int>(progression.size())) {
             beginGlideTo(i, {0.0f}, true);
         } else {
-            beginGlideTo(i, buildOutputValues(progression[activeIndex], outputConfigs[i]), forceInstant);
+            std::vector<float> previousValues =
+                (forceInstant || lastRefreshedActiveIndex < 0) ? std::vector<float>{} : targetOutputs[i];
+            beginGlideTo(i,
+                         buildOutputValues(progression[activeIndex], outputConfigs[i], previousValues),
+                         forceInstant);
         }
     }
 
@@ -2301,10 +2434,9 @@ void chordSequence::drawEntryEditor(int index, float width) {
     });
     float controlWidth = std::max(80.0f, rowWidth - maxLabelWidth - labelGap);
 
-    auto drawRowLabel = [rowWidth](float rowStartX, const char *label) {
-        float textWidth = ImGui::CalcTextSize(label).x;
+    auto drawRowLabel = [controlWidth, labelGap](float rowStartX, const char *label) {
         ImGui::SameLine();
-        ImGui::SetCursorPosX(rowStartX + std::max(0.0f, rowWidth - textWidth));
+        ImGui::SetCursorPosX(rowStartX + controlWidth + labelGap);
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(label);
     };
@@ -2596,14 +2728,16 @@ void chordSequence::drawOutputEditor(int index, float width) {
         ImGui::CalcTextSize("Oct Rand Range").x,
         ImGui::CalcTextSize("Chrom Dev %").x,
         ImGui::CalcTextSize("Chrom Dev Range").x,
-        ImGui::CalcTextSize("Scale").x,
+        ImGui::CalcTextSize("Voice Lead").x,
+        ImGui::CalcTextSize("Min Note").x,
+        ImGui::CalcTextSize("Max Note").x,
+        ImGui::CalcTextSize("Chord Sum").x,
+        ImGui::CalcTextSize("Source").x,
         ImGui::CalcTextSize("AddBass").x,
         ImGui::CalcTextSize("BassOct").x,
         ImGui::CalcTextSize("Inversion").x,
         ImGui::CalcTextSize("Voicing").x,
         ImGui::CalcTextSize("Spread").x,
-        ImGui::CalcTextSize("Key").x,
-        ImGui::CalcTextSize("Root").x,
         ImGui::CalcTextSize("Fold12").x,
         ImGui::CalcTextSize("Glide").x,
         ImGui::CalcTextSize("Output Size").x,
@@ -2612,11 +2746,18 @@ void chordSequence::drawOutputEditor(int index, float width) {
     });
     float controlWidth = std::max(84.0f, rowWidth - maxLabelWidth - labelGap);
 
-    auto drawRowLabel = [rowWidth](float rowStartX, const char *label) {
-        float textWidth = ImGui::CalcTextSize(label).x;
+    auto drawRowLabel = [controlWidth, labelGap](float rowStartX, const char *label) {
         ImGui::SameLine();
-        ImGui::SetCursorPosX(rowStartX + std::max(0.0f, rowWidth - textWidth));
+        ImGui::SetCursorPosX(rowStartX + controlWidth + labelGap);
         ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(label);
+    };
+
+    auto drawSingleToggleRow = [&](const char *id, bool &value, const char *label) {
+        if(ImGui::Checkbox(id, &value)) {
+            refreshAllOutputs(true);
+        }
+        ImGui::SameLine();
         ImGui::TextUnformatted(label);
     };
 
@@ -2643,14 +2784,6 @@ void chordSequence::drawOutputEditor(int index, float width) {
         }
         ImGui::SameLine();
         ImGui::TextUnformatted(rightLabel);
-    };
-
-    auto drawSingleToggleRow = [&](const char *id, bool &value, const char *label) {
-        if(ImGui::Checkbox(id, &value)) {
-            refreshAllOutputs(true);
-        }
-        ImGui::SameLine();
-        ImGui::TextUnformatted(label);
     };
 
     float rowStartX = ImGui::GetCursorPosX();
@@ -2716,36 +2849,27 @@ void chordSequence::drawOutputEditor(int index, float width) {
     }
     drawRowLabel(rowStartX, "Chrom Dev Range");
 
-    {
-        float rowStartX = ImGui::GetCursorPosX();
-        float pairGap = 12.0f;
-        float pairWidth = std::max(70.0f, (rowWidth - pairGap) * 0.5f);
-
-        ImGui::SetCursorPosX(rowStartX);
-        if(ImGui::Checkbox("##Scale", &config.scaleOnly)) {
-            if(config.scaleOnly) {
-                config.rootOnly = false;
-                config.keyOnly = false;
+    rowStartX = ImGui::GetCursorPosX();
+    ImGui::SetNextItemWidth(controlWidth);
+    int safeSourceMode = ofClamp(config.sourceMode,
+                                 chordSequenceOutputConfig::Chord,
+                                 chordSequenceOutputConfig::ChordSum);
+    if(ImGui::BeginCombo("##Source", outputSourceLabels[safeSourceMode])) {
+        for(int i = chordSequenceOutputConfig::Chord; i <= chordSequenceOutputConfig::ChordSum; i++) {
+            bool selected = safeSourceMode == i;
+            if(ImGui::Selectable(outputSourceLabels[i], selected)) {
+                config.sourceMode = i;
+                refreshAllOutputs(true);
             }
-            refreshAllOutputs(true);
+            if(selected) ImGui::SetItemDefaultFocus();
         }
-        ImGui::SameLine();
-        ImGui::TextUnformatted("Scale");
-
-        ImGui::SameLine(rowStartX + pairWidth + pairGap);
-        if(ImGui::Checkbox("##Fold12", &config.fold12)) {
-            refreshAllOutputs(true);
-        }
-        ImGui::SameLine();
-        ImGui::TextUnformatted("Fold12");
+        ImGui::EndCombo();
     }
+    drawRowLabel(rowStartX, "Source");
 
-    if(!config.scaleOnly) {
-        drawBoolPairRow("##Root", config.rootOnly, "Root",
-                        "##Key", config.keyOnly, "Key");
-        if(config.rootOnly && config.keyOnly) {
-            config.rootOnly = false;
-        }
+    drawSingleToggleRow("##Fold12", config.fold12, "Fold12");
+
+    if(!outputSourceUsesScaleLikeMaterial(config.sourceMode)) {
         drawSingleToggleRow("##AddBass", config.addBass, "AddBass");
 
         rowStartX = ImGui::GetCursorPosX();
@@ -2806,10 +2930,30 @@ void chordSequence::drawOutputEditor(int index, float width) {
     }
     drawRowLabel(rowStartX, "Output Size");
 
+    drawSingleToggleRow("##VoiceLeading", config.voiceLeading, "Voice Lead");
+
+    rowStartX = ImGui::GetCursorPosX();
+    ImGui::SetNextItemWidth(controlWidth);
+    if(ImGui::InputInt("##MinNote", &config.minNote)) {
+        config.minNote = ofClamp(config.minNote, 0, 127);
+        if(config.minNote > config.maxNote) config.maxNote = config.minNote;
+        refreshAllOutputs(true);
+    }
+    drawRowLabel(rowStartX, "Min Note");
+
+    rowStartX = ImGui::GetCursorPosX();
+    ImGui::SetNextItemWidth(controlWidth);
+    if(ImGui::InputInt("##MaxNote", &config.maxNote)) {
+        config.maxNote = ofClamp(config.maxNote, 0, 127);
+        if(config.maxNote < config.minNote) config.minNote = config.maxNote;
+        refreshAllOutputs(true);
+    }
+    drawRowLabel(rowStartX, "Max Note");
+
     drawBoolPairRow("##Expand", config.expandOutput, "Expand",
                     "##Sort", config.sortOutput, "Sort");
 
-    drawKeyboardDisplay("OutputKeyboard", displayedOutput, rowWidth, 64.0f, true, false, false);
+    drawKeyboardDisplay("OutputKeyboard", displayedOutput, rowWidth, 64.0f, true, false);
 
     std::string outputText;
     for(size_t i = 0; i < displayedOutput.size(); i++) {
