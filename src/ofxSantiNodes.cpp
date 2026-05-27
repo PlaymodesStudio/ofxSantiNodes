@@ -208,6 +208,7 @@
 #include "limitPolyphony.h"
 #include "polyFill.h"
 #include "polyphonicArpeggiator.h"
+#include "polyphonicArpeggiatorGUI.h"
 #include "schoenbergMatrix.h"
 #include "voiceExpanding.h"
 #include "voiceExpanding2.h"
@@ -555,6 +556,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<limitPolyphony>("Santi/Voicing");
     o->registerModel<polyFill>("Santi/Voicing");
     o->registerModel<polyphonicArpeggiator>("Santi/Voicing");
+    o->registerModel<polyphonicArpeggiatorGUI>("Santi/Voicing");
     o->registerModel<schoenbergMatrix>("Santi/Voicing");
     o->registerModel<voiceExpanding>("Santi/Voicing");
     o->registerModel<voiceExpanding2>("Santi/Voicing");
