@@ -124,6 +124,36 @@ private:
         return compact;
     }
 
+    string resolveOutputFilePath(const string &requestedPath, const string &defaultFilename) const {
+        if(requestedPath.empty()) {
+            return ofToDataPath("tts/" + defaultFilename, true);
+        }
+
+        if(ofFilePath::isAbsolute(requestedPath)) {
+            return requestedPath;
+        }
+
+        const bool hasDirectory = requestedPath.find('/') != string::npos ||
+                                  requestedPath.find('\\') != string::npos;
+        if(!hasDirectory) {
+            return ofToDataPath("tts/" + requestedPath, true);
+        }
+
+        return ofToDataPath(requestedPath, true);
+    }
+
+    void ensureParentDirectoryExists(const string &filePath) const {
+        string parentDirectory = ofFilePath::getEnclosingDirectory(filePath, false);
+        if(parentDirectory.empty()) {
+            return;
+        }
+
+        ofDirectory outputDir(parentDirectory);
+        if(!outputDir.exists()) {
+            outputDir.create(true);
+        }
+    }
+
     void buildWrappedDisplayText(const string &text, float maxWidth, string &wrapped, std::vector<char> &autoFlags) const {
         wrapped.clear();
         autoFlags.clear();
@@ -368,8 +398,10 @@ private:
                 
                 string timestamp = ofGetTimestampString();
                 string tempFile = ofToDataPath("tts/temp_tts.wav", true);
-                string outputFile = ofToDataPath("tts/tts_" + timestamp + ".wav", true);
+                string outputFile = resolveOutputFilePath(lastGeneratedFile.get(), "tts_" + timestamp + ".wav");
                 string ttsText = normalizedTextForTTS(inputText.get());
+
+                ensureParentDirectoryExists(outputFile);
 
                 const auto &voiceOptions = getVoiceOptions();
                 int clampedVoiceIndex = ofClamp(selectedVoice.get(), 0, static_cast<int>(voiceOptions.size()) - 1);
