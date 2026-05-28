@@ -34,8 +34,7 @@ public:
         
 		addParameterDropdown(selectedVoice, "Voice", getDefaultVoiceIndex(), getVoiceOptions());
 		addParameter(instructionsText.set("Instructions", ""));
-		addInspectorParameter(inputText.set("Text", ""));
-        addInspectorParameter(editorWidth.set("Editor Width", 380.0f, 200.0f, 900.0f));
+		addParameter(inputText.set("Text", ""));
         addInspectorParameter(editorHeight.set("Editor Height", 220.0f, 100.0f, 700.0f));
 
         textEditorRegion.set("Text Editor", [this](){
@@ -99,17 +98,186 @@ private:
         return "'" + escaped + "'";
     }
 
+    string normalizedTextForTTS(const string &text) const {
+        string normalized = text;
+        ofStringReplace(normalized, "\r\n", "\n");
+        ofStringReplace(normalized, "\r", "\n");
+        ofStringReplace(normalized, "\n", " ");
+
+        string compact;
+        compact.reserve(normalized.size());
+        bool previousWasWhitespace = false;
+        for(char c : normalized) {
+            bool isWhitespace = (c == ' ' || c == '\t');
+            if(isWhitespace) {
+                if(!previousWasWhitespace) {
+                    compact += ' ';
+                }
+            } else {
+                compact += c;
+            }
+            previousWasWhitespace = isWhitespace;
+        }
+
+        if(!compact.empty() && compact.front() == ' ') compact.erase(compact.begin());
+        if(!compact.empty() && compact.back() == ' ') compact.pop_back();
+        return compact;
+    }
+
+    void buildWrappedDisplayText(const string &text, float maxWidth, string &wrapped, std::vector<char> &autoFlags) const {
+        wrapped.clear();
+        autoFlags.clear();
+
+        if(maxWidth <= 1.0f) {
+            wrapped = text;
+            autoFlags.assign(text.size(), 0);
+            return;
+        }
+
+        auto appendChar = [&](char c, bool autoInserted) {
+            wrapped += c;
+            autoFlags.push_back(autoInserted ? 1 : 0);
+        };
+
+        auto wrapParagraph = [&](const string &paragraph) {
+            if(paragraph.empty()) return;
+
+            string paragraphWrapped;
+            std::vector<char> paragraphFlags;
+            string currentLine;
+            string currentWord;
+
+            auto pushLine = [&]() {
+                if(currentLine.empty()) return;
+                if(!paragraphWrapped.empty()) {
+                    paragraphWrapped += "\n";
+                    paragraphFlags.push_back(1);
+                }
+                paragraphWrapped += currentLine;
+                paragraphFlags.insert(paragraphFlags.end(), currentLine.size(), 0);
+                currentLine.clear();
+            };
+
+            auto appendWord = [&](const string &word) {
+                if(word.empty()) return;
+
+                string candidate = currentLine.empty() ? word : currentLine + " " + word;
+                if(ImGui::CalcTextSize(candidate.c_str()).x <= maxWidth) {
+                    currentLine = candidate;
+                    return;
+                }
+
+                if(!currentLine.empty()) {
+                    pushLine();
+                }
+
+                if(ImGui::CalcTextSize(word.c_str()).x <= maxWidth) {
+                    currentLine = word;
+                    return;
+                }
+
+                string chunk;
+                for(char c : word) {
+                    string nextChunk = chunk + c;
+                    if(!chunk.empty() && ImGui::CalcTextSize(nextChunk.c_str()).x > maxWidth) {
+                        if(!paragraphWrapped.empty()) {
+                            paragraphWrapped += "\n";
+                            paragraphFlags.push_back(1);
+                        }
+                        paragraphWrapped += chunk;
+                        paragraphFlags.insert(paragraphFlags.end(), chunk.size(), 0);
+                        chunk = string(1, c);
+                    } else {
+                        chunk = nextChunk;
+                    }
+                }
+                currentLine = chunk;
+            };
+
+            for(char c : paragraph) {
+                if(c == ' ' || c == '\t') {
+                    appendWord(currentWord);
+                    currentWord.clear();
+                } else {
+                    currentWord += c;
+                }
+            }
+
+            appendWord(currentWord);
+            pushLine();
+
+            wrapped += paragraphWrapped;
+            autoFlags.insert(autoFlags.end(), paragraphFlags.begin(), paragraphFlags.end());
+        };
+
+        string paragraph;
+        for(char c : text) {
+            if(c == '\n') {
+                wrapParagraph(paragraph);
+                paragraph.clear();
+                appendChar('\n', false);
+            } else {
+                paragraph += c;
+            }
+        }
+        wrapParagraph(paragraph);
+    }
+
     void syncBufferFromParam(const string &text) {
-        inputTextBuffer.assign(text.begin(), text.end());
+        string wrapped;
+        std::vector<char> flags;
+        buildWrappedDisplayText(text, lastWrapWidth, wrapped, flags);
+        inputTextBuffer.assign(wrapped.begin(), wrapped.end());
         inputTextBuffer.push_back('\0');
+        autoWrapFlags = std::move(flags);
+    }
+
+    string rebuildRawTextFromEditedDisplay(const string &oldDisplay, const std::vector<char> &oldAutoFlags, const string &newDisplay) const {
+        const int n = static_cast<int>(oldDisplay.size());
+        const int m = static_cast<int>(newDisplay.size());
+        std::vector<std::vector<int>> lcs(n + 1, std::vector<int>(m + 1, 0));
+
+        for(int i = n - 1; i >= 0; --i) {
+            for(int j = m - 1; j >= 0; --j) {
+                if(oldDisplay[i] == newDisplay[j]) {
+                    lcs[i][j] = lcs[i + 1][j + 1] + 1;
+                } else {
+                    lcs[i][j] = std::max(lcs[i + 1][j], lcs[i][j + 1]);
+                }
+            }
+        }
+
+        string raw;
+        raw.reserve(newDisplay.size());
+        int i = 0;
+        int j = 0;
+        while(i < n || j < m) {
+            bool canMatch = i < n && j < m && oldDisplay[i] == newDisplay[j] &&
+                            lcs[i][j] == lcs[i + 1][j + 1] + 1;
+            if(canMatch) {
+                if(!(oldAutoFlags[i] && oldDisplay[i] == '\n')) {
+                    raw += oldDisplay[i];
+                }
+                ++i;
+                ++j;
+            } else if(j < m && (i == n || lcs[i][j + 1] >= lcs[i + 1][j])) {
+                raw += newDisplay[j];
+                ++j;
+            } else if(i < n) {
+                ++i;
+            }
+        }
+
+        return raw;
     }
 
     void drawTextEditor() {
         const auto &customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
         float zoom = ofxOceanodeShared::getZoomLevel();
-        const float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : editorWidth.get() * zoom;
+        const float width = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : 240.0f * zoom;
         const float height = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : editorHeight.get() * zoom;
         const float padding = 6.0f * zoom;
+        const float textWidth = width - padding * 2.0f - 12.0f;
 
         ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(18, 22, 30, 255));
         ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(18, 22, 30, 255));
@@ -127,6 +295,12 @@ private:
             inputTextBuffer.push_back('\0');
         }
 
+        if(std::abs(lastWrapWidth - textWidth) > 1.0f) {
+            lastWrapWidth = textWidth;
+            syncBufferFromParam(inputText.get());
+        }
+
+        string previousDisplay(inputTextBuffer.data());
         const bool changed = ImGui::InputTextMultiline(
             "##openai_tts_text",
             inputTextBuffer.data(),
@@ -146,7 +320,9 @@ private:
         );
 
         if(changed) {
-            inputText.set(string(inputTextBuffer.data()));
+            string editedDisplay(inputTextBuffer.data());
+            string rawText = rebuildRawTextFromEditedDisplay(previousDisplay, autoWrapFlags, editedDisplay);
+            inputText.set(rawText);
         }
 
         ImGui::EndChild();
@@ -193,6 +369,7 @@ private:
                 string timestamp = ofGetTimestampString();
                 string tempFile = ofToDataPath("tts/temp_tts.wav", true);
                 string outputFile = ofToDataPath("tts/tts_" + timestamp + ".wav", true);
+                string ttsText = normalizedTextForTTS(inputText.get());
 
                 const auto &voiceOptions = getVoiceOptions();
                 int clampedVoiceIndex = ofClamp(selectedVoice.get(), 0, static_cast<int>(voiceOptions.size()) - 1);
@@ -200,7 +377,7 @@ private:
 
                 string pythonCmd = "PYTHONPATH=\"" + pythonSitePackages + "\" " +
                                    "\"" + pythonBin + "\" \"" + pythonPath + "\"" +
-                                   " --text " + shellQuote(inputText.get()) +
+                                   " --text " + shellQuote(ttsText) +
                                    " --output " + shellQuote(tempFile) +
                                    " --format wav" +
                                    " --voice " + shellQuote(selectedVoiceStr) +
@@ -276,10 +453,11 @@ private:
     ofParameter<int> trigger;
     ofParameter<int> selectedVoice;
 	ofParameter<string> instructionsText;
-    ofParameter<float> editorWidth;
     ofParameter<float> editorHeight;
     customGuiRegion textEditorRegion;
     std::vector<char> inputTextBuffer;
+    std::vector<char> autoWrapFlags;
+    float lastWrapWidth = -1.0f;
 
         
     bool writeInProgress;

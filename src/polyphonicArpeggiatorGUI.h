@@ -1,19 +1,26 @@
 #pragma once
-
 #include "ofxOceanodeNodeModel.h"
+
+#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
+
 #include <array>
+#include <cstdint>
 #include <random>
 #include <string>
 #include <vector>
 
 struct polyphonicArpeggiatorGUISnapshot {
     int sourceMode = 0;
+    bool internalClockMode = false;
+    float beatDiv = 1.0f;
     int seqSize = 16;
     std::vector<float> scale;
     int patternMode = 0;
     std::vector<int> idxPattern;
     int sourceStart = 0;
     int sourceStride = 1;
+    bool pitchExpand = false;
+    int expandStep = 12;
     int transpose = 0;
     bool sortPool = true;
     int sourceChangeMode = 0;
@@ -67,6 +74,7 @@ public:
     void setup() override;
     void update(ofEventArgs &e) override;
     void draw(ofEventArgs &e) override;
+    void setBpm(float bpm) override;
     void presetSave(ofJson &json) override;
     void presetRecallAfterSettingParameters(ofJson &json) override;
 
@@ -110,9 +118,13 @@ private:
 
     ofParameter<int> patternMode;
     ofParameter<std::vector<int>> idxPattern;
+    ofParameter<bool> internalClockMode;
+    ofParameter<float> beatDiv;
     ofParameter<int> seqSize;
     ofParameter<int> sourceStart;
     ofParameter<int> sourceStride;
+    ofParameter<bool> pitchExpand;
+    ofParameter<int> expandStep;
     ofParameter<int> transpose;
     ofParameter<bool> dynamicMode;
     ofParameter<bool> accentOnsetMode;
@@ -172,6 +184,8 @@ private:
     bool isMorphing = false;
     float morphStartTime = 0.0f;
     int activeSnapshotSlot = -1;
+    float currentBpm = 120.0f;
+    bool internalClockNeedsSync = true;
 
     std::vector<bool> euclideanPattern;
     std::vector<bool> euclideanAccents;
@@ -209,6 +223,8 @@ private:
     void onReset();
     void onResetNext();
     void processStep();
+    void syncUserPatternToSequenceSize();
+    std::string describeBeatDiv(float beatDivision) const;
 
     void generateEuclideanPattern(std::vector<bool> &pattern, int length, int hits, int offset);
     void rebuildSourceMaterial();
@@ -235,6 +251,7 @@ private:
     void drawVelocityDurationSection();
     void drawVisualizationSection();
     void drawOutputSection();
+    void drawUserPatternEditor(float width, float height);
     void drawSourcePoolPreview(float width, float height) const;
     void drawEuclideanPreview(float width, float height) const;
     void drawArpGrid(float width, float height) const;
@@ -254,3 +271,5 @@ private:
     std::string getSnapshotsFolderPath() const;
     std::string getSnapshotFilePath(int slot) const;
 };
+
+#endif

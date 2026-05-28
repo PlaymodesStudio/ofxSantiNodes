@@ -19,6 +19,9 @@
 // ─────────────────────────────────────────────
 // TIMELINE (PPQ / DAW transport)
 // ─────────────────────────────────────────────
+#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
+#include "beatTransport.h"
+#endif
 #include "curveTrack.h"
 #include "gateTrack.h"
 #ifdef OFXOCEANODE_USE_MIDI
@@ -84,6 +87,7 @@
 #include "sampleAndHold.h"
 #include "trigger.h"
 #include "vectorFire.h"
+#include "voidBurst.h"
 #include "voidCounter.h"
 #include "voidToTick.h"
 #include "voidSwitch.h"
@@ -208,7 +212,9 @@
 #include "limitPolyphony.h"
 #include "polyFill.h"
 #include "polyphonicArpeggiator.h"
+#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
 #include "polyphonicArpeggiatorGUI.h"
+#endif
 #include "schoenbergMatrix.h"
 #include "voiceExpanding.h"
 #include "voiceExpanding2.h"
@@ -364,6 +370,9 @@ void registerModels(ofxOceanode *o)
     // ─────────────────────────────────────────────
     // TIMELINE (PPQ / DAW transport)
     // ─────────────────────────────────────────────
+#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
+    o->registerModel<beatTransport>("Santi/Timeline");
+#endif
     o->registerModel<curveTrack>("Santi/Timeline");
     o->registerModel<gateTrack>("Santi/Timeline");
 #ifdef OFXOCEANODE_USE_MIDI
@@ -432,6 +441,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<sampleAndHold>("Santi/Events");
     o->registerModel<trigger>("Santi/Events");
     o->registerModel<vectorFire>("Santi/Events");
+    o->registerModel<voidBurst>("Santi/Events");
     o->registerModel<voidCounter>("Santi/Events");
     o->registerModel<voidToTick>("Santi/Events");
 	o->registerModel<voidSwitch>("Santi/Events");
@@ -556,7 +566,9 @@ void registerModels(ofxOceanode *o)
     o->registerModel<limitPolyphony>("Santi/Voicing");
     o->registerModel<polyFill>("Santi/Voicing");
     o->registerModel<polyphonicArpeggiator>("Santi/Voicing");
+#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
     o->registerModel<polyphonicArpeggiatorGUI>("Santi/Voicing");
+#endif
     o->registerModel<schoenbergMatrix>("Santi/Voicing");
     o->registerModel<voiceExpanding>("Santi/Voicing");
     o->registerModel<voiceExpanding2>("Santi/Voicing");
