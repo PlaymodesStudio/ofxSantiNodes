@@ -16,10 +16,17 @@ namespace {
     constexpr int indexParameterMax = 32;
     constexpr int keyboardDisplayBaseNote = 60;
     const char *keyNames[] = {"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
+    const char *progressionOrderLabels[] = {"Input Idx", "Ascendent", "Descendent", "Random", "Markov"};
     const char *functionalGroupKeys[] = {"tonic", "subdominant", "dominant"};
     const char *functionalGroupLabels[] = {"Tonic", "Subdominant", "Dominant"};
     const char *voicingLabels[] = {"None", "Close", "Open", "Drop 2", "Drop 3", "Shell"};
     const char *outputSourceLabels[] = {"Chord", "Scale", "Root", "Key", "Chord Sum"};
+    float chordSequenceLayoutZoom = 1.0f;
+    float chordSequenceFontZoom = 1.0f;
+
+    float scaledUi(float value) {
+        return value * chordSequenceLayoutZoom;
+    }
 
     bool modeSupportsDiatonicDeviation(int mode) {
         return mode == chordSequenceEntry::Scale ||
@@ -259,7 +266,7 @@ namespace {
                 activePopupItem = currentItem;
             }
 
-            ImGui::SetNextItemWidth(120.0f);
+            ImGui::SetNextItemWidth(scaledUi(120.0f));
             ImGui::SetKeyboardFocusHere();
             if(ImGui::InputText("##value", valueBuffer, sizeof(valueBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
                 try {
@@ -282,11 +289,13 @@ namespace {
                              const ImVec4 &bg,
                              const ImVec4 &titleColor,
                              bool &expanded,
+                             float fontScale,
                              ImGuiWindowFlags flags = 0) {
         ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
-        float collapsedHeight = 30.0f;
+        float collapsedHeight = std::max(ImGui::GetTextLineHeightWithSpacing() + scaledUi(10.0f), scaledUi(30.0f));
         ImGui::BeginChild(id, ImVec2(size.x, expanded ? size.y : collapsedHeight), true, flags);
         ImGui::PopStyleColor();
+        ImGui::SetWindowFontScale(fontScale);
         std::string arrowId = std::string("##") + id + "Arrow";
         if(ImGui::ArrowButton(arrowId.c_str(), expanded ? ImGuiDir_Down : ImGuiDir_Right)) {
             expanded = !expanded;
@@ -299,13 +308,13 @@ namespace {
     }
 
     float getSectionHeaderHeight() {
-        return ImGui::GetFrameHeightWithSpacing() + 10.0f;
+        return ImGui::GetFrameHeightWithSpacing() + scaledUi(10.0f);
     }
 
     float getChordSequenceEntryCardHeight(int mode, bool markovEnabled) {
         float rowHeight = ImGui::GetFrameHeightWithSpacing();
         float textHeight = ImGui::GetTextLineHeightWithSpacing();
-        float height = 24.0f; // header
+        float height = scaledUi(24.0f); // header
         height += rowHeight; // type
 
         if(mode == chordSequenceEntry::Cypher) {
@@ -323,13 +332,13 @@ namespace {
         }
         height += rowHeight; // beats
         if(markovEnabled) {
-            height += 57.0f; // inline multislider area
+            height += scaledUi(57.0f); // inline multislider area
             height += rowHeight; // helper buttons
         }
         height += rowHeight * 2.0f; // transpose, inversion
-        height += 62.0f; // keyboard
-        height += std::max(18.0f, textHeight); // preview text
-        height += 8.0f; // bottom padding
+        height += scaledUi(62.0f); // keyboard
+        height += std::max(scaledUi(18.0f), textHeight); // preview text
+        height += scaledUi(8.0f); // bottom padding
 
         return height;
     }
@@ -337,25 +346,25 @@ namespace {
     float getOutputCardHeight(const chordSequenceOutputConfig &config) {
         float rowHeight = ImGui::GetFrameHeightWithSpacing();
         float textHeight = ImGui::GetTextLineHeightWithSpacing();
-        float height = 24.0f; // header
+        float height = scaledUi(24.0f); // header
         float controlRows = 15.0f; // always-visible rows
         if(!outputSourceUsesScaleLikeMaterial(config.sourceMode)) {
             controlRows += 5.0f; // root/key, addBass, inversion, voicing, spread
             if(config.addBass) controlRows += 1.0f; // bass octave
         }
         height += rowHeight * controlRows;
-        height += 64.0f; // keyboard
-        height += std::max(20.0f, textHeight * 1.1f); // value preview
-        height += 10.0f; // bottom padding
+        height += scaledUi(64.0f); // keyboard
+        height += std::max(scaledUi(20.0f), textHeight * 1.1f); // value preview
+        height += scaledUi(10.0f); // bottom padding
         return height;
     }
 
     float getSnapshotsSectionHeight(float availableWidth, bool hasActiveSnapshot) {
-        float contentWidth = std::max(1.0f, availableWidth - 18.0f);
+        float contentWidth = std::max(1.0f, availableWidth - scaledUi(18.0f));
         float textHeight = ImGui::GetTextLineHeightWithSpacing();
         float rowHeight = ImGui::GetFrameHeightWithSpacing();
-        float slotSize = 22.0f;
-        float slotGap = 4.0f;
+        float slotSize = scaledUi(22.0f);
+        float slotGap = scaledUi(4.0f);
         int columns = std::max(1, static_cast<int>((contentWidth + slotGap) / (slotSize + slotGap)));
         int rows = (16 + columns - 1) / columns;
 
@@ -363,12 +372,12 @@ namespace {
         height += textHeight;
         height += rows * slotSize;
         height += std::max(0, rows - 1) * slotGap;
-        height += 8.0f;
+        height += scaledUi(8.0f);
         height += rowHeight; // recall combo
         if(hasActiveSnapshot) {
             height += rowHeight; // name field
         }
-        height += 8.0f;
+        height += scaledUi(8.0f);
         return height;
     }
 
@@ -376,7 +385,7 @@ namespace {
         float rowHeight = ImGui::GetFrameHeightWithSpacing();
         float height = getSectionHeaderHeight();
         height += rowHeight * 6.0f;
-        height += 8.0f;
+        height += scaledUi(8.0f);
         return height;
     }
 
@@ -391,7 +400,7 @@ namespace {
         if(hasJazzStandards) {
             height += rowHeight; // jazz combo + load button row
         }
-        height += 8.0f;
+        height += scaledUi(8.0f);
         return height;
     }
 }
@@ -520,6 +529,7 @@ ofJson chordSequenceSnapshot::toJson() const {
     json["globalTranspose"] = globalTranspose;
     json["globalInvert"] = globalInvert;
     json["globalPitchBend"] = globalPitchBend;
+    json["progressionOrder"] = progressionOrder;
     json["internalTimingEnabled"] = internalTimingEnabled;
     json["markovEnabled"] = markovEnabled;
     json["internalActiveStep"] = internalActiveStep;
@@ -548,8 +558,17 @@ chordSequenceSnapshot chordSequenceSnapshot::fromJson(const ofJson &json) {
     snapshot.globalTranspose = json.value("globalTranspose", 0);
     snapshot.globalInvert = json.value("globalInvert", 0);
     snapshot.globalPitchBend = json.value("globalPitchBend", json.value("pitchBend", 0.0f));
-    snapshot.internalTimingEnabled = json.value("internalTimingEnabled", false);
-    snapshot.markovEnabled = json.value("markovEnabled", false);
+    if(json.contains("progressionOrder")) {
+        snapshot.progressionOrder = ofClamp(json.value("progressionOrder", 0), 0, 4);
+    } else {
+        bool legacyInternalTiming = json.value("internalTimingEnabled", false);
+        bool legacyMarkov = json.value("markovEnabled", false);
+        snapshot.progressionOrder = legacyInternalTiming
+                                  ? (legacyMarkov ? 4 : 1)
+                                  : 0;
+    }
+    snapshot.internalTimingEnabled = snapshot.progressionOrder != 0;
+    snapshot.markovEnabled = snapshot.progressionOrder == 4;
     snapshot.internalActiveStep = std::max(0, json.value("internalActiveStep", 0));
     snapshot.hasData = json.value("hasData", false);
 
@@ -600,6 +619,7 @@ void chordSequence::setup() {
     ensureOutputCount(numOutputs);
     syncNodeGuiParametersFromState();
     loadAllSnapshotsFromDisk();
+    setProgressionOrder(progressionOrder, false);
 
     listeners.push(indexInput.newListener([this](int &) {
         refreshAllOutputs();
@@ -628,9 +648,6 @@ void chordSequence::setup() {
 
 void chordSequence::setBpm(float bpm) {
     currentBPM = std::max(1.0f, bpm);
-    if(internalTimingEnabled) {
-        resetInternalSequence(true);
-    }
 }
 
 void chordSequence::loadBeforeConnections(ofJson &json) {
@@ -647,15 +664,21 @@ void chordSequence::loadBeforeConnections(ofJson &json) {
 }
 
 void chordSequence::update(ofEventArgs &) {
-    if(internalTimingEnabled && !progression.empty()) {
-        if(nextInternalStepTimeMs == 0) {
+    const auto frameState = getFrameTransportState();
+    currentBPM = std::max(1.0f, frameState.current.bpm);
+
+    if(usesInternalProgressionOrder() && !progression.empty()) {
+        if(ofxOceanodeTransportUtils::didTransportDiscontinuity(frameState)) {
             resetInternalSequence(true);
-        } else {
-            uint64_t now = ofGetElapsedTimeMillis();
+        } else if(frameState.current.isPlaying) {
+            if(nextInternalStepBeat < 0.0) {
+                resetInternalSequence(true);
+            }
             int safety = 0;
-            while(now >= nextInternalStepTimeMs && safety < 128) {
+            while(nextInternalStepBeat >= 0.0 &&
+                  frameState.current.beatPosition + ofxOceanodeTransportUtils::StepEpsilon >= nextInternalStepBeat &&
+                  safety < 128) {
                 advanceInternalSequence();
-                now = ofGetElapsedTimeMillis();
                 safety++;
             }
         }
@@ -1003,9 +1026,10 @@ void chordSequence::resizeProgression(int newSize) {
 
     sanitizeProgression();
     if(numChordsParameter.get() != newSize) numChordsParameter = newSize;
-    if(internalTimingEnabled) {
+    if(usesInternalProgressionOrder()) {
         internalActiveStep = ofClamp(internalActiveStep, 0, std::max(0, newSize - 1));
-        nextInternalStepTimeMs = ofGetElapsedTimeMillis() + static_cast<uint64_t>(std::max(1.0f, getStepDurationMs(internalActiveStep)));
+        nextInternalStepBeat = getFrameTransportState().current.beatPosition +
+                               std::max(0.001f, progression[internalActiveStep].beatDuration);
     }
     refreshAllOutputs(true);
 }
@@ -1940,8 +1964,46 @@ std::vector<float> chordSequence::applyInversion(const std::vector<float> &value
     return inverted;
 }
 
+bool chordSequence::usesInternalProgressionOrder() const {
+    return progressionOrder != InputIdx;
+}
+
+void chordSequence::setProgressionOrder(int order, bool refreshSequence) {
+    int clampedOrder = ofClamp(order, InputIdx, Markov);
+    int activeIndex = resolveActiveIndex();
+    progressionOrder = clampedOrder;
+    internalTimingEnabled = usesInternalProgressionOrder();
+    markovEnabled = progressionOrder == Markov;
+
+    if(!progression.empty()) {
+        internalActiveStep = ofClamp(activeIndex, 0, static_cast<int>(progression.size()) - 1);
+    } else {
+        internalActiveStep = 0;
+    }
+
+    if(!internalTimingEnabled) {
+        nextInternalStepBeat = -1.0;
+        if(indexInput.get() != internalActiveStep) {
+            indexInput = internalActiveStep;
+        }
+    } else {
+        const auto transportState = getFrameTransportState().current;
+        if(!progression.empty()) {
+            nextInternalStepBeat = transportState.beatPosition + std::max(0.001f, progression[internalActiveStep].beatDuration);
+        } else {
+            nextInternalStepBeat = -1.0;
+        }
+    }
+
+    outputBuildDirty = true;
+    lastRefreshedActiveIndex = -1;
+    if(refreshSequence) {
+        refreshAllOutputs(true);
+    }
+}
+
 int chordSequence::resolveActiveIndex() const {
-    if(internalTimingEnabled) {
+    if(usesInternalProgressionOrder()) {
         return wrapIndex(internalActiveStep, static_cast<int>(progression.size()));
     }
     return wrapIndex(indexInput.get(), static_cast<int>(progression.size()));
@@ -1956,22 +2018,36 @@ float chordSequence::getStepDurationMs(int stepIndex) const {
 void chordSequence::resetInternalSequence(bool forceInstant) {
     sanitizeProgression();
     internalActiveStep = 0;
-    if(!progression.empty()) {
+    if(usesInternalProgressionOrder() && !progression.empty()) {
         internalActiveStep = ofClamp(internalActiveStep, 0, static_cast<int>(progression.size()) - 1);
-        nextInternalStepTimeMs = ofGetElapsedTimeMillis() + static_cast<uint64_t>(std::max(1.0f, getStepDurationMs(internalActiveStep)));
+        nextInternalStepBeat = getFrameTransportState().current.beatPosition +
+                               std::max(0.001f, progression[internalActiveStep].beatDuration);
     } else {
-        nextInternalStepTimeMs = 0;
+        nextInternalStepBeat = -1.0;
     }
     outputBuildDirty = true;
     lastRefreshedActiveIndex = -1;
     refreshAllOutputs(forceInstant);
 }
 
-int chordSequence::chooseNextInternalStep(int currentStep) const {
+int chordSequence::chooseNextInternalStep(int currentStep) {
     int sequenceSize = static_cast<int>(progression.size());
     if(sequenceSize <= 0) return 0;
-    if(!markovEnabled || currentStep < 0 || currentStep >= sequenceSize) {
+    if(currentStep < 0 || currentStep >= sequenceSize) {
         return (currentStep + 1) % sequenceSize;
+    }
+
+    if(progressionOrder == Ascendent) {
+        return (currentStep + 1) % sequenceSize;
+    }
+    if(progressionOrder == Descendent) {
+        return wrapIndex(currentStep - 1, sequenceSize);
+    }
+    if(progressionOrder == Random) {
+        return std::uniform_int_distribution<int>(0, sequenceSize - 1)(randomEngine);
+    }
+    if(progressionOrder != Markov) {
+        return currentStep;
     }
 
     const std::vector<float> &weights = progression[currentStep].markovWeights;
@@ -1998,14 +2074,18 @@ int chordSequence::chooseNextInternalStep(int currentStep) const {
 
 void chordSequence::advanceInternalSequence() {
     if(progression.empty()) {
-        nextInternalStepTimeMs = 0;
+        nextInternalStepBeat = -1.0;
         return;
     }
 
+    double currentBoundaryBeat = nextInternalStepBeat;
+    if(currentBoundaryBeat < 0.0) {
+        currentBoundaryBeat = getFrameTransportState().current.beatPosition;
+    }
     internalActiveStep = chooseNextInternalStep(internalActiveStep);
     outputBuildDirty = true;
     refreshAllOutputs(false);
-    nextInternalStepTimeMs = ofGetElapsedTimeMillis() + static_cast<uint64_t>(std::max(1.0f, getStepDurationMs(internalActiveStep)));
+    nextInternalStepBeat = currentBoundaryBeat + std::max(0.001f, progression[internalActiveStep].beatDuration);
 }
 
 void chordSequence::refreshAllOutputs(bool forceInstant) {
@@ -2091,11 +2171,24 @@ float chordSequence::sampleVector(const std::vector<float> &values, size_t index
 }
 
 void chordSequence::drawEditor() {
-    float gap = 6.0f;
+    ImVec2 availableRegion = ImGui::GetContentRegionAvail();
+    float baseWidth = 1320.0f;
+    float widthScale = availableRegion.x > 1.0f ? availableRegion.x / baseWidth : 1.0f;
+    editorZoom = ofClamp(widthScale, 0.42f, 1.0f);
+    editorFontZoom = ofClamp(editorZoom + 0.08f, 0.50f, 1.0f);
+    chordSequenceLayoutZoom = editorZoom;
+    chordSequenceFontZoom = editorFontZoom;
+
+    ImGui::SetWindowFontScale(editorFontZoom);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(scaledUi(8.0f), scaledUi(4.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scaledUi(4.0f), scaledUi(3.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(scaledUi(8.0f), scaledUi(8.0f)));
+
+    float gap = scaledUi(6.0f);
     float availableWidth = ImGui::GetContentRegionAvail().x;
-    float snapshotsWidth = std::max(320.0f, availableWidth * 0.27f);
-    float globalWidth = std::max(360.0f, availableWidth * 0.38f);
-    float cypherWidth = std::max(240.0f, availableWidth - snapshotsWidth - globalWidth - gap * 2.0f);
+    float snapshotsWidth = std::max(scaledUi(320.0f), availableWidth * 0.27f);
+    float globalWidth = std::max(scaledUi(360.0f), availableWidth * 0.38f);
+    float cypherWidth = std::max(scaledUi(240.0f), availableWidth - snapshotsWidth - globalWidth - gap * 2.0f);
     bool hasActiveSnapshot = activeSnapshotSlot >= 0 &&
                              activeSnapshotSlot < SnapshotSlots &&
                              snapshotSlots[activeSnapshotSlot].hasData;
@@ -2107,7 +2200,7 @@ void chordSequence::drawEditor() {
     for(const auto &entry : progression) {
         maxStepCardHeight = std::max(maxStepCardHeight, getChordSequenceEntryCardHeight(entry.mode, markovEnabled));
     }
-    float stepsSectionHeight = getSectionHeaderHeight() + maxStepCardHeight + 10.0f;
+    float stepsSectionHeight = getSectionHeaderHeight() + maxStepCardHeight + scaledUi(10.0f);
     float maxOutputCardHeight = 0.0f;
     for(const auto &config : outputConfigs) {
         maxOutputCardHeight = std::max(maxOutputCardHeight, getOutputCardHeight(config));
@@ -2116,7 +2209,7 @@ void chordSequence::drawEditor() {
         chordSequenceOutputConfig defaultConfig;
         maxOutputCardHeight = getOutputCardHeight(defaultConfig);
     }
-    float outputsSectionHeight = getSectionHeaderHeight() + maxOutputCardHeight + 10.0f;
+    float outputsSectionHeight = getSectionHeaderHeight() + maxOutputCardHeight + scaledUi(10.0f);
 
     beginColoredSection("SnapshotsSection",
                         "Snapshots",
@@ -2124,6 +2217,7 @@ void chordSequence::drawEditor() {
                         snapshotsBg,
                         snapshotsTitle,
                         snapshotsSectionExpanded,
+                        editorFontZoom,
                         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     if(snapshotsSectionExpanded) drawSnapshotManager();
     ImGui::EndChild();
@@ -2136,6 +2230,7 @@ void chordSequence::drawEditor() {
                         globalBg,
                         globalTitle,
                         globalSectionExpanded,
+                        editorFontZoom,
                         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     if(globalSectionExpanded) drawGlobalControls();
     ImGui::EndChild();
@@ -2148,6 +2243,7 @@ void chordSequence::drawEditor() {
                         cypherBg,
                         cypherTitle,
                         cypherSectionExpanded,
+                        editorFontZoom,
                         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     if(cypherSectionExpanded) drawImportTools();
     ImGui::EndChild();
@@ -2158,6 +2254,7 @@ void chordSequence::drawEditor() {
                         stepsBg,
                         stepsTitle,
                         stepsSectionExpanded,
+                        editorFontZoom,
                         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     if(stepsSectionExpanded) drawEntries();
     ImGui::EndChild();
@@ -2168,9 +2265,13 @@ void chordSequence::drawEditor() {
                         outputsBg,
                         outputsTitle,
                         outputsSectionExpanded,
+                        editorFontZoom,
                         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     if(outputsSectionExpanded) drawOutputs();
     ImGui::EndChild();
+
+    ImGui::PopStyleVar(3);
+    ImGui::SetWindowFontScale(1.0f);
 }
 
 void chordSequence::drawGlobalControls() {
@@ -2191,9 +2292,10 @@ void chordSequence::drawGlobalControls() {
         ImGui::TableSetColumnIndex(1);
         if(ImGui::InputInt("Active Index", &displayIndex)) {
             int clampedIndex = ofClamp(displayIndex, 0, std::max(0, static_cast<int>(progression.size()) - 1));
-            if(internalTimingEnabled) {
+            if(usesInternalProgressionOrder()) {
                 internalActiveStep = clampedIndex;
-                nextInternalStepTimeMs = ofGetElapsedTimeMillis() + static_cast<uint64_t>(std::max(1.0f, getStepDurationMs(internalActiveStep)));
+                nextInternalStepBeat = getFrameTransportState().current.beatPosition +
+                                       std::max(0.001f, progression[internalActiveStep].beatDuration);
                 outputBuildDirty = true;
                 lastRefreshedActiveIndex = -1;
                 refreshAllOutputs(true);
@@ -2211,16 +2313,19 @@ void chordSequence::drawGlobalControls() {
         }
 
         ImGui::TableSetColumnIndex(1);
-        if(ImGui::Checkbox("Internal Timing", &internalTimingEnabled)) {
-            if(internalTimingEnabled) {
-                resetInternalSequence(true);
-            } else {
-                indexInput = ofClamp(internalActiveStep, 0, std::max(0, static_cast<int>(progression.size()) - 1));
-                nextInternalStepTimeMs = 0;
-                outputBuildDirty = true;
-                lastRefreshedActiveIndex = -1;
-                refreshAllOutputs(true);
+        int orderValue = progressionOrder;
+        int safeOrderValue = std::max(static_cast<int>(InputIdx), std::min(orderValue, static_cast<int>(Markov)));
+        const char *orderLabel = progressionOrderLabels[safeOrderValue];
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if(ImGui::BeginCombo("Progression", orderLabel)) {
+            for(int i = InputIdx; i <= Markov; i++) {
+                bool selected = orderValue == i;
+                if(ImGui::Selectable(progressionOrderLabels[i], selected)) {
+                    setProgressionOrder(i, true);
+                }
+                if(selected) ImGui::SetItemDefaultFocus();
             }
+            ImGui::EndCombo();
         }
 
         ImGui::TableNextRow();
@@ -2277,9 +2382,7 @@ void chordSequence::drawGlobalControls() {
         }
 
         ImGui::TableSetColumnIndex(1);
-        if(ImGui::Checkbox("Markov", &markovEnabled)) {
-            refreshAllOutputs(true);
-        }
+        ImGui::TextDisabled("%s", usesInternalProgressionOrder() ? "Transport paced" : "External index paced");
 
         ImGui::TableNextRow();
 
@@ -2298,7 +2401,7 @@ void chordSequence::drawGlobalControls() {
 }
 
 void chordSequence::drawImportTools() {
-    ImGui::SetNextItemWidth(std::min(220.0f, ImGui::GetContentRegionAvail().x));
+    ImGui::SetNextItemWidth(std::min(scaledUi(220.0f), ImGui::GetContentRegionAvail().x));
     if(ImGui::InputText("Chord List", importChordBuffer.data(), importChordBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue)) {
         applyImportedChordList(parseChordSequenceString(importChordBuffer.data()));
     }
@@ -2335,7 +2438,7 @@ void chordSequence::drawImportTools() {
 
     if(!importedProgressionNames.empty()) {
         std::string preview = importedProgressionNames[ofClamp(selectedImportedProgression, 0, static_cast<int>(importedProgressionNames.size()) - 1)];
-        ImGui::SetNextItemWidth(std::max(120.0f, std::min(260.0f, ImGui::GetContentRegionAvail().x - 110.0f)));
+        ImGui::SetNextItemWidth(std::max(scaledUi(120.0f), std::min(scaledUi(260.0f), ImGui::GetContentRegionAvail().x - scaledUi(110.0f))));
         if(ImGui::BeginCombo("Progression", preview.c_str())) {
             for(int i = 0; i < static_cast<int>(importedProgressionNames.size()); i++) {
                 bool selected = i == selectedImportedProgression;
@@ -2363,7 +2466,7 @@ void chordSequence::drawImportTools() {
 
     if(!jazzStandardNames.empty()) {
         std::string preview = jazzStandardNames[ofClamp(selectedJazzStandard, 0, static_cast<int>(jazzStandardNames.size()) - 1)];
-        ImGui::SetNextItemWidth(260.0f);
+        ImGui::SetNextItemWidth(scaledUi(260.0f));
         if(ImGui::BeginCombo("Jazz Standard", preview.c_str())) {
             for(int i = 0; i < static_cast<int>(jazzStandardNames.size()); i++) {
                 bool selected = i == selectedJazzStandard;
@@ -2384,14 +2487,14 @@ void chordSequence::drawImportTools() {
 void chordSequence::drawEntries() {
     float availableWidth = ImGui::GetContentRegionAvail().x;
     int visibleColumns = std::min(std::max(1, static_cast<int>(progression.size())), 6);
-    float gap = 6.0f;
-    float slotWidth = std::max(170.0f, (availableWidth - gap * (visibleColumns - 1)) / static_cast<float>(visibleColumns));
+    float gap = scaledUi(6.0f);
+    float slotWidth = std::max(scaledUi(170.0f), (availableWidth - gap * (visibleColumns - 1)) / static_cast<float>(visibleColumns));
     float slotHeight = 0.0f;
     for(const auto &entry : progression) {
         slotHeight = std::max(slotHeight, getChordSequenceEntryCardHeight(entry.mode, markovEnabled));
     }
 
-    ImGui::BeginChild("ChordSequenceEntriesScroller", ImVec2(0, slotHeight + 4.0f), false, ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::BeginChild("ChordSequenceEntriesScroller", ImVec2(0, slotHeight + scaledUi(4.0f)), false, ImGuiWindowFlags_HorizontalScrollbar);
     for(int i = 0; i < static_cast<int>(progression.size()); i++) {
         if(i > 0) ImGui::SameLine(0.0f, gap);
         drawEntryEditor(i, slotWidth);
@@ -2414,8 +2517,8 @@ void chordSequence::drawEntryEditor(int index, float width) {
     ImGui::SameLine();
     ImGui::TextColored(isActive ? ImVec4(0.50f, 1.0f, 0.50f, 1.0f) : ImVec4(0.60f, 0.60f, 0.60f, 1.0f), isActive ? "ACTIVE" : "idle");
 
-    float rowWidth = std::max(140.0f, ImGui::GetContentRegionAvail().x * 0.94f);
-    float labelGap = 10.0f;
+    float rowWidth = std::max(scaledUi(140.0f), ImGui::GetContentRegionAvail().x * 0.94f);
+    float labelGap = scaledUi(10.0f);
     float maxLabelWidth = std::max({
         ImGui::CalcTextSize("Type").x,
         ImGui::CalcTextSize("Selection").x,
@@ -2432,7 +2535,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
         ImGui::CalcTextSize("Transpose").x,
         ImGui::CalcTextSize("Inversion").x
     });
-    float controlWidth = std::max(80.0f, rowWidth - maxLabelWidth - labelGap);
+    float controlWidth = std::max(scaledUi(80.0f), rowWidth - maxLabelWidth - labelGap);
 
     auto drawRowLabel = [controlWidth, labelGap](float rowStartX, const char *label) {
         ImGui::SameLine();
@@ -2609,8 +2712,10 @@ void chordSequence::drawEntryEditor(int index, float width) {
     ImGui::SetNextItemWidth(controlWidth);
     if(drawDraggableFloatWithPopup("##BeatDuration", entry.beatDuration, 0.05f, 0.001f, 64.0f, "%.3f")) {
         outputBuildDirty = true;
-        if(internalTimingEnabled) {
-            nextInternalStepTimeMs = ofGetElapsedTimeMillis() + static_cast<uint64_t>(std::max(1.0f, getStepDurationMs(resolveActiveIndex())));
+        if(usesInternalProgressionOrder() && !progression.empty()) {
+            int activeStep = ofClamp(resolveActiveIndex(), 0, static_cast<int>(progression.size()) - 1);
+            nextInternalStepBeat = getFrameTransportState().current.beatPosition +
+                                   std::max(0.001f, progression[activeStep].beatDuration);
         }
     }
     drawRowLabel(rowStartX, "Beats");
@@ -2619,12 +2724,12 @@ void chordSequence::drawEntryEditor(int index, float width) {
         ImGui::TextUnformatted("Transitions");
 
         float sliderRegionWidth = rowWidth;
-        float sliderHeight = 37.0f;
-        float innerGap = 3.0f;
+        float sliderHeight = scaledUi(37.0f);
+        float innerGap = scaledUi(3.0f);
         int transitionCount = std::max(1, static_cast<int>(progression.size()));
-        float sliderWidth = std::max(8.0f, (sliderRegionWidth - innerGap * (transitionCount - 1)) / static_cast<float>(transitionCount));
+        float sliderWidth = std::max(scaledUi(8.0f), (sliderRegionWidth - innerGap * (transitionCount - 1)) / static_cast<float>(transitionCount));
 
-        ImGui::BeginChild("MarkovSliders", ImVec2(sliderRegionWidth, sliderHeight + 20.0f), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        ImGui::BeginChild("MarkovSliders", ImVec2(sliderRegionWidth, sliderHeight + scaledUi(20.0f)), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         for(int j = 0; j < transitionCount; j++) {
             if(j > 0) ImGui::SameLine(0.0f, innerGap);
             ImGui::BeginGroup();
@@ -2668,7 +2773,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
     drawRowLabel(rowStartX, "Inversion");
 
     std::vector<float> preview = buildEntryPreviewOutput(entry);
-    drawKeyboardDisplay("StepKeyboard", preview, rowWidth, 62.0f, isActive, true);
+    drawKeyboardDisplay("StepKeyboard", preview, rowWidth, scaledUi(62.0f), isActive, true);
 
     std::string previewText;
     for(size_t i = 0; i < preview.size(); i++) {
@@ -2686,8 +2791,8 @@ void chordSequence::drawEntryEditor(int index, float width) {
 void chordSequence::drawOutputs() {
     float availableWidth = ImGui::GetContentRegionAvail().x;
     int visibleColumns = std::min(std::max(1, static_cast<int>(outputs.size())), 4);
-    float gap = 8.0f;
-    float slotWidth = std::max(230.0f, std::min(320.0f, (availableWidth - gap * (visibleColumns - 1)) / static_cast<float>(visibleColumns)));
+    float gap = scaledUi(8.0f);
+    float slotWidth = std::max(scaledUi(230.0f), std::min(scaledUi(320.0f), (availableWidth - gap * (visibleColumns - 1)) / static_cast<float>(visibleColumns)));
     float slotHeight = 0.0f;
     for(const auto &config : outputConfigs) {
         slotHeight = std::max(slotHeight, getOutputCardHeight(config));
@@ -2697,7 +2802,7 @@ void chordSequence::drawOutputs() {
         slotHeight = getOutputCardHeight(defaultConfig);
     }
 
-    ImGui::BeginChild("ChordSequenceOutputsScroller", ImVec2(0, slotHeight + 4.0f), false, ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::BeginChild("ChordSequenceOutputsScroller", ImVec2(0, slotHeight + scaledUi(4.0f)), false, ImGuiWindowFlags_HorizontalScrollbar);
     for(int i = 0; i < static_cast<int>(outputs.size()); i++) {
         if(i > 0) ImGui::SameLine(0.0f, gap);
         drawOutputEditor(i, slotWidth);
@@ -2717,8 +2822,8 @@ void chordSequence::drawOutputEditor(int index, float width) {
 
     ImGui::Text("%s", outputName(index).c_str());
 
-    float rowWidth = std::max(180.0f, ImGui::GetContentRegionAvail().x * 0.94f);
-    float labelGap = 10.0f;
+    float rowWidth = std::max(scaledUi(180.0f), ImGui::GetContentRegionAvail().x * 0.94f);
+    float labelGap = scaledUi(10.0f);
     float maxLabelWidth = std::max({
         ImGui::CalcTextSize("Octave").x,
         ImGui::CalcTextSize("Transpose").x,
@@ -2744,7 +2849,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
         ImGui::CalcTextSize("Expand").x,
         ImGui::CalcTextSize("Sort").x
     });
-    float controlWidth = std::max(84.0f, rowWidth - maxLabelWidth - labelGap);
+    float controlWidth = std::max(scaledUi(84.0f), rowWidth - maxLabelWidth - labelGap);
 
     auto drawRowLabel = [controlWidth, labelGap](float rowStartX, const char *label) {
         ImGui::SameLine();
@@ -2768,8 +2873,8 @@ void chordSequence::drawOutputEditor(int index, float width) {
                                bool &rightValue,
                                const char *rightLabel) {
         float rowStartX = ImGui::GetCursorPosX();
-        float pairGap = 12.0f;
-        float pairWidth = std::max(70.0f, (rowWidth - pairGap) * 0.5f);
+        float pairGap = scaledUi(12.0f);
+        float pairWidth = std::max(scaledUi(70.0f), (rowWidth - pairGap) * 0.5f);
 
         ImGui::SetCursorPosX(rowStartX);
         if(ImGui::Checkbox(leftId, &leftValue)) {
@@ -2953,7 +3058,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
     drawBoolPairRow("##Expand", config.expandOutput, "Expand",
                     "##Sort", config.sortOutput, "Sort");
 
-    drawKeyboardDisplay("OutputKeyboard", displayedOutput, rowWidth, 64.0f, true, false);
+    drawKeyboardDisplay("OutputKeyboard", displayedOutput, rowWidth, scaledUi(64.0f), true, false);
 
     std::string outputText;
     for(size_t i = 0; i < displayedOutput.size(); i++) {
@@ -3035,7 +3140,7 @@ void chordSequence::drawSnapshotManager() {
     }
 
     std::string dropdownPreview = dropdownSlot >= 0 ? getSnapshotDropdownLabel(dropdownSlot) : std::string("Select snapshot");
-    ImGui::SetNextItemWidth(std::min(260.0f, ImGui::GetContentRegionAvail().x));
+    ImGui::SetNextItemWidth(std::min(scaledUi(260.0f), ImGui::GetContentRegionAvail().x));
     if(ImGui::BeginCombo("Recall", dropdownPreview.c_str())) {
         for(int i = 0; i < SnapshotSlots; i++) {
             if(!snapshotSlots[i].hasData) continue;
@@ -3052,7 +3157,7 @@ void chordSequence::drawSnapshotManager() {
     if(activeSnapshotSlot >= 0 && activeSnapshotSlot < SnapshotSlots && snapshotSlots[activeSnapshotSlot].hasData) {
         char nameBuf[128];
         std::snprintf(nameBuf, sizeof(nameBuf), "%s", snapshotSlots[activeSnapshotSlot].name.c_str());
-        ImGui::SetNextItemWidth(std::min(260.0f, ImGui::GetContentRegionAvail().x));
+        ImGui::SetNextItemWidth(std::min(scaledUi(260.0f), ImGui::GetContentRegionAvail().x));
         if(ImGui::InputText("Name", nameBuf, sizeof(nameBuf))) {
             snapshotSlots[activeSnapshotSlot].name = nameBuf;
             saveSnapshotToDisk(activeSnapshotSlot);
@@ -3069,6 +3174,7 @@ ofJson chordSequence::serializeCurrentState() const {
     json["globalTranspose"] = globalTranspose;
     json["globalInvert"] = globalInvert;
     json["globalPitchBend"] = globalPitchBend;
+    json["progressionOrder"] = progressionOrder;
     json["internalTimingEnabled"] = internalTimingEnabled;
     json["markovEnabled"] = markovEnabled;
     json["internalActiveStep"] = internalActiveStep;
@@ -3092,8 +3198,14 @@ void chordSequence::deserializeState(const ofJson &json, bool forceInstant) {
     globalTranspose = json.value("globalTranspose", 0);
     globalInvert = json.value("globalInvert", 0);
     globalPitchBend = json.value("globalPitchBend", json.value("pitchBend", 0.0f));
-    internalTimingEnabled = json.value("internalTimingEnabled", false);
-    markovEnabled = json.value("markovEnabled", false);
+    int loadedProgressionOrder = InputIdx;
+    if(json.contains("progressionOrder")) {
+        loadedProgressionOrder = ofClamp(json.value("progressionOrder", InputIdx), InputIdx, Markov);
+    } else {
+        bool legacyInternalTiming = json.value("internalTimingEnabled", false);
+        bool legacyMarkov = json.value("markovEnabled", false);
+        loadedProgressionOrder = legacyInternalTiming ? (legacyMarkov ? Markov : Ascendent) : InputIdx;
+    }
     internalActiveStep = std::max(0, json.value("internalActiveStep", 0));
 
     progression.clear();
@@ -3132,21 +3244,10 @@ void chordSequence::deserializeState(const ofJson &json, bool forceInstant) {
     sanitizeProgression();
     sanitizeGlobalScaleSelection();
     syncNodeGuiParametersFromState();
+    setProgressionOrder(loadedProgressionOrder, false);
     outputBuildDirty = true;
     lastRefreshedActiveIndex = -1;
-    if(internalTimingEnabled) {
-        if(!progression.empty()) {
-            internalActiveStep = ofClamp(internalActiveStep, 0, static_cast<int>(progression.size()) - 1);
-            nextInternalStepTimeMs = ofGetElapsedTimeMillis() + static_cast<uint64_t>(std::max(1.0f, getStepDurationMs(internalActiveStep)));
-        } else {
-            internalActiveStep = 0;
-            nextInternalStepTimeMs = 0;
-        }
-        refreshAllOutputs(forceInstant);
-    } else {
-        nextInternalStepTimeMs = 0;
-        refreshAllOutputs(forceInstant);
-    }
+    refreshAllOutputs(forceInstant);
 }
 
 void chordSequence::storeToSlot(int slot) {
@@ -3163,6 +3264,7 @@ void chordSequence::storeToSlot(int slot) {
     snapshot.globalTranspose = globalTranspose;
     snapshot.globalInvert = globalInvert;
     snapshot.globalPitchBend = globalPitchBend;
+    snapshot.progressionOrder = progressionOrder;
     snapshot.internalTimingEnabled = internalTimingEnabled;
     snapshot.markovEnabled = markovEnabled;
     snapshot.internalActiveStep = internalActiveStep;

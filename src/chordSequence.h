@@ -102,6 +102,7 @@ struct chordSequenceSnapshot {
     int globalTranspose = 0;
     int globalInvert = 0;
     float globalPitchBend = 0.0f;
+    int progressionOrder = 0;
     bool internalTimingEnabled = false;
     bool markovEnabled = false;
     int internalActiveStep = 0;
@@ -128,6 +129,14 @@ private:
     static constexpr int SnapshotSlots = 16;
     static constexpr int DefaultSequenceSize = 4;
     static constexpr int MaxOutputs = 16;
+
+    enum ProgressionOrder {
+        InputIdx = 0,
+        Ascendent = 1,
+        Descendent = 2,
+        Random = 3,
+        Markov = 4
+    };
 
     ofParameter<int> indexInput;
     ofParameter<int> numChordsParameter;
@@ -168,13 +177,16 @@ private:
     int globalTranspose = 0;
     int globalInvert = 0;
     float globalPitchBend = 0.0f;
+    int progressionOrder = InputIdx;
     bool internalTimingEnabled = false;
     bool markovEnabled = false;
     float currentBPM = 120.0f;
     int internalActiveStep = 0;
-    uint64_t nextInternalStepTimeMs = 0;
+    double nextInternalStepBeat = -1.0;
     int lastRefreshedActiveIndex = -1;
     bool outputBuildDirty = true;
+    float editorZoom = 1.0f;
+    float editorFontZoom = 1.0f;
     std::mt19937 randomEngine;
     bool snapshotsSectionExpanded = true;
     bool globalSectionExpanded = true;
@@ -262,10 +274,12 @@ private:
                                        bool expandOutput,
                                        bool sortOutput) const;
     std::vector<float> applyInversion(const std::vector<float> &values, int inversion) const;
+    bool usesInternalProgressionOrder() const;
+    void setProgressionOrder(int order, bool refreshSequence);
     int resolveActiveIndex() const;
     float getStepDurationMs(int stepIndex) const;
     void resetInternalSequence(bool forceInstant);
-    int chooseNextInternalStep(int currentStep) const;
+    int chooseNextInternalStep(int currentStep);
     void advanceInternalSequence();
 
     void refreshAllOutputs(bool forceInstant = false);
