@@ -12,6 +12,7 @@
 struct polyphonicArpeggiatorGUISnapshot {
     int sourceMode = 0;
     bool internalClockMode = false;
+    bool oneShotMode = false;
     float beatDiv = 1.0f;
     int seqSize = 16;
     std::vector<float> scale;
@@ -23,6 +24,7 @@ struct polyphonicArpeggiatorGUISnapshot {
     int expandStep = 12;
     int transpose = 0;
     bool sortPool = true;
+    bool removeDuplicates = false;
     int sourceChangeMode = 0;
 
     int polyphony = 1;
@@ -46,6 +48,8 @@ struct polyphonicArpeggiatorGUISnapshot {
     int durBase = 100;
     int durRndm = 20;
     int durEucStrength = 50;
+    bool durationRndPerStep = true;
+    int outputHistoryWindowMs = 4000;
 
     int eucLen = 8;
     int eucHits = 8;
@@ -81,10 +85,18 @@ public:
 private:
     struct StepPreviewInfo {
         std::vector<float> notes;
+        std::vector<int> noteDurations;
         float velocity = 0.0f;
         int duration = 0;
         bool gate = false;
         bool accent = false;
+    };
+
+    struct OutputHistoryEvent {
+        float pitch = 60.0f;
+        float velocity = 0.0f;
+        int durationMs = 100;
+        uint64_t startTimeMs = 0;
     };
 
     static constexpr int MaxSequenceSize = 128;
@@ -114,11 +126,13 @@ private:
     ofParameter<std::vector<float>> notePoolIn;
     ofParameter<std::vector<float>> scale;
     ofParameter<bool> sortPool;
+    ofParameter<bool> removeDuplicates;
     ofParameter<int> sourceChangeMode;
 
     ofParameter<int> patternMode;
     ofParameter<std::vector<int>> idxPattern;
     ofParameter<bool> internalClockMode;
+    ofParameter<bool> oneShotMode;
     ofParameter<float> beatDiv;
     ofParameter<int> seqSize;
     ofParameter<int> sourceStart;
@@ -162,6 +176,7 @@ private:
     ofParameter<int> eucDurHits;
     ofParameter<int> eucDurOff;
     ofParameter<int> durEucStrength;
+    ofParameter<bool> durationRndPerStep;
 
     ofParameter<std::vector<float>> pitchOut;
     ofParameter<std::vector<int>> gateOut;
@@ -171,6 +186,7 @@ private:
     ofParameter<std::vector<int>> eucGateOut;
     ofParameter<std::vector<int>> eucAccOut;
     ofParameter<std::vector<int>> eucDurOut;
+    ofParameter<int> outputHistoryWindowMs;
 
     ofParameter<float> morphTime;
 
@@ -186,6 +202,10 @@ private:
     int activeSnapshotSlot = -1;
     float currentBpm = 120.0f;
     bool internalClockNeedsSync = true;
+    bool oneShotCycleActive = false;
+    float editorZoom = 1.0f;
+    uint64_t lastExternalTriggerTimeMs = 0;
+    int oneShotStepsRemaining = 0;
 
     std::vector<bool> euclideanPattern;
     std::vector<bool> euclideanAccents;
@@ -199,6 +219,8 @@ private:
     std::vector<uint64_t> noteStartTimes;
     std::vector<float> deviationValues;
     std::vector<bool> stepGates;
+    std::vector<float> recentExternalStepDurationsMs;
+    std::vector<OutputHistoryEvent> outputHistory;
 
     std::array<polyphonicArpeggiatorGUISnapshot, SnapshotSlots> snapshotSlots;
     polyphonicArpeggiatorGUISnapshot startSnapshot;
@@ -230,16 +252,23 @@ private:
     void rebuildSourceMaterial();
     void handleSourceMaterialChange();
     float getSourceValue(int index) const;
+    int getPatternOffsetForStepLive(int stepIndex);
+    int getPatternOffsetForStepPreview(int stepIndex) const;
     void rebuildDeviations();
     void rebuildPitchSequence();
     void rebuildEuclideanOutputs();
     void updateOutputs();
+    void recordOutputHistoryEvent(float pitch, float velocity, int durationMs, uint64_t startTimeMs);
+    void pruneOutputHistory(uint64_t nowMs);
+    float getVisualizationStepDurationMs() const;
 
     float computeStepVelocity(int stepIndex);
     int computeStepDuration(int stepIndex);
+    int randomizeDurationValue(int duration);
     float computePreviewVelocity(int stepIndex) const;
     int computePreviewDuration(int stepIndex) const;
     float computeStrumOffset(int voiceIndex, int totalVoices);
+    float computePreviewStrumOffset(int stepIndex, int voiceIndex, int totalVoices) const;
     StepPreviewInfo buildStepPreview(int stepIndex) const;
 
     void drawEditor();
@@ -251,6 +280,7 @@ private:
     void drawVelocityDurationSection();
     void drawVisualizationSection();
     void drawOutputSection();
+    void drawOutputHistoryRoll(float width, float height) const;
     void drawUserPatternEditor(float width, float height);
     void drawSourcePoolPreview(float width, float height) const;
     void drawEuclideanPreview(float width, float height) const;
