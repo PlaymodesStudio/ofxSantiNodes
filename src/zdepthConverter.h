@@ -15,7 +15,9 @@ public:
 
         addParameter(input.set("Input", nullptr));
         addParameter(zDepth.set("Z Depth", 0.3f, 0.0f, 5.0f));
+        addParameter(baseLevel.set("Base Level", -0.35f, -5.0f, 5.0f));
         addParameter(meshRes.set("Mesh Res", 64, 4, 512));
+        addParameter(showTexture.set("Show Texture", false));
         addParameter(showWireframe.set("Wireframe", false));
         addParameter(show.set("Show", false));
         addOutputParameter(output.set("Output", nullptr));
@@ -25,6 +27,11 @@ public:
         addInspectorParameter(bgR.set("Bg R", 0.05f, 0.0f, 1.0f));
         addInspectorParameter(bgG.set("Bg G", 0.05f, 0.0f, 1.0f));
         addInspectorParameter(bgB.set("Bg B", 0.10f, 0.0f, 1.0f));
+        addInspectorParameter(surfaceGray.set("Surface", 0.82f, 0.0f, 1.0f));
+        addInspectorParameter(ambient.set("Ambient", 0.32f, 0.0f, 1.0f));
+        addInspectorParameter(diffuse.set("Diffuse", 0.95f, 0.0f, 2.0f));
+        addInspectorParameter(lightAzimuth.set("Light Az", 35.0f, -180.0f, 180.0f));
+        addInspectorParameter(lightElevation.set("Light El", 55.0f, -89.0f, 89.0f));
 
         listeners.push(meshRes.newListener([this](int &){ needMeshRebuild = true; }));
         listeners.push(renderW.newListener([this](int &){ needFboRealloc = true; }));
@@ -40,8 +47,15 @@ public:
         if(needFboRealloc)  { allocateFbo(); needFboRealloc = false; }
 
         if(input.get() == nullptr || !input.get()->isAllocated()) {
+            inputSize = glm::ivec2(0);
             output = nullptr;
             return;
+        }
+
+        glm::ivec2 newInputSize(input.get()->getWidth(), input.get()->getHeight());
+        if(newInputSize != inputSize) {
+            inputSize = newInputSize;
+            buildMesh();
         }
 
         renderScene();
@@ -84,13 +98,16 @@ public:
 private:
     ofParameter<ofTexture*> input;
     ofParameter<float>      zDepth;
+    ofParameter<float>      baseLevel;
     ofParameter<int>        meshRes;
+    ofParameter<bool>       showTexture;
     ofParameter<bool>       showWireframe;
     ofParameter<bool>       show;
     ofParameter<ofTexture*> output;
 
     ofParameter<int>   renderW, renderH;
     ofParameter<float> bgR, bgG, bgB;
+    ofParameter<float> surfaceGray, ambient, diffuse, lightAzimuth, lightElevation;
 
     ofMesh             mesh;
     ofFbo              renderFbo;
@@ -102,10 +119,36 @@ private:
     float camAzimuth      = 30.0f;
     float camElevation    = 35.0f;
     float camDistance     = 2.0f;
+    glm::ivec2 inputSize  = glm::ivec2(0);
 
     // ──────────────────────────────────────────────
+    glm::vec2 getMeshScale() const {
+        float widthScale = 1.0f;
+        float heightScale = 1.0f;
+        if(inputSize.x > 0 && inputSize.y > 0) {
+            if(inputSize.x >= inputSize.y) {
+                heightScale = static_cast<float>(inputSize.y) / static_cast<float>(inputSize.x);
+            } else {
+                widthScale = static_cast<float>(inputSize.x) / static_cast<float>(inputSize.y);
+            }
+        }
+        return glm::vec2(widthScale, heightScale);
+    }
+
     void buildMesh() {
         int res = std::max(2, meshRes.get());
+        glm::vec2 meshScale = getMeshScale();
+        auto xzFromUV = [&](float u, float v) {
+            return glm::vec2((u - 0.5f) * meshScale.x, (v - 0.5f) * meshScale.y);
+        };
+        auto addSolidVertex = [&](const glm::vec3 &position, const glm::vec2 &uv,
+                                  const glm::vec3 &vertexNormal, float displaceMask, float topSurfaceMask) {
+            mesh.addVertex(position);
+            mesh.addTexCoord(uv);
+            mesh.addNormal(vertexNormal);
+            mesh.addColor(ofFloatColor(displaceMask, topSurfaceMask, 0.0f, 1.0f));
+        };
+
         mesh.clear();
         mesh.setMode(OF_PRIMITIVE_TRIANGLES);
 
@@ -113,9 +156,8 @@ private:
             for(int col = 0; col <= res; col++) {
                 float u = (float)col / (float)res;
                 float v = (float)row / (float)res;
-                mesh.addVertex(glm::vec3(u - 0.5f, 0.0f, v - 0.5f));
-                mesh.addTexCoord(glm::vec2(u, v));
-                mesh.addNormal(glm::vec3(0.0f, 1.0f, 0.0f));
+                glm::vec2 xz = xzFromUV(u, v);
+                addSolidVertex(glm::vec3(xz.x, 0.0f, xz.y), glm::vec2(u, v), glm::vec3(0.0f, 1.0f, 0.0f), 1.0f, 1.0f);
             }
         }
 
@@ -129,6 +171,39 @@ private:
                 mesh.addIndex(tr); mesh.addIndex(bl); mesh.addIndex(br);
             }
         }
+
+        auto addWall = [&](int steps, bool varyU, float fixedCoord, const glm::vec3 &wallNormal) {
+            int startIndex = mesh.getNumVertices();
+            for(int i = 0; i <= steps; i++) {
+                float t = (float)i / (float)steps;
+                glm::vec2 uv = varyU ? glm::vec2(t, fixedCoord) : glm::vec2(fixedCoord, t);
+                glm::vec2 xz = xzFromUV(uv.x, uv.y);
+                addSolidVertex(glm::vec3(xz.x, 0.0f, xz.y), uv, wallNormal, 1.0f, 0.0f);
+                addSolidVertex(glm::vec3(xz.x, 0.0f, xz.y), uv, wallNormal, 0.0f, 0.0f);
+            }
+
+            for(int i = 0; i < steps; i++) {
+                int topA = startIndex + i * 2;
+                int botA = topA + 1;
+                int topB = topA + 2;
+                int botB = topA + 3;
+                mesh.addIndex(topA); mesh.addIndex(botA); mesh.addIndex(topB);
+                mesh.addIndex(topB); mesh.addIndex(botA); mesh.addIndex(botB);
+            }
+        };
+
+        addWall(res, true, 0.0f, glm::vec3(0.0f, 0.0f, -1.0f));
+        addWall(res, true, 1.0f, glm::vec3(0.0f, 0.0f, 1.0f));
+        addWall(res, false, 0.0f, glm::vec3(-1.0f, 0.0f, 0.0f));
+        addWall(res, false, 1.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+
+        int bottomStart = mesh.getNumVertices();
+        addSolidVertex(glm::vec3(-0.5f * meshScale.x, 0.0f, -0.5f * meshScale.y), glm::vec2(0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 0.0f, 0.0f);
+        addSolidVertex(glm::vec3( 0.5f * meshScale.x, 0.0f, -0.5f * meshScale.y), glm::vec2(1.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 0.0f, 0.0f);
+        addSolidVertex(glm::vec3(-0.5f * meshScale.x, 0.0f,  0.5f * meshScale.y), glm::vec2(0.0f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f), 0.0f, 0.0f);
+        addSolidVertex(glm::vec3( 0.5f * meshScale.x, 0.0f,  0.5f * meshScale.y), glm::vec2(1.0f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f), 0.0f, 0.0f);
+        mesh.addIndex(bottomStart + 0); mesh.addIndex(bottomStart + 2); mesh.addIndex(bottomStart + 1);
+        mesh.addIndex(bottomStart + 1); mesh.addIndex(bottomStart + 2); mesh.addIndex(bottomStart + 3);
     }
 
     void allocateFbo() {
@@ -149,16 +224,38 @@ private:
 #version 410
 uniform sampler2D heightMap;
 uniform float zDepth;
+uniform float baseLevel;
+uniform vec2 texelSize;
+uniform vec2 meshScale;
 uniform mat4 modelViewProjectionMatrix;
 layout(location = 0) in vec4 position;
+layout(location = 1) in vec4 color;
 layout(location = 2) in vec3 normal;
 layout(location = 3) in vec2 texcoord;
 out vec2 vUV;
+out vec3 vNormal;
+out float vTopSurface;
+float sampleHeight(vec2 uv) {
+    float lum = dot(texture(heightMap, uv).rgb, vec3(0.2126, 0.7152, 0.0722));
+    return clamp(lum * 2.0 - 1.0, -1.0, 1.0);
+}
 void main() {
     vUV = texcoord;
-    float lum = dot(texture(heightMap, texcoord).rgb, vec3(0.2126, 0.7152, 0.0722));
+    vTopSurface = color.g;
+    float height = sampleHeight(texcoord);
+    if(vTopSurface > 0.5) {
+        float hL = sampleHeight(clamp(texcoord - vec2(texelSize.x, 0.0), vec2(0.0), vec2(1.0)));
+        float hR = sampleHeight(clamp(texcoord + vec2(texelSize.x, 0.0), vec2(0.0), vec2(1.0)));
+        float hD = sampleHeight(clamp(texcoord - vec2(0.0, texelSize.y), vec2(0.0), vec2(1.0)));
+        float hU = sampleHeight(clamp(texcoord + vec2(0.0, texelSize.y), vec2(0.0), vec2(1.0)));
+        vec3 dX = vec3(meshScale.x * texelSize.x * 2.0, (hR - hL) * zDepth, 0.0);
+        vec3 dZ = vec3(0.0, (hU - hD) * zDepth, meshScale.y * texelSize.y * 2.0);
+        vNormal = normalize(cross(dZ, dX));
+    } else {
+        vNormal = normalize(normal);
+    }
     vec4 pos = position;
-    pos.y += lum * zDepth;
+    pos.y += mix(baseLevel, height * zDepth, color.r);
     gl_Position = modelViewProjectionMatrix * pos;
 }
 )";
@@ -166,10 +263,21 @@ void main() {
         const std::string frag = R"(
 #version 410
 uniform sampler2D heightMap;
+uniform bool useTexture;
+uniform vec3 baseColor;
+uniform vec3 lightDir;
+uniform float ambientStrength;
+uniform float diffuseStrength;
 in vec2 vUV;
+in vec3 vNormal;
+in float vTopSurface;
 out vec4 fragColor;
 void main() {
-    fragColor = texture(heightMap, vUV);
+    vec3 albedo = (useTexture && vTopSurface > 0.5) ? texture(heightMap, vUV).rgb : baseColor;
+    vec3 normalDir = normalize(vNormal);
+    float lambert = max(dot(normalDir, normalize(lightDir)), 0.0);
+    vec3 shaded = albedo * (ambientStrength + lambert * diffuseStrength);
+    fragColor = vec4(clamp(shaded, 0.0, 1.0), 1.0);
 }
 )";
 
@@ -205,8 +313,26 @@ void main() {
 
         cam.begin(ofRectangle(0, 0, renderFbo.getWidth(), renderFbo.getHeight()));
         shader.begin();
+        glm::vec2 meshScale = getMeshScale();
+        float texW = std::max(1.0f, static_cast<float>(input.get()->getWidth()));
+        float texH = std::max(1.0f, static_cast<float>(input.get()->getHeight()));
+        float lightAzRad = glm::radians(lightAzimuth.get());
+        float lightElRad = glm::radians(lightElevation.get());
+        glm::vec3 lightDir(
+            std::cos(lightElRad) * std::sin(lightAzRad),
+            std::sin(lightElRad),
+            std::cos(lightElRad) * std::cos(lightAzRad)
+        );
         shader.setUniformTexture("heightMap", *input.get(), 0);
         shader.setUniform1f("zDepth", zDepth.get());
+        shader.setUniform1f("baseLevel", baseLevel.get());
+        shader.setUniform2f("texelSize", 1.0f / texW, 1.0f / texH);
+        shader.setUniform2f("meshScale", meshScale.x, meshScale.y);
+        shader.setUniform1i("useTexture", showTexture.get() ? 1 : 0);
+        shader.setUniform3f("baseColor", surfaceGray.get(), surfaceGray.get(), surfaceGray.get());
+        shader.setUniform3f("lightDir", lightDir.x, lightDir.y, lightDir.z);
+        shader.setUniform1f("ambientStrength", ambient.get());
+        shader.setUniform1f("diffuseStrength", diffuse.get());
 
         if(showWireframe.get())
             mesh.drawWireframe();
@@ -229,11 +355,11 @@ void main() {
         bool hovered = ImGui::IsItemHovered();
         bool active  = ImGui::IsItemActive();
 
-        // Draw rendered frame (Y-flipped: GL bottom-left → ImGui top-left)
+        // Draw rendered frame
         ImDrawList *dl = ImGui::GetWindowDrawList();
         if(renderFbo.isAllocated()) {
             ImTextureID tid = (ImTextureID)(uintptr_t)renderFbo.getTexture().getTextureData().textureID;
-            dl->AddImage(tid, pos, endPos, ImVec2(0, 1), ImVec2(1, 0));
+            dl->AddImage(tid, pos, endPos, ImVec2(0, 0), ImVec2(1, 1));
         } else {
             dl->AddRectFilled(pos, endPos, IM_COL32(15, 15, 25, 255));
             const char *msg = "No input texture";
