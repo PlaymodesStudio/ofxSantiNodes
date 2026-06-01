@@ -1,4 +1,6 @@
 #include "chordSequence.h"
+
+#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
 #include "chordCypherAliases.h"
 #include "imgui.h"
 #include <algorithm>
@@ -3342,3 +3344,5 @@ std::string chordSequence::getSnapshotFilePath(int slot) const {
 std::string chordSequence::getChordProgressionsFilePath() const {
     return ofToDataPath("Supercollider/Pitchclass/chord_progressions.json", true);
 }
+
+#endif

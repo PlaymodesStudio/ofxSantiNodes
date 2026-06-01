@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ofxOceanodeNodeModel.h"
+#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
 #include <array>
 #include <random>
 #include <string>
@@ -307,6 +308,8 @@ private:
     void loadAllSnapshotsFromDisk();
     void deleteSnapshotFromDisk(int slot);
     std::string getSnapshotsFolderPath() const;
-    std::string getSnapshotFilePath(int slot) const;
+std::string getSnapshotFilePath(int slot) const;
     std::string getChordProgressionsFilePath() const;
 };
+
+#endif

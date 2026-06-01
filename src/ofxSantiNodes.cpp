@@ -187,7 +187,9 @@
 // PITCH
 // ─────────────────────────────────────────────
 #include "chordCypher.h"
+#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
 #include "chordSequence.h"
+#endif
 #include "chordProgressions.h"
 #include "fitNotesInRange.h"
 #include "harmonyDetector.h"
@@ -541,7 +543,9 @@ void registerModels(ofxOceanode *o)
     // PITCH
     // ─────────────────────────────────────────────
     o->registerModel<chordCypher>("Santi/Pitch");
+#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
     o->registerModel<chordSequence>("Santi/Pitch");
+#endif
     o->registerModel<chordProgressions>("Santi/Pitch");
     o->registerModel<fitNotesInRange>("Santi/Pitch");
     o->registerModel<harmonyDetector>("Santi/Pitch");
