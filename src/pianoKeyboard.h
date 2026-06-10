@@ -27,6 +27,7 @@ public:
 		addParameter(height.set("Height", 100, 50, 300));
 		addParameter(loNote.set("Lo Note", 48, 0, 127));
 		addParameter(hiNote.set("Hi Note", 72, 0, 127));
+		addParameter(vertical.set("Vertical", false));
 		addParameter(showWindow.set("Show", false));
 
 		// Make sure outputNotes is properly configured to be saved with presets
@@ -99,6 +100,7 @@ private:
 	ofParameter<int> height;
 	ofParameter<int> loNote;
 	ofParameter<int> hiNote;
+	ofParameter<bool> vertical;
 	ofParameter<bool> showWindow;
 	ofEventListeners listeners;
 	customGuiRegion keyboardRegion;
@@ -200,6 +202,7 @@ private:
 		const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		const bool drawVertical = vertical.get();
 
 		float scaledHeight = customRegionContext.active ? std::max(1.0f, customRegionContext.height) : height * zoom;
 		float scaledWidth = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : width * zoom;
@@ -207,12 +210,9 @@ private:
 		// If using available width (for floating window), get it from ImGui
 		if(useAvailableWidth) {
 			ImVec2 availableSize = ImGui::GetContentRegionAvail();
-			scaledWidth = availableSize.x;
+			if(drawVertical) scaledHeight = availableSize.y;
+			else scaledWidth = availableSize.x;
 		}
-
-		// Standard 88-key piano range: A0 (21) to C8 (108)
-		const int PIANO_MIN = 21;
-		const int PIANO_MAX = 108;
 
 		// Create unique button ID to avoid conflicts
 		string buttonID = "KeyboardArea_" + std::to_string(startNote) + "_" + std::to_string(endNote);
@@ -221,13 +221,13 @@ private:
 		// Calculate scale factor for geometry if using available width
 		float geomScale = 1.0f;
 		if((useAvailableWidth || customRegionContext.active) && width > 0) {
-			geomScale = scaledWidth / (width * zoom);
+			geomScale = (drawVertical ? scaledHeight : scaledWidth) / (width * zoom);
 		}
 
 		// Handle mouse clicks
 		if(ImGui::IsItemClicked()) {
 			ImVec2 mousePos = ImGui::GetIO().MousePos;
-			int clickedNote = getNoteFromPosition(mousePos.x, mousePos.y, geom, startNote, geomScale);
+			int clickedNote = getNoteFromPosition(mousePos.x, mousePos.y, geom, startNote, geomScale, scaledWidth, scaledHeight, drawVertical);
 			if(clickedNote >= 0) {
 				if(selectedNoteSet.find(clickedNote) != selectedNoteSet.end()) {
 					selectedNoteSet.erase(clickedNote);
@@ -243,18 +243,19 @@ private:
 		for(int i = 0; i < geom.size(); i++) {
 			if(!geom[i].isBlack) {
 				int note = startNote + i;
-				ImVec2 keyPos(pos.x + geom[i].x * zoom * geomScale, pos.y);
-				ImVec2 keyPosEnd(keyPos.x + geom[i].w * zoom * geomScale, pos.y + scaledHeight);
-
-				// Check if note is within standard piano range
-				bool isInPianoRange = (note >= PIANO_MIN && note <= PIANO_MAX);
-
-				if(isInPianoRange) {
-					drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(255, 255, 255, 255));
-				} else {
-					// Downlighted - outside piano range
-					drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(240, 240, 240, 120));
+				ImVec2 keyPos;
+				ImVec2 keyPosEnd;
+				if(drawVertical) {
+					const float keyTop = pos.y + scaledHeight - ((geom[i].x + geom[i].w) * zoom * geomScale);
+					const float keyBottom = pos.y + scaledHeight - (geom[i].x * zoom * geomScale);
+					keyPos = ImVec2(pos.x, keyTop);
+					keyPosEnd = ImVec2(pos.x + scaledWidth, keyBottom);
+				}else{
+					keyPos = ImVec2(pos.x + geom[i].x * zoom * geomScale, pos.y);
+					keyPosEnd = ImVec2(keyPos.x + geom[i].w * zoom * geomScale, pos.y + scaledHeight);
 				}
+
+				drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(255, 255, 255, 255));
 				drawList->AddRect(keyPos, keyPosEnd, IM_COL32(100, 100, 100, 255));
 
 				if(selectedNoteSet.find(note) != selectedNoteSet.end()) {
@@ -277,22 +278,23 @@ private:
 		}
 
 		// Then draw black keys
-		float blackKeyHeight = scaledHeight * 0.6f;
+		float blackKeyThickness = (drawVertical ? scaledWidth : scaledHeight) * 0.6f;
 		for(int i = 0; i < geom.size(); i++) {
 			if(geom[i].isBlack) {
 				int note = startNote + i;
-				ImVec2 keyPos(pos.x + geom[i].x * zoom * geomScale, pos.y);
-				ImVec2 keyPosEnd(keyPos.x + geom[i].w * zoom * geomScale, pos.y + blackKeyHeight);
-
-				// Check if note is within standard piano range
-				bool isInPianoRange = (note >= PIANO_MIN && note <= PIANO_MAX);
-
-				if(isInPianoRange) {
-					drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(0, 0, 0, 255));
-				} else {
-					// Downlighted - outside piano range
-					drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(80, 80, 80, 120));
+				ImVec2 keyPos;
+				ImVec2 keyPosEnd;
+				if(drawVertical) {
+					const float keyTop = pos.y + scaledHeight - ((geom[i].x + geom[i].w) * zoom * geomScale);
+					const float keyBottom = pos.y + scaledHeight - (geom[i].x * zoom * geomScale);
+					keyPos = ImVec2(pos.x, keyTop);
+					keyPosEnd = ImVec2(pos.x + blackKeyThickness, keyBottom);
+				}else{
+					keyPos = ImVec2(pos.x + geom[i].x * zoom * geomScale, pos.y);
+					keyPosEnd = ImVec2(keyPos.x + geom[i].w * zoom * geomScale, pos.y + blackKeyThickness);
 				}
+
+				drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(0, 0, 0, 255));
 				drawList->AddRect(keyPos, keyPosEnd, IM_COL32(100, 100, 100, 255));
 
 				if(selectedNoteSet.find(note) != selectedNoteSet.end()) {
@@ -315,19 +317,30 @@ private:
 		}
 	}
 	
-	int getNoteFromPosition(float mouseX, float mouseY, const vector<KeyGeometry>& geom, int startNote, float geomScale = 1.0f) {
+	int getNoteFromPosition(float mouseX, float mouseY, const vector<KeyGeometry>& geom, int startNote, float geomScale = 1.0f, float scaledWidth = 0.0f, float scaledHeight = 0.0f, bool verticalMode = false) {
 		float zoom = ofxOceanodeShared::getZoomLevel();
 		ImVec2 pos = ImGui::GetCursorScreenPos();
 		float relativeX = mouseX - pos.x;
 		float relativeY = mouseY - pos.y;
 
-		float blackKeyHeight = height * 0.6f * zoom;
-		if(relativeY <= blackKeyHeight) {
+		const float keyboardWidth = scaledWidth > 0.0f ? scaledWidth : width * zoom;
+		const float keyboardHeight = scaledHeight > 0.0f ? scaledHeight : height * zoom;
+		float blackKeyThickness = (verticalMode ? keyboardWidth : keyboardHeight) * 0.6f;
+		if((!verticalMode && relativeY <= blackKeyThickness) ||
+		   (verticalMode && relativeX <= blackKeyThickness)) {
 			for(int i = 0; i < geom.size(); i++) {
 				if(geom[i].isBlack) {
-					if(relativeX >= geom[i].x * zoom * geomScale &&
-					   relativeX <= geom[i].x * zoom * geomScale + geom[i].w * zoom * geomScale) {
-						return startNote + i;
+					if(verticalMode) {
+						const float keyTop = keyboardHeight - ((geom[i].x + geom[i].w) * zoom * geomScale);
+						const float keyBottom = keyboardHeight - (geom[i].x * zoom * geomScale);
+						if(relativeY >= keyTop && relativeY <= keyBottom) {
+							return startNote + i;
+						}
+					}else{
+						if(relativeX >= geom[i].x * zoom * geomScale &&
+						   relativeX <= geom[i].x * zoom * geomScale + geom[i].w * zoom * geomScale) {
+							return startNote + i;
+						}
 					}
 				}
 			}
@@ -335,9 +348,17 @@ private:
 
 		for(int i = 0; i < geom.size(); i++) {
 			if(!geom[i].isBlack) {
-				if(relativeX >= geom[i].x * zoom * geomScale &&
-				   relativeX <= geom[i].x * zoom * geomScale + geom[i].w * zoom * geomScale) {
-					return startNote + i;
+				if(verticalMode) {
+					const float keyTop = keyboardHeight - ((geom[i].x + geom[i].w) * zoom * geomScale);
+					const float keyBottom = keyboardHeight - (geom[i].x * zoom * geomScale);
+					if(relativeY >= keyTop && relativeY <= keyBottom) {
+						return startNote + i;
+					}
+				}else{
+					if(relativeX >= geom[i].x * zoom * geomScale &&
+					   relativeX <= geom[i].x * zoom * geomScale + geom[i].w * zoom * geomScale) {
+						return startNote + i;
+					}
 				}
 			}
 		}
