@@ -28,7 +28,7 @@ public:
 			"Use $1, $2, $3... for inputs. Supports +,-,*,/,%,^,( ), sin/cos/tan, atan2, "
 			"sqrt, abs, pow, exp, log, min/max, clamp, step, smoothstep, floor/ceil/round. "
 			"Vector functions: len(v), indices(v), at(v,i), sum(v), mean(v), min(v), max(v), "
-			"median(v), rms(v), std(v), var(v), idxmin(v), idxmax(v), vec(...), repeat(x,n), concat(...). "
+			"median(v), rms(v), std(v), var(v), idxmin(v), idxmax(v), vec(...), repeat(x,n), concat(...), sort(v). "
 			"Vector literals: [1,2,3]. Scalars broadcast over vectors. Conditional: if(cond,a,b).";
 
 		// Inspector-only params
@@ -714,6 +714,12 @@ private:
 					auto args=popN(argc);
 					std::vector<float> out;
 					for(auto& a: args){ if(a.isVec) out.insert(out.end(), a.v.begin(), a.v.end()); else out.push_back(a.f); }
+					st.push_back(Value::vector(std::move(out))); continue;
+				}
+				if(is("sort")){
+					if(argc!=1) throw std::runtime_error("sort(v) expects 1 arg");
+					auto out = toVec(pop1());
+					std::sort(out.begin(), out.end());
 					st.push_back(Value::vector(std::move(out))); continue;
 				}
 
