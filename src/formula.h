@@ -442,7 +442,7 @@ private:
 			"min","max","clamp","step","smoothstep","pow","if",
 			// Vector-aware
 			"len","indices","at","sum","mean","median","rms","std","var","idxmin","idxmax",
-			"vec","repeat","concat","pairdist"
+			"vec","repeat","concat","sort","pairdist"
 		};
 		return funcs.count(name) > 0;
 	}
