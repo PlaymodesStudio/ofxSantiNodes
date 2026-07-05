@@ -52,6 +52,7 @@ public:
         addCustomRegion(melodyRegion.set("Melody Viz", [this]() { drawMelodyViz(); }), [this]() { drawMelodyViz(); });
         addInspectorParameter(widgetWidth.set("Widget Width",   240.0f, 80.0f, 600.0f));
         addInspectorParameter(widgetHeight.set("Widget Height",  90.0f, 50.0f, 300.0f));
+        addInspectorParameter(historyPersistenceMs.set("History Ms", 8000, 0, 120000));
 
         addSeparator("TRANSPORT", ofColor(120, 120, 120));
         addParameter(phasorIn.set("1beatPh", {}, {0.0f}, {1.0f}));
@@ -150,6 +151,7 @@ private:
     ofParameter<void>          resetParam;
     ofParameter<float>         widgetWidth;
     ofParameter<float>         widgetHeight;
+    ofParameter<int>           historyPersistenceMs;
     customGuiRegion            melodyRegion;
 
     // ── Phasor input (optional — gives sample-accurate timing) ────────────────
@@ -172,6 +174,7 @@ private:
         float velocity;
     };
     vector<vector<MelodyNote>> history;   // [0] = seed state, always preserved
+    vector<uint64_t>           historyInactiveAtMs;
     int historyIndex      = 0;
     int mutationCallCount = 0;            // monotonic — never decremented
 
@@ -203,6 +206,17 @@ private:
         int pc = midiNote % 12;
         for (int c : chord.get()) if (c % 12 == pc) return true;
         return false;
+    }
+
+    void switchToHistoryIndex(int newIndex) {
+        if (newIndex < 0 || newIndex >= (int)history.size() || newIndex == historyIndex) return;
+        if (historyIndex >= 0 && historyIndex < (int)historyInactiveAtMs.size()) {
+            historyInactiveAtMs[historyIndex] = ofGetElapsedTimeMillis();
+        }
+        historyIndex = newIndex;
+        if (historyIndex >= 0 && historyIndex < (int)historyInactiveAtMs.size()) {
+            historyInactiveAtMs[historyIndex] = 0;
+        }
     }
 
     void expandScales() {
@@ -342,6 +356,8 @@ private:
         // Clear all history: old mutation chains are meaningless after a rebuild
         history.clear();
         history.push_back(std::move(melody));
+        historyInactiveAtMs.clear();
+        historyInactiveAtMs.push_back(0);
         historyIndex      = 0;
         mutationCallCount = 0;
         pendingMutate     = false;
@@ -452,10 +468,16 @@ private:
         }
 
         // Branching model: new mutation discards any forward history
-        if (historyIndex < (int)history.size() - 1)
+        if (historyIndex < (int)history.size() - 1) {
             history.resize(historyIndex + 1);
+            historyInactiveAtMs.resize(historyIndex + 1);
+        }
 
+        if (historyIndex >= 0 && historyIndex < (int)historyInactiveAtMs.size()) {
+            historyInactiveAtMs[historyIndex] = ofGetElapsedTimeMillis();
+        }
         history.push_back(std::move(newMelody));
+        historyInactiveAtMs.push_back(0);
         historyIndex++;
     }
 
@@ -472,7 +494,7 @@ private:
 
     void onReset() {
         // Demutation only: revert to seed state, playback position untouched
-        historyIndex      = 0;
+        switchToHistoryIndex(0);
         mutationCallCount = 0;
         pendingMutate     = false;
         pendingDemutate   = false;
@@ -485,7 +507,7 @@ private:
     }
 
     void onDemutate() {
-        if (!isPlaying) { if (historyIndex > 0) historyIndex--; return; }
+        if (!isPlaying) { if (historyIndex > 0) switchToHistoryIndex(historyIndex - 1); return; }
         pendingDemutate = true;
         pendingMutate   = false;
         // mutationCallCount is NOT decremented: next Mutate from this position
@@ -581,21 +603,37 @@ private:
             }
         };
 
+        const uint64_t nowMs = ofGetElapsedTimeMillis();
+        const uint64_t persistenceMs = std::max(0, historyPersistenceMs.get());
+
+        auto getFade01 = [&](int h) -> float {
+            if (persistenceMs <= 0) return 0.0f;
+            if (h < 0 || h >= (int)historyInactiveAtMs.size()) return 0.0f;
+            if (historyInactiveAtMs[h] == 0 || h == historyIndex) return 1.0f;
+            uint64_t ageMs = nowMs > historyInactiveAtMs[h] ? nowMs - historyInactiveAtMs[h] : 0;
+            if (ageMs >= persistenceMs) return 0.0f;
+            return 1.0f - (float)ageMs / (float)persistenceMs;
+        };
+
         // Layer 1 — intermediate history: dim grey, alpha fades with age
         for (int h = 1; h < historyIndex; h++) {
-            int   age = historyIndex - h;
-            int   a   = std::max(10, 55 - age * 7);
+            float fade = getFade01(h);
+            if (fade <= 0.0f) continue;
+            int   a   = std::max(8, (int)std::round(55.0f * fade));
             ImU32 col = IM_COL32(140, 140, 155, a);
             drawMelody(history[h], col, col, col, 0.8f, 1.8f);
         }
 
         // Layer 2 — seed melody: steel blue, fades as mutations accumulate
         if (historyIndex > 0) {
-            int   a     = std::max(45, 165 - historyIndex * 10);
+            float fade  = getFade01(0);
+            int   a     = (fade <= 0.0f) ? 0 : std::max(18, (int)std::round(165.0f * fade));
+            if (a > 0) {
             ImU32 lineC = IM_COL32(70,  120, 200, a);
             ImU32 dotC  = IM_COL32(90,  145, 220, a);
             ImU32 cdotC = IM_COL32(120, 180, 255, a);
             drawMelody(history[0], lineC, dotC, cdotC, 1.2f, 2.5f);
+            }
         }
 
         // Layer 3 — current state: warm gold (brightest)
@@ -679,7 +717,7 @@ private:
                 applyMutation();
                 pendingMutate = false;
             } else if (pendingDemutate) {
-                if (historyIndex > 0) historyIndex--;
+                if (historyIndex > 0) switchToHistoryIndex(historyIndex - 1);
                 pendingDemutate = false;
             }
 
