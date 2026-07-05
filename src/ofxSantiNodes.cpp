@@ -1,5 +1,6 @@
 #include "ofxSantiNodes.h"
 #include "ofxOceanode.h"
+#include "santiNodesTransportCompat.h"
 
 // ─────────────────────────────────────────────
 // TIMING & TRANSPORT
@@ -53,9 +54,11 @@
 #include "markovVector.h"
 #include "noteMatrix.h"
 #include "pianoRoll.h"
+#include "pianoRollLive.h"
 #include "polySeq.h"
 #include "probSeq.h"
 #include "soloSequencer.h"
+#include "soloSequencerGui.h"
 #include "soloStepSequencer.h"
 #include "vectorSequencer.h"
 
@@ -101,6 +104,7 @@
 #include "formula.h"
 #include "histogram2.h"
 #include "histogramScore.h"
+#include "histogramVector.h"
 #include "Logic.h"
 #include "metaballAnalyzer.h"
 #include "polygonArea.h"
@@ -235,6 +239,7 @@
 // TEXTURES
 // ─────────────────────────────────────────────
 #include "cameraInput.h"
+#include "blobDetector.h"
 #include "colorTracker.h"
 #include "pixelStretch.h"
 #include "paletteQuantizer.h"
@@ -406,9 +411,11 @@ void registerModels(ofxOceanode *o)
     o->registerModel<markovVector>("Santi/Sequencers");
     o->registerModel<noteMatrix>("Santi/Sequencers");
     o->registerModel<pianoRoll>("Santi/Sequencers");
+    o->registerModel<pianoRollLive>("Santi/Sequencers");
     o->registerModel<polySeq>("Santi/Sequencers");
     o->registerModel<probSeq>("Santi/Sequencers");
     o->registerModel<soloSequencer>("Santi/Sequencers");
+    o->registerModel<soloSequencerGui>("Santi/Sequencers");
     o->registerModel<soloStepSequencer>("Santi/Sequencers");
     o->registerModel<vectorSequencer>("Santi/Sequencers");
 
@@ -591,11 +598,13 @@ void registerModels(ofxOceanode *o)
     // ─────────────────────────────────────────────
     // TEXTURES
     // ─────────────────────────────────────────────
+    o->registerModel<blobDetector>("Santi/Textures");
     o->registerModel<cameraInput>("Santi/Textures");
     o->registerModel<colorTracker>("Santi/Textures");
     o->registerModel<paletteQuantizer>("Santi/Textures");
     o->registerModel<paletteQuantizerGrey>("Santi/Textures");
     o->registerModel<pixelStretch>("Santi/Textures");
+    o->registerModel<histogramVector>("Santi/Textures");
     o->registerModel<spectrogramShift>("Santi/Textures");
     o->registerModel<textureFlip>("Santi/Textures");
     o->registerModel<textureSnapshot>("Santi/Textures");
