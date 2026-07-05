@@ -1,5 +1,6 @@
 #pragma once
 
+#include "santiNodesTransportCompat.h"
 #include "ofxOceanodeNodeModel.h"
 #ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
 #include <array>
