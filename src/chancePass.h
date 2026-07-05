@@ -67,18 +67,22 @@ private:
 	std::uniform_real_distribution<float> dist;
 
 	void ensureVectorSize(size_t newSize) {
-		if (output->size() != newSize) {
-			// resize output
+		const bool outputSizeChanged = output->size() != newSize;
+		const bool rngSizeChanged = mt.size() != newSize;
+		if (outputSizeChanged) {
 			output.set(std::vector<float>(newSize, 0.0f));
-			// resize RNGs
+		}
+		if (rngSizeChanged) {
 			mt.resize(newSize);
-			// reseed to match size
+		}
+		if (outputSizeChanged || rngSizeChanged) {
 			setSeed();
 		}
 	}
 
 	float getProbability(size_t index) {
 		const auto &p = probability.get();
+		if (p.empty()) return 0.5f;
 		if (p.size() == output->size())
 			return p[index];
 		return p[0];
@@ -87,11 +91,11 @@ private:
 	void setSeed() {
 		const auto &s = seed.get();
 		for (size_t i = 0; i < mt.size(); ++i) {
-			if (s.size() == mt.size()) {
+			if (s.size() == mt.size() && !s.empty()) {
 				// per-lane seed
 				mt[i].seed(s[i]);
 			} else {
-				if (s[0] == 0) {
+				if (s.empty() || s[0] == 0) {
 					// nondeterministic
 					std::random_device rd;
 					mt[i].seed(rd());
