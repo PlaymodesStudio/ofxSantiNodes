@@ -30,6 +30,15 @@ public:
         addParameter(size.set("Size", 240, 100, 500));
         addOutputParameter(xOut.set("X Out", 0, -1, 1));
         addOutputParameter(yOut.set("Y Out", 0, -1, 1));
+
+        addInspectorParameter(topSegmentColor.set("Top Seg Color", ofColor(40, 40, 40, 255)));
+        addInspectorParameter(bottomSegmentColor.set("Bottom Seg Color", ofColor(40, 40, 40, 255)));
+        addInspectorParameter(leftSegmentColor.set("Left Seg Color", ofColor(40, 40, 40, 255)));
+        addInspectorParameter(rightSegmentColor.set("Right Seg Color", ofColor(40, 40, 40, 255)));
+        addInspectorParameter(topSegmentThickness.set("Top Seg Thick", 1.0f, 0.0f, 12.0f));
+        addInspectorParameter(bottomSegmentThickness.set("Bottom Seg Thick", 1.0f, 0.0f, 12.0f));
+        addInspectorParameter(leftSegmentThickness.set("Left Seg Thick", 1.0f, 0.0f, 12.0f));
+        addInspectorParameter(rightSegmentThickness.set("Right Seg Thick", 1.0f, 0.0f, 12.0f));
         
         // Initialize controlled point
         controlPoint.x = 0;
@@ -66,12 +75,24 @@ private:
     ofParameter<int> size;
     ofParameter<float> xOut;
     ofParameter<float> yOut;
+    ofParameter<ofColor> topSegmentColor;
+    ofParameter<ofColor> bottomSegmentColor;
+    ofParameter<ofColor> leftSegmentColor;
+    ofParameter<ofColor> rightSegmentColor;
+    ofParameter<float> topSegmentThickness;
+    ofParameter<float> bottomSegmentThickness;
+    ofParameter<float> leftSegmentThickness;
+    ofParameter<float> rightSegmentThickness;
     customGuiRegion padRegion;
     ofEventListeners listeners;
     
     std::vector<Point> points;
     Point controlPoint;
     bool isControlPointActive;
+
+    ImU32 colorToImU32(const ofColor &color) const {
+        return IM_COL32(color.r, color.g, color.b, color.a);
+    }
 
     void updatePoints() {
         // Get the input vectors
@@ -177,15 +198,27 @@ private:
         float centerY = pos.y + padSize/2;
         drawList->AddLine(
             ImVec2(centerX, pos.y),
+            ImVec2(centerX, centerY),
+            colorToImU32(topSegmentColor.get()),
+            topSegmentThickness.get() * zoom
+        );
+        drawList->AddLine(
+            ImVec2(centerX, centerY),
             ImVec2(centerX, pos.y + padSize),
-            IM_COL32(40, 40, 40, 255),
-            zoom
+            colorToImU32(bottomSegmentColor.get()),
+            bottomSegmentThickness.get() * zoom
         );
         drawList->AddLine(
             ImVec2(pos.x, centerY),
+            ImVec2(centerX, centerY),
+            colorToImU32(leftSegmentColor.get()),
+            leftSegmentThickness.get() * zoom
+        );
+        drawList->AddLine(
+            ImVec2(centerX, centerY),
             ImVec2(pos.x + padSize, centerY),
-            IM_COL32(40, 40, 40, 255),
-            zoom
+            colorToImU32(rightSegmentColor.get()),
+            rightSegmentThickness.get() * zoom
         );
 
         updateTrails();
