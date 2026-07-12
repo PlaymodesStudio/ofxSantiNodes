@@ -27,6 +27,14 @@ public:
         addOutputParameter(generationOut.set("Generation", 0, 0, INT_MAX));
         addOutputParameter(driverModeOut.set("Driver Mode", 0, 0, 2));
         addOutputParameter(resetOut.set("Reset"));
+        addParameter(resetTransport.set("Reset Transport"));
+
+        listeners.push(resetTransport.newListener([this]() {
+            auto transport = getTransport();
+            if(transport != nullptr) {
+                transport->seekToBeat(0.0);
+            }
+        }));
     }
 
     void update(ofEventArgs &) override {
@@ -64,6 +72,8 @@ private:
     ofParameter<int> generationOut;
     ofParameter<int> driverModeOut;
     ofParameter<void> resetOut;
+    ofParameter<void> resetTransport;
+    ofEventListeners listeners;
 
     bool hasSeenGeneration = false;
     uint64_t lastGeneration = 0;
