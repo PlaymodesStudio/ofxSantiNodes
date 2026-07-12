@@ -14,22 +14,23 @@
 #include <sstream>
 
 namespace {
-    const ImVec4 snapshotsBg = ImVec4(0.12f, 0.17f, 0.24f, 0.94f);
-    const ImVec4 snapshotsTitle = ImVec4(0.82f, 0.90f, 1.00f, 1.00f);
-    const ImVec4 sourceBg = ImVec4(0.18f, 0.15f, 0.10f, 0.94f);
-    const ImVec4 sourceTitle = ImVec4(1.00f, 0.87f, 0.64f, 1.00f);
-    const ImVec4 patternBg = ImVec4(0.11f, 0.18f, 0.13f, 0.94f);
-    const ImVec4 patternTitle = ImVec4(0.72f, 1.00f, 0.74f, 1.00f);
-    const ImVec4 polyBg = ImVec4(0.17f, 0.12f, 0.20f, 0.94f);
-    const ImVec4 polyTitle = ImVec4(0.93f, 0.80f, 1.00f, 1.00f);
-    const ImVec4 euclidBg = ImVec4(0.14f, 0.18f, 0.22f, 0.94f);
-    const ImVec4 euclidTitle = ImVec4(0.76f, 0.91f, 1.00f, 1.00f);
-    const ImVec4 velocityBg = ImVec4(0.22f, 0.15f, 0.11f, 0.94f);
-    const ImVec4 velocityTitle = ImVec4(1.00f, 0.78f, 0.62f, 1.00f);
-    const ImVec4 visualizationBg = ImVec4(0.09f, 0.13f, 0.17f, 0.96f);
-    const ImVec4 visualizationTitle = ImVec4(0.76f, 0.95f, 1.00f, 1.00f);
-    const ImVec4 outputBg = ImVec4(0.11f, 0.15f, 0.12f, 0.94f);
-    const ImVec4 outputTitle = ImVec4(0.79f, 1.00f, 0.81f, 1.00f);
+    const ImVec4 snapshotsBg = ImVec4(0.27f, 0.42f, 0.62f, 0.97f);
+    const ImVec4 snapshotsTitle = ImVec4(0.92f, 0.97f, 1.00f, 1.00f);
+    const ImVec4 sourceBg = ImVec4(0.24f, 0.39f, 0.58f, 0.97f);
+    const ImVec4 sourceTitle = ImVec4(0.89f, 0.96f, 1.00f, 1.00f);
+    const ImVec4 patternBg = ImVec4(0.21f, 0.35f, 0.53f, 0.97f);
+    const ImVec4 patternTitle = ImVec4(0.86f, 0.94f, 1.00f, 1.00f);
+    const ImVec4 polyBg = ImVec4(0.18f, 0.31f, 0.48f, 0.97f);
+    const ImVec4 polyTitle = ImVec4(0.82f, 0.92f, 1.00f, 1.00f);
+    const ImVec4 euclidBg = ImVec4(0.15f, 0.27f, 0.43f, 0.97f);
+    const ImVec4 euclidTitle = ImVec4(0.79f, 0.90f, 1.00f, 1.00f);
+    const ImVec4 velocityBg = ImVec4(0.12f, 0.23f, 0.38f, 0.97f);
+    const ImVec4 velocityTitle = ImVec4(0.76f, 0.88f, 0.99f, 1.00f);
+    const ImVec4 visualizationBg = ImVec4(0.20f, 0.33f, 0.50f, 0.98f);
+    const ImVec4 visualizationTitle = ImVec4(0.84f, 0.93f, 1.00f, 1.00f);
+    const ImVec4 outputBg = ImVec4(0.15f, 0.28f, 0.44f, 0.97f);
+    const ImVec4 outputTitle = ImVec4(0.80f, 0.91f, 1.00f, 1.00f);
+    constexpr double transportResetBeatWindow = 0.05;
 
     struct KeyGeometry {
         bool isBlack;
@@ -117,8 +118,8 @@ namespace {
         ImGui::InvisibleButton(id, ImVec2(std::max(1.0f, width), std::max(1.0f, height)));
 
         drawList->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height),
-                                active ? IM_COL32(24, 38, 28, 255) : IM_COL32(24, 24, 24, 255), 4.0f);
-        drawList->AddRect(pos, ImVec2(pos.x + width, pos.y + height), IM_COL32(74, 74, 74, 255), 4.0f);
+                                active ? IM_COL32(16, 30, 28, 255) : IM_COL32(16, 18, 24, 255), 6.0f);
+        drawList->AddRect(pos, ImVec2(pos.x + width, pos.y + height), IM_COL32(66, 86, 96, 220), 6.0f);
 
         if(values.empty()) return;
 
@@ -130,15 +131,15 @@ namespace {
         auto range = fullRange ? std::pair<int, int>{0, 127} : computeKeyboardRange(values, 18);
         std::vector<KeyGeometry> geometry = buildKeyboardGeometry(range.first, range.second, width);
         float blackKeyHeight = height * 0.62f;
-        ImU32 highlightColor = active ? IM_COL32(88, 220, 132, 180) : IM_COL32(80, 170, 235, 170);
+        ImU32 highlightColor = active ? IM_COL32(255, 182, 96, 200) : IM_COL32(96, 216, 224, 185);
 
         for(size_t i = 0; i < geometry.size(); i++) {
             if(geometry[i].isBlack) continue;
             int note = range.first + static_cast<int>(i);
             ImVec2 keyPos(pos.x + geometry[i].x, pos.y);
             ImVec2 keyEnd(keyPos.x + geometry[i].w, pos.y + height);
-            drawList->AddRectFilled(keyPos, keyEnd, IM_COL32(242, 242, 242, 255));
-            drawList->AddRect(keyPos, keyEnd, IM_COL32(110, 110, 110, 255));
+            drawList->AddRectFilled(keyPos, keyEnd, IM_COL32(244, 239, 232, 255));
+            drawList->AddRect(keyPos, keyEnd, IM_COL32(102, 104, 110, 255));
             if(noteCounts.count(note) > 0) {
                 drawList->AddRectFilled(keyPos, keyEnd, highlightColor);
             }
@@ -149,8 +150,8 @@ namespace {
             int note = range.first + static_cast<int>(i);
             ImVec2 keyPos(pos.x + geometry[i].x, pos.y);
             ImVec2 keyEnd(keyPos.x + geometry[i].w, pos.y + blackKeyHeight);
-            drawList->AddRectFilled(keyPos, keyEnd, IM_COL32(15, 15, 15, 255));
-            drawList->AddRect(keyPos, keyEnd, IM_COL32(70, 70, 70, 255));
+            drawList->AddRectFilled(keyPos, keyEnd, IM_COL32(28, 30, 38, 255));
+            drawList->AddRect(keyPos, keyEnd, IM_COL32(78, 80, 88, 255));
             if(noteCounts.count(note) > 0) {
                 drawList->AddRectFilled(keyPos, keyEnd, highlightColor);
             }
@@ -200,10 +201,32 @@ namespace {
                              bool &expanded,
                              float zoom) {
         ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(titleColor.x * 0.55f, titleColor.y * 0.55f, titleColor.z * 0.55f, 0.30f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 9.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
         const float collapsedHeight = std::max(22.0f, ImGui::GetTextLineHeightWithSpacing() + 8.0f);
         ImGui::BeginChild(id, ImVec2(size.x, expanded ? size.y : collapsedHeight), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-        ImGui::PopStyleColor();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(2);
         ImGui::SetWindowFontScale(zoom);
+
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+        ImVec2 childPos = ImGui::GetWindowPos();
+        ImVec2 childSize = ImGui::GetWindowSize();
+        float headerHeight = std::max(24.0f, ImGui::GetTextLineHeightWithSpacing() + 10.0f);
+        ImU32 headerFill = IM_COL32(static_cast<int>(titleColor.x * 255.0f),
+                                    static_cast<int>(titleColor.y * 255.0f),
+                                    static_cast<int>(titleColor.z * 255.0f),
+                                    34);
+        ImU32 headerLine = IM_COL32(static_cast<int>(titleColor.x * 255.0f),
+                                    static_cast<int>(titleColor.y * 255.0f),
+                                    static_cast<int>(titleColor.z * 255.0f),
+                                    170);
+        drawList->AddRectFilled(childPos, ImVec2(childPos.x + childSize.x, childPos.y + headerHeight), headerFill, 9.0f, ImDrawFlags_RoundCornersTop);
+        drawList->AddLine(ImVec2(childPos.x, childPos.y + headerHeight),
+                          ImVec2(childPos.x + childSize.x, childPos.y + headerHeight),
+                          headerLine,
+                          2.0f);
 
         std::string arrowId = std::string("##") + id + "Arrow";
         if(ImGui::ArrowButton(arrowId.c_str(), expanded ? ImGuiDir_Down : ImGuiDir_Right)) {
@@ -216,6 +239,22 @@ namespace {
 
     float getCompactFieldWidth(float baseWidth, float availableWidth, float zoom, float widthRatio = 0.50f) {
         return std::min(baseWidth * zoom, availableWidth * widthRatio);
+    }
+
+    void deduplicateApproximatePitches(std::vector<float> &values) {
+        std::vector<float> uniqueValues;
+        uniqueValues.reserve(values.size());
+        for(float note : values) {
+            bool alreadyPresent = false;
+            for(float existing : uniqueValues) {
+                if(std::abs(existing - note) < 0.001f) {
+                    alreadyPresent = true;
+                    break;
+                }
+            }
+            if(!alreadyPresent) uniqueValues.push_back(note);
+        }
+        values = std::move(uniqueValues);
     }
 }
 
@@ -252,11 +291,16 @@ void polyphonicArpeggiatorGUI::setup() {
     removeDuplicates.set("Dedup Pool", false);
     sourceChangeMode.set("Src Change", KeepPhase, KeepPhase, ResetPattern);
 
-    patternMode.set("Pattern", 0, 0, 3);
+    patternMode.set("Pattern", 0, 0, 5);
     idxPattern.set("IdxPatt", std::vector<int>{0, 1, 2, 3}, std::vector<int>{0}, std::vector<int>{127});
     seqSize.set("SeqSize", 16, 1, MaxSequenceSize);
     sourceStart.set("Source Start", 0, 0, 127);
     sourceStride.set("Source Stride", 1, 0, 24);
+    stepShift.set("StepShift", 0, -MaxSequenceSize, MaxSequenceSize);
+    octave.set("Octave", 0, -2, 8);
+    octaveFold.set("Octavefold", 0, 0, 8);
+    foldPoly.set("FoldPoly", true);
+    addParameter(root.set("Root", 0.0f, -24.0f, 127.0f));
     pitchExpand.set("Pitch Expand", false);
     expandStep.set("Expand Step", 12, 1, 48);
     transpose.set("Transpose", 0, -96, 96);
@@ -265,6 +309,10 @@ void polyphonicArpeggiatorGUI::setup() {
 
     polyphony.set("Polyphony", 1, 1, MaxPolyphony);
     polyInterval.set("PolyInterval", 2, 1, 24);
+    addBass.set("AddBass", false);
+    bassOctave.set("BassOctave", -2, -4, 4);
+    bassProb.set("BassProb", 1.0f, 0.0f, 1.0f);
+    bassOnAccent.set("BassOnAccent", false);
     skipSteps.set("SkipSteps", 0, 0, 32);
     strum.set("Strum", 0.0f, 0.0f, 500.0f);
     strumRndm.set("StrumRndm", 0.0f, 0.0f, 200.0f);
@@ -371,6 +419,18 @@ void polyphonicArpeggiatorGUI::setupListeners() {
         rebuildEuclideanOutputs();
         updateOutputs();
     }));
+    listeners.push(polyphony.newListener([this](int &) {
+        resizeStateVectors(seqSize.get());
+        rebuildDeviations();
+        rebuildPitchSequence();
+        updateOutputs();
+    }));
+    listeners.push(addBass.newListener([this](bool &) {
+        resizeStateVectors(seqSize.get());
+        rebuildDeviations();
+        rebuildPitchSequence();
+        updateOutputs();
+    }));
 
     auto rebuildPitch = [this]() {
         rebuildDeviations();
@@ -380,11 +440,22 @@ void polyphonicArpeggiatorGUI::setupListeners() {
 
     listeners.push(sourceStart.newListener([rebuildPitch](int &){ rebuildPitch(); }));
     listeners.push(sourceStride.newListener([rebuildPitch](int &){ rebuildPitch(); }));
+    listeners.push(stepShift.newListener([this](int &){
+        rebuildEuclideanOutputs();
+        updateOutputs();
+    }));
+    listeners.push(octave.newListener([rebuildPitch](int &){ rebuildPitch(); }));
+    listeners.push(octaveFold.newListener([rebuildPitch](int &){ rebuildPitch(); }));
+    listeners.push(foldPoly.newListener([rebuildPitch](bool &){ rebuildPitch(); }));
     listeners.push(pitchExpand.newListener([rebuildPitch](bool &){ rebuildPitch(); }));
     listeners.push(expandStep.newListener([rebuildPitch](int &){ rebuildPitch(); }));
     listeners.push(transpose.newListener([rebuildPitch](int &){ rebuildPitch(); }));
     listeners.push(polyInterval.newListener([rebuildPitch](int &){ rebuildPitch(); }));
     listeners.push(dynamicMode.newListener([rebuildPitch](bool &){ rebuildPitch(); }));
+    listeners.push(root.newListener([this](float &){ updateOutputs(); }));
+    listeners.push(bassOctave.newListener([this](int &){ updateOutputs(); }));
+    listeners.push(bassProb.newListener([this](float &){ updateOutputs(); }));
+    listeners.push(bassOnAccent.newListener([this](bool &){ updateOutputs(); }));
     listeners.push(patternMode.newListener([this](int &){
         syncUserPatternToSequenceSize();
         updateOutputs();
@@ -426,8 +497,15 @@ void polyphonicArpeggiatorGUI::setupListeners() {
     listeners.push(eucDurOff.newListener([rebuildDurationPattern](int &){ rebuildDurationPattern(); }));
 }
 
+int polyphonicArpeggiatorGUI::getOutputSlotCount() const {
+    int sequenceSize = std::max(1, seqSize.get());
+    int activePolyphony = std::max(1, std::min(polyphony.get(), MaxPolyphony));
+    if(addBass.get()) activePolyphony++;
+    return ofClamp(std::max(sequenceSize, activePolyphony), 1, MaxSequenceSize);
+}
+
 void polyphonicArpeggiatorGUI::resizeStateVectors(int size) {
-    int clampedSize = ofClamp(size, 1, MaxSequenceSize);
+    int clampedSize = ofClamp(std::max(size, std::max(1, std::min(polyphony.get(), MaxPolyphony))), 1, MaxSequenceSize);
     currentPitches.assign(clampedSize, 60.0f);
     currentGates.assign(clampedSize, 0);
     currentVelocities.assign(clampedSize, 0.0f);
@@ -455,6 +533,44 @@ void polyphonicArpeggiatorGUI::clearActiveVoices(bool resetCounters) {
         rebuildPitchSequence();
     }
     updateOutputs();
+}
+
+std::vector<float> polyphonicArpeggiatorGUI::buildSourceMaterialFromParameters() const {
+    std::vector<float> sourceValues;
+
+    if(sourceMode.get() == Scale) {
+        const auto &scaleValues = scale.get();
+        if(scaleValues.empty()) {
+            sourceValues.push_back(60.0f);
+        } else {
+            for(int octave = -2; octave <= 8; octave++) {
+                for(float note : scaleValues) {
+                    float expanded = note + static_cast<float>(octave * 12);
+                    if(expanded >= 0.0f && expanded <= 127.0f) {
+                        sourceValues.push_back(expanded);
+                    }
+                }
+            }
+            std::sort(sourceValues.begin(), sourceValues.end());
+            deduplicateApproximatePitches(sourceValues);
+        }
+    } else {
+        sourceValues = notePoolIn.get();
+        for(float &note : sourceValues) {
+            note = ofClamp(note, 0.0f, 127.0f);
+        }
+        if(sortPool.get()) {
+            std::stable_sort(sourceValues.begin(), sourceValues.end());
+        }
+        if(removeDuplicates.get()) {
+            deduplicateApproximatePitches(sourceValues);
+        }
+        if(sourceValues.empty()) {
+            sourceValues.push_back(60.0f);
+        }
+    }
+
+    return sourceValues;
 }
 
 void polyphonicArpeggiatorGUI::syncUserPatternToSequenceSize() {
@@ -514,8 +630,12 @@ void polyphonicArpeggiatorGUI::update(ofEventArgs &) {
         if(ofxOceanodeTransportUtils::didTransportDiscontinuity(frameState)) {
             clearActiveVoices(true);
             internalClockNeedsSync = false;
+            const bool returnedToStart = currentTransport.beatPosition <= transportResetBeatWindow &&
+                                         (ofxOceanodeTransportUtils::didGenerationChange(frameState) ||
+                                          ofxOceanodeTransportUtils::didBeatRewind(frameState, transportResetBeatWindow));
             if(currentTransport.isPlaying &&
-               ofxOceanodeTransportUtils::isStepBoundary(currentTransport.beatPosition, stepsPerBeat)) {
+               (returnedToStart ||
+                ofxOceanodeTransportUtils::isStepBoundary(currentTransport.beatPosition, stepsPerBeat))) {
                 onTrigger();
             }
         } else if(internalClockNeedsSync) {
@@ -583,7 +703,7 @@ void polyphonicArpeggiatorGUI::draw(ofEventArgs &) {
 
 void polyphonicArpeggiatorGUI::drawEditor() {
     constexpr float baseGap = 6.0f;
-    constexpr float baseTopHeight = 430.0f;
+    constexpr float baseTopHeight = 540.0f;
     constexpr float baseBottomHeight = 270.0f;
     constexpr float baseContentWidth = 1140.0f;
     ImVec2 available = ImGui::GetContentRegionAvail();
@@ -593,10 +713,13 @@ void polyphonicArpeggiatorGUI::drawEditor() {
 
     ImGui::SetWindowFontScale(editorFontZoom);
 
-    ImGuiStyle &style = ImGui::GetStyle();
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f * editorZoom, 4.0f * editorZoom));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f * editorZoom, 3.0f * editorZoom));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * editorZoom, 8.0f * editorZoom));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.10f, 0.12f, 0.16f, 0.96f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.14f, 0.17f, 0.23f, 0.98f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.18f, 0.22f, 0.29f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.78f, 0.86f, 0.96f, 0.30f));
 
     float gap = baseGap * editorZoom;
     float availableWidth = ImGui::GetContentRegionAvail().x;
@@ -643,6 +766,7 @@ void polyphonicArpeggiatorGUI::drawEditor() {
     if(outputSectionExpanded) drawOutputSection();
     ImGui::EndChild();
 
+    ImGui::PopStyleColor(4);
     ImGui::PopStyleVar(3);
     ImGui::SetWindowFontScale(1.0f);
 }
@@ -660,8 +784,8 @@ void polyphonicArpeggiatorGUI::drawSnapshotsSection() {
 
         bool hasData = snapshotSlots[i].hasData;
         bool isActive = activeSnapshotSlot == i;
-        ImVec4 color = hasData ? ImVec4(0.22f, 0.36f, 0.52f, 1.0f) : ImVec4(0.18f, 0.18f, 0.18f, 1.0f);
-        if(isActive) color = ImVec4(0.42f, 0.62f, 0.86f, 1.0f);
+        ImVec4 color = hasData ? ImVec4(0.17f, 0.28f, 0.35f, 1.0f) : ImVec4(0.11f, 0.12f, 0.15f, 1.0f);
+        if(isActive) color = ImVec4(0.76f, 0.48f, 0.26f, 1.0f);
 
         ImGui::PushID(i);
         ImGui::PushStyleColor(ImGuiCol_Button, color);
@@ -745,18 +869,15 @@ void polyphonicArpeggiatorGUI::drawSourceSection() {
 
         bool dedup = removeDuplicates.get();
         if(ImGui::Checkbox("Dedup", &dedup)) removeDuplicates = dedup;
-
-        int changeMode = sourceChangeMode.get();
-        const char *changeLabel = changeMode == KeepPhase ? "Keep" : "Reset";
-        ImGui::SetNextItemWidth(compactWidth);
-        if(ImGui::BeginCombo("On Src", changeLabel)) {
-            if(ImGui::Selectable("Keep Phase", changeMode == KeepPhase)) sourceChangeMode = KeepPhase;
-            if(ImGui::Selectable("Reset Pattern", changeMode == ResetPattern)) sourceChangeMode = ResetPattern;
-            ImGui::EndCombo();
-        }
     } else {
         ImGui::TextWrapped("Scale degrees.");
     }
+
+    bool resetOnSourceChange = sourceChangeMode.get() == ResetPattern;
+    if(ImGui::Checkbox("Reset Seq", &resetOnSourceChange)) {
+        sourceChangeMode = resetOnSourceChange ? ResetPattern : KeepPhase;
+    }
+    ImGui::TextDisabled(sourceChangePending ? "Pending source applies next step" : "Source applies on next step");
 
     bool expand = pitchExpand.get();
     if(ImGui::Checkbox("Pitch Expand", &expand)) pitchExpand = expand;
@@ -765,7 +886,8 @@ void polyphonicArpeggiatorGUI::drawSourceSection() {
     ImGui::SetNextItemWidth(compactWidth);
     if(ImGui::InputInt("Expand Step", &expandValue)) expandStep = ofClamp(expandValue, expandStep.getMin(), expandStep.getMax());
 
-    ImGui::TextDisabled("%s n:%zu", srcMode == Scale ? "Src" : "Pool", activeSourceValues.size());
+    size_t displayedSourceCount = (srcMode == ChordPool && sourceChangePending) ? pendingSourceValues.size() : activeSourceValues.size();
+    ImGui::TextDisabled("%s n:%zu", srcMode == Scale ? "Src" : "Pool", displayedSourceCount);
 
     float previewHeight = 54.0f * editorZoom;
     drawSourcePoolPreview(ImGui::GetContentRegionAvail().x, previewHeight);
@@ -775,7 +897,8 @@ void polyphonicArpeggiatorGUI::drawSourceSection() {
     drawKeyboardDisplay("SourceKeyboard", previewNotes, ImGui::GetContentRegionAvail().x, 60.0f * editorZoom, srcMode == ChordPool);
 
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
-    ImGui::TextWrapped("%s", summarizeVector(srcMode == ChordPool ? activeSourceValues : scale.get(), 18).c_str());
+    const std::vector<float> &displaySourceValues = (srcMode == ChordPool && sourceChangePending) ? pendingSourceValues : activeSourceValues;
+    ImGui::TextWrapped("%s", summarizeVector(srcMode == ChordPool ? displaySourceValues : scale.get(), 18).c_str());
     ImGui::PopTextWrapPos();
 }
 
@@ -817,13 +940,20 @@ void polyphonicArpeggiatorGUI::drawPatternSection() {
     if(ImGui::InputInt("Seq", &sizeValue)) seqSize = ofClamp(sizeValue, seqSize.getMin(), seqSize.getMax());
 
     int modeValue = patternMode.get();
-    const char *modeLabel = modeValue == 0 ? "Asc" : modeValue == 1 ? "Desc" : modeValue == 2 ? "Rnd" : "User";
+    const char *modeLabel = modeValue == 0 ? "Asc"
+                           : modeValue == 1 ? "Desc"
+                           : modeValue == 2 ? "Rnd"
+                           : modeValue == 3 ? "User"
+                           : modeValue == 4 ? "Asc+Desc"
+                           : "Desc+Asc";
     ImGui::SetNextItemWidth(compactWidth);
     if(ImGui::BeginCombo("Travel", modeLabel)) {
         if(ImGui::Selectable("Ascending", modeValue == 0)) patternMode = 0;
         if(ImGui::Selectable("Descending", modeValue == 1)) patternMode = 1;
         if(ImGui::Selectable("Random", modeValue == 2)) patternMode = 2;
         if(ImGui::Selectable("User", modeValue == 3)) patternMode = 3;
+        if(ImGui::Selectable("Ascending + Descending", modeValue == 4)) patternMode = 4;
+        if(ImGui::Selectable("Descending + Ascending", modeValue == 5)) patternMode = 5;
         ImGui::EndCombo();
     }
 
@@ -835,9 +965,25 @@ void polyphonicArpeggiatorGUI::drawPatternSection() {
     ImGui::SetNextItemWidth(compactWidth);
     if(ImGui::InputInt(strideLabel, &strideValue)) sourceStride = ofClamp(strideValue, sourceStride.getMin(), sourceStride.getMax());
 
+    int stepShiftValue = stepShift.get();
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Step Shift", &stepShiftValue)) stepShift = ofClamp(stepShiftValue, stepShift.getMin(), stepShift.getMax());
+    ImGui::TextDisabled("+ right / - left");
+
+    int octaveValue = octave.get();
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Oct", &octaveValue)) octave = ofClamp(octaveValue, octave.getMin(), octave.getMax());
+
     int transposeValue = transpose.get();
     ImGui::SetNextItemWidth(compactWidth);
     if(ImGui::InputInt("Transp", &transposeValue)) transpose = ofClamp(transposeValue, transpose.getMin(), transpose.getMax());
+
+    int octaveFoldValue = octaveFold.get();
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Oct Fold", &octaveFoldValue)) octaveFold = ofClamp(octaveFoldValue, octaveFold.getMin(), octaveFold.getMax());
+
+    bool foldPolyValue = foldPoly.get();
+    if(ImGui::Checkbox("Fold Poly", &foldPolyValue)) foldPoly = foldPolyValue;
 
     bool accentMode = accentOnsetMode.get();
     if(ImGui::Checkbox("Onset Acc", &accentMode)) accentOnsetMode = accentMode;
@@ -859,6 +1005,20 @@ void polyphonicArpeggiatorGUI::drawPolyphonySection() {
     int intervalValue = polyInterval.get();
     ImGui::SetNextItemWidth(compactWidth);
     if(ImGui::InputInt("Voice Str", &intervalValue)) polyInterval = ofClamp(intervalValue, polyInterval.getMin(), polyInterval.getMax());
+
+    bool addBassEnabled = addBass.get();
+    if(ImGui::Checkbox("AddBass", &addBassEnabled)) addBass = addBassEnabled;
+
+    int bassOctaveValue = bassOctave.get();
+    ImGui::SetNextItemWidth(compactWidth);
+    if(ImGui::InputInt("Bass Oct", &bassOctaveValue)) bassOctave = ofClamp(bassOctaveValue, bassOctave.getMin(), bassOctave.getMax());
+
+    float bassProbability = bassProb.get();
+    ImGui::SetNextItemWidth(compactWidth);
+    if(drawDraggableFloatWithPopup("Bass Prob", bassProbability, 0.01f, bassProb.getMin(), bassProb.getMax(), "%.2f")) bassProb = bassProbability;
+
+    bool bassAccentOnly = bassOnAccent.get();
+    if(ImGui::Checkbox("Bass Accent", &bassAccentOnly)) bassOnAccent = bassAccentOnly;
 
     int skipValue = skipSteps.get();
     ImGui::SetNextItemWidth(compactWidth);
@@ -1202,7 +1362,7 @@ void polyphonicArpeggiatorGUI::drawEuclideanPreview(float width, float height) c
             ImVec2 cellMin(x + 1.0f, rowY + 1.0f);
             ImVec2 cellMax(x + stepWidth - 1.0f, rowY + rowHeight - 2.0f);
             drawList->AddRect(cellMin, cellMax, IM_COL32(48, 48, 52, 180));
-            if((*lane.pattern)[i]) drawList->AddRectFilled(cellMin, cellMax, lane.color, 2.0f);
+            if((*lane.pattern)[wrapIndex(getShiftedSequenceStepIndex(i), len)]) drawList->AddRectFilled(cellMin, cellMax, lane.color, 2.0f);
         }
     }
 }
@@ -1310,6 +1470,8 @@ void polyphonicArpeggiatorGUI::onTrigger() {
         lastExternalTriggerTimeMs = now;
     }
 
+    applyPendingSourceMaterialChange();
+
     if(shouldReset) {
         currentStep = 0;
         shouldReset = false;
@@ -1351,12 +1513,13 @@ void polyphonicArpeggiatorGUI::onResetNext() {
 }
 
 void polyphonicArpeggiatorGUI::processStep() {
-    int size = std::max(1, seqSize.get());
-    if(!euclideanPattern.empty() && !euclideanPattern[wrapIndex(currentStep, static_cast<int>(euclideanPattern.size()))]) return;
+    int shiftedCurrentStep = getShiftedSequenceStepIndex(currentStep);
+    if(!euclideanPattern.empty() && !euclideanPattern[wrapIndex(shiftedCurrentStep, static_cast<int>(euclideanPattern.size()))]) return;
     if(stepChance.get() < 1.0f && dist01(rng) > stepChance.get()) return;
 
     onsetCounter++;
     int accentIndex = accentOnsetMode.get() ? onsetCounter : absoluteStepCounter;
+    int shiftedAccentIndex = getShiftedSequenceStepIndex(accentIndex);
     int poly = std::min(polyphony.get(), MaxPolyphony);
     int interval = std::max(1, polyInterval.get());
     uint64_t now = ofGetElapsedTimeMillis();
@@ -1366,20 +1529,19 @@ void polyphonicArpeggiatorGUI::processStep() {
 
     std::fill(stepGates.begin(), stepGates.end(), false);
     rebuildPitchSequence();
+    int outputSlotCount = std::max(1, static_cast<int>(currentPitches.size()));
+    std::vector<bool> claimedOutputSlots(outputSlotCount, false);
+    float lowestTriggeredPitch = std::numeric_limits<float>::infinity();
+    float previousTriggeredPitch = std::numeric_limits<float>::quiet_NaN();
 
-    int stepDuration = computeStepDuration(accentIndex);
+    int stepDuration = computeStepDuration(shiftedAccentIndex);
     int randomizedStepDuration = durationRndPerStep.get() ? randomizeDurationValue(stepDuration) : stepDuration;
-    float stepVelocity = computeStepVelocity(accentIndex);
+    float stepVelocity = computeStepVelocity(shiftedAccentIndex);
+    bool stepAccented = !euclideanAccents.empty() &&
+                        euclideanAccents[wrapIndex(shiftedAccentIndex, static_cast<int>(euclideanAccents.size()))];
 
-    for(int voice = 0; voice < poly; voice++) {
-        if(noteChance.get() < 1.0f && dist01(rng) > noteChance.get()) continue;
-
-        int sourceIndex = baseSourceIndex + voice * interval;
-        int outputIndex = wrapIndex(baseRelativeOffset + voice * interval, size);
-        int noteDuration = durationRndPerStep.get() ? randomizedStepDuration : randomizeDurationValue(stepDuration);
-        float pitch = getSourceValue(sourceIndex);
-        if(outputIndex < static_cast<int>(deviationValues.size())) pitch += deviationValues[outputIndex];
-        currentPitches[outputIndex] = ofClamp(pitch + transpose.get(), 0.0f, 127.0f);
+    auto triggerOutputSlot = [this, now, stepVelocity](int outputIndex, float pitch, int noteDuration, float strumOffsetMs) {
+        currentPitches[outputIndex] = pitch;
         currentVelocities[outputIndex] = stepVelocity;
         currentDurations[outputIndex] = static_cast<float>(noteDuration);
 
@@ -1389,17 +1551,50 @@ void polyphonicArpeggiatorGUI::processStep() {
 
         if(!sustaining) {
             noteDurationsMs[outputIndex] = noteDuration;
-            float strumOffset = computeStrumOffset(voice, poly);
-            if(strumOffset <= 0.5f) {
+            if(strumOffsetMs <= 0.5f) {
                 currentGates[outputIndex] = 1;
                 stepGates[outputIndex] = true;
                 noteStartTimes[outputIndex] = now;
                 recordOutputHistoryEvent(currentPitches[outputIndex], currentVelocities[outputIndex], noteDurationsMs[outputIndex], now);
             } else {
                 currentGates[outputIndex] = 0;
-                noteStartTimes[outputIndex] = now + static_cast<uint64_t>(strumOffset);
+                noteStartTimes[outputIndex] = now + static_cast<uint64_t>(strumOffsetMs);
             }
         }
+    };
+
+    for(int voice = 0; voice < poly; voice++) {
+        if(noteChance.get() < 1.0f && dist01(rng) > noteChance.get()) continue;
+
+        int sourceIndex = baseSourceIndex + voice * interval;
+        int outputIndex = findAvailableOutputIndex(baseRelativeOffset + voice * interval, claimedOutputSlots);
+        int noteDuration = durationRndPerStep.get() ? randomizedStepDuration : randomizeDurationValue(stepDuration);
+        float mappedPitch = 60.0f;
+        int maxAttempts = std::max(1, static_cast<int>(activeSourceValues.size()));
+        bool applyFold = (voice == 0) || foldPoly.get();
+
+        for(int attempt = 0; attempt < maxAttempts; attempt++) {
+            int candidateIndex = sourceIndex + attempt;
+            float basePitch = getSourceValue(candidateIndex);
+            float deviation = generateDeviationForSourceIndex(candidateIndex, rng);
+            mappedPitch = mapPitchWithDeviation(basePitch, deviation, applyFold);
+            if(!std::isfinite(previousTriggeredPitch) || std::abs(mappedPitch - previousTriggeredPitch) > 0.001f) {
+                break;
+            }
+        }
+
+        lowestTriggeredPitch = std::min(lowestTriggeredPitch, mappedPitch);
+        previousTriggeredPitch = mappedPitch;
+        triggerOutputSlot(outputIndex, mappedPitch, noteDuration, computeStrumOffset(voice, poly));
+    }
+
+    bool shouldAddBass = addBass.get() &&
+                         (!bassOnAccent.get() || stepAccented) &&
+                         (bassProb.get() >= 1.0f || dist01(rng) <= bassProb.get());
+    if(shouldAddBass) {
+        int bassOutputIndex = findAvailableOutputIndex(baseRelativeOffset + poly * interval, claimedOutputSlots);
+        int bassDuration = durationRndPerStep.get() ? randomizedStepDuration : randomizeDurationValue(stepDuration);
+        triggerOutputSlot(bassOutputIndex, mapBassPitch(lowestTriggeredPitch), bassDuration, 0.0f);
     }
 
     highlightedStep = currentStep;
@@ -1419,81 +1614,47 @@ void polyphonicArpeggiatorGUI::generateEuclideanPattern(std::vector<bool> &patte
 }
 
 void polyphonicArpeggiatorGUI::rebuildSourceMaterial() {
-    activeSourceValues.clear();
-
-    if(sourceMode.get() == Scale) {
-        const auto &scaleValues = scale.get();
-        if(scaleValues.empty()) {
-            activeSourceValues.push_back(60.0f);
-        } else {
-            for(int octave = -2; octave <= 8; octave++) {
-                for(float note : scaleValues) {
-                    float expanded = note + static_cast<float>(octave * 12);
-                    if(expanded >= 0.0f && expanded <= 127.0f) {
-                        activeSourceValues.push_back(expanded);
-                    }
-                }
-            }
-            std::sort(activeSourceValues.begin(), activeSourceValues.end());
-        }
-    } else {
-        activeSourceValues = notePoolIn.get();
-        for(float &note : activeSourceValues) {
-            note = ofClamp(note, 0.0f, 127.0f);
-        }
-        if(sortPool.get()) {
-            std::stable_sort(activeSourceValues.begin(), activeSourceValues.end());
-        }
-        if(removeDuplicates.get()) {
-            std::vector<float> uniqueValues;
-            uniqueValues.reserve(activeSourceValues.size());
-            for(float note : activeSourceValues) {
-                bool alreadyPresent = false;
-                for(float existing : uniqueValues) {
-                    if(std::abs(existing - note) < 0.001f) {
-                        alreadyPresent = true;
-                        break;
-                    }
-                }
-                if(!alreadyPresent) uniqueValues.push_back(note);
-            }
-            activeSourceValues = uniqueValues;
-        }
-        if(activeSourceValues.empty()) {
-            activeSourceValues.push_back(60.0f);
-        }
-    }
+    activeSourceValues = buildSourceMaterialFromParameters();
 }
 
 void polyphonicArpeggiatorGUI::handleSourceMaterialChange() {
-    std::vector<float> previous = activeSourceValues;
-    rebuildSourceMaterial();
-
-    bool changed = previous.size() != activeSourceValues.size();
-    if(!changed) {
-        for(size_t i = 0; i < previous.size(); i++) {
-            if(std::abs(previous[i] - activeSourceValues[i]) > 0.001f) {
-                changed = true;
-                break;
-            }
+    std::vector<float> nextSourceValues = buildSourceMaterialFromParameters();
+    auto materiallyDifferent = [](const std::vector<float> &lhs, const std::vector<float> &rhs) {
+        if(lhs.size() != rhs.size()) return true;
+        for(size_t i = 0; i < lhs.size(); i++) {
+            if(std::abs(lhs[i] - rhs[i]) > 0.001f) return true;
         }
+        return false;
+    };
+
+    sourceChangePending = materiallyDifferent(activeSourceValues, nextSourceValues);
+    if(sourceChangePending) {
+        pendingSourceValues = std::move(nextSourceValues);
+    } else {
+        pendingSourceValues.clear();
+        rebuildDeviations();
+        rebuildPitchSequence();
     }
+    updateOutputs();
+}
 
-    if(changed) {
-        std::fill(currentGates.begin(), currentGates.end(), 0);
-        std::fill(noteStartTimes.begin(), noteStartTimes.end(), 0);
-        if(sourceChangeMode.get() == ResetPattern) {
-            currentStep = 0;
-            highlightedStep = 0;
-            onsetCounter = 0;
-            absoluteStepCounter = 0;
-            shouldReset = false;
-        }
+void polyphonicArpeggiatorGUI::applyPendingSourceMaterialChange() {
+    if(!sourceChangePending) return;
+
+    activeSourceValues = pendingSourceValues;
+    pendingSourceValues.clear();
+    sourceChangePending = false;
+
+    if(sourceChangeMode.get() == ResetPattern) {
+        currentStep = 0;
+        highlightedStep = 0;
+        onsetCounter = 0;
+        absoluteStepCounter = 0;
+        shouldReset = false;
     }
 
     rebuildDeviations();
     rebuildPitchSequence();
-    updateOutputs();
 }
 
 float polyphonicArpeggiatorGUI::getSourceValue(int index) const {
@@ -1514,77 +1675,163 @@ float polyphonicArpeggiatorGUI::getSourceValue(int index) const {
     return pitch + static_cast<float>(cycle * expandStep.get());
 }
 
+float polyphonicArpeggiatorGUI::mapOutputPitch(float pitch, bool applyFold) const {
+    float mappedPitch = pitch + static_cast<float>(transpose.get() + octave.get() * 12);
+    int foldOctaves = octaveFold.get();
+    if(applyFold && foldOctaves > 0) {
+        float foldBase = static_cast<float>(octave.get() * 12);
+        float foldRange = static_cast<float>(foldOctaves * 12);
+        float localPitch = std::fmod(mappedPitch - foldBase, foldRange);
+        if(localPitch < 0.0f) localPitch += foldRange;
+        mappedPitch = foldBase + localPitch;
+    }
+    return ofClamp(mappedPitch, 0.0f, 127.0f);
+}
+
+float polyphonicArpeggiatorGUI::mapPitchWithDeviation(float basePitch, float deviation, bool applyFold) const {
+    return ofClamp(mapOutputPitch(basePitch, applyFold) + deviation, 0.0f, 127.0f);
+}
+
+float polyphonicArpeggiatorGUI::mapBassPitch(float referenceTopPitch) const {
+    float bassPitch = root.get() + static_cast<float>(octave.get() * 12 + transpose.get());
+    if(std::isfinite(referenceTopPitch)) {
+        while(bassPitch >= referenceTopPitch) {
+            bassPitch -= 12.0f;
+        }
+    }
+    bassPitch += static_cast<float>(bassOctave.get() * 12);
+    if(std::isfinite(referenceTopPitch)) {
+        while(bassPitch >= referenceTopPitch) {
+            bassPitch -= 12.0f;
+        }
+    }
+    return ofClamp(bassPitch, 0.0f, 127.0f);
+}
+
 int polyphonicArpeggiatorGUI::getPatternOffsetForStepLive(int stepIndex) {
     int size = std::max(1, seqSize.get());
+    int shiftedStepIndex = getShiftedSequenceStepIndex(stepIndex);
     if(patternMode.get() == 1) {
-        return size - 1 - wrapIndex(stepIndex, size);
+        return size - 1 - wrapIndex(shiftedStepIndex, size);
     }
     if(patternMode.get() == 2) {
         return std::uniform_int_distribution<int>(0, size - 1)(rng);
     }
     if(patternMode.get() == 3) {
         const auto &pattern = idxPattern.get();
-        if(!pattern.empty()) return wrapIndex(pattern[wrapIndex(stepIndex, static_cast<int>(pattern.size()))], size);
+        if(!pattern.empty()) return wrapIndex(pattern[wrapIndex(shiftedStepIndex, static_cast<int>(pattern.size()))], size);
         return 0;
     }
-    return wrapIndex(stepIndex, size);
+    if(patternMode.get() == 4) {
+        return getBidirectionalPatternOffset(shiftedStepIndex, true);
+    }
+    if(patternMode.get() == 5) {
+        return getBidirectionalPatternOffset(shiftedStepIndex, false);
+    }
+    return wrapIndex(shiftedStepIndex, size);
+}
+
+int polyphonicArpeggiatorGUI::findAvailableOutputIndex(int preferredIndex, std::vector<bool> &claimedSlots) const {
+    if(claimedSlots.empty()) return 0;
+
+    int slotCount = static_cast<int>(claimedSlots.size());
+    int wrappedIndex = wrapIndex(preferredIndex, slotCount);
+    for(int offset = 0; offset < slotCount; offset++) {
+        int candidate = wrapIndex(wrappedIndex + offset, slotCount);
+        if(!claimedSlots[candidate]) {
+            claimedSlots[candidate] = true;
+            return candidate;
+        }
+    }
+
+    return wrappedIndex;
+}
+
+int polyphonicArpeggiatorGUI::getShiftedSequenceStepIndex(int stepIndex) const {
+    return stepIndex - stepShift.get();
+}
+
+int polyphonicArpeggiatorGUI::getBidirectionalPatternOffset(int stepIndex, bool startAscending) const {
+    int size = std::max(1, seqSize.get());
+    if(size <= 1) return 0;
+
+    int wrappedStep = wrapIndex(stepIndex, size);
+    int midpoint = size / 2;
+
+    if(startAscending) {
+        return wrappedStep <= midpoint ? wrappedStep : size - wrappedStep;
+    }
+
+    return wrappedStep <= midpoint ? midpoint - wrappedStep : wrappedStep - midpoint;
 }
 
 int polyphonicArpeggiatorGUI::getPatternOffsetForStepPreview(int stepIndex) const {
     int size = std::max(1, seqSize.get());
+    int shiftedStepIndex = getShiftedSequenceStepIndex(stepIndex);
     if(patternMode.get() == 1) {
-        return size - 1 - wrapIndex(stepIndex, size);
+        return size - 1 - wrapIndex(shiftedStepIndex, size);
     }
     if(patternMode.get() == 2) {
-        std::mt19937 previewRng(7919 + stepIndex * 131);
+        std::mt19937 previewRng(7919 + shiftedStepIndex * 131);
         return std::uniform_int_distribution<int>(0, size - 1)(previewRng);
     }
     if(patternMode.get() == 3) {
         const auto &pattern = idxPattern.get();
-        if(!pattern.empty()) return wrapIndex(pattern[wrapIndex(stepIndex, static_cast<int>(pattern.size()))], size);
+        if(!pattern.empty()) return wrapIndex(pattern[wrapIndex(shiftedStepIndex, static_cast<int>(pattern.size()))], size);
         return 0;
     }
-    return wrapIndex(stepIndex, size);
+    if(patternMode.get() == 4) {
+        return getBidirectionalPatternOffset(shiftedStepIndex, true);
+    }
+    if(patternMode.get() == 5) {
+        return getBidirectionalPatternOffset(shiftedStepIndex, false);
+    }
+    return wrapIndex(shiftedStepIndex, size);
+}
+
+float polyphonicArpeggiatorGUI::generateDeviationForSourceIndex(int sourceIndex, std::mt19937 &generator) const {
+    float deviation = 0.0f;
+    std::uniform_real_distribution<float> unitDist(0.0f, 1.0f);
+
+    if(octaveDev.get() > 0.0f && unitDist(generator) < octaveDev.get()) {
+        std::uniform_int_distribution<int> octDist(1, std::max(1, octaveDevRng.get()));
+        deviation += octDist(generator) * 12.0f;
+    }
+
+    if(idxDev.get() > 0.0f && unitDist(generator) < idxDev.get()) {
+        std::uniform_int_distribution<int> idxDist(1, std::max(1, idxDevRng.get()));
+        float basePitch = getSourceValue(sourceIndex);
+        float shiftedPitch = getSourceValue(sourceIndex + idxDist(generator));
+        deviation += shiftedPitch - basePitch;
+    }
+
+    if(pitchDev.get() > 0.0f && unitDist(generator) < pitchDev.get()) {
+        std::uniform_int_distribution<int> chromDist(1, std::max(1, pitchDevRng.get()));
+        deviation += static_cast<float>(chromDist(generator));
+    }
+
+    return deviation;
 }
 
 void polyphonicArpeggiatorGUI::rebuildDeviations() {
-    int size = std::max(1, seqSize.get());
+    int size = getOutputSlotCount();
     deviationValues.assign(size, 0.0f);
 
     for(int i = 0; i < size; i++) {
-        float deviation = 0.0f;
         int sourceIndex = sourceStart.get() + i;
-
-        if(octaveDev.get() > 0.0f && dist01(rng) < octaveDev.get()) {
-            std::uniform_int_distribution<int> octDist(1, std::max(1, octaveDevRng.get()));
-            deviation += octDist(rng) * 12.0f;
-        }
-
-        if(idxDev.get() > 0.0f && dist01(rng) < idxDev.get()) {
-            std::uniform_int_distribution<int> idxDist(1, std::max(1, idxDevRng.get()));
-            float basePitch = getSourceValue(sourceIndex);
-            float shiftedPitch = getSourceValue(sourceIndex + idxDist(rng));
-            deviation += shiftedPitch - basePitch;
-        }
-
-        if(pitchDev.get() > 0.0f && dist01(rng) < pitchDev.get()) {
-            std::uniform_int_distribution<int> chromDist(1, std::max(1, pitchDevRng.get()));
-            deviation += static_cast<float>(chromDist(rng));
-        }
-
-        deviationValues[i] = deviation;
+        deviationValues[i] = generateDeviationForSourceIndex(sourceIndex, rng);
     }
 }
 
 void polyphonicArpeggiatorGUI::rebuildPitchSequence() {
-    int size = std::max(1, seqSize.get());
+    int size = getOutputSlotCount();
     if(static_cast<int>(currentPitches.size()) != size) resizeStateVectors(size);
 
     for(int i = 0; i < size; i++) {
         int sourceIndex = sourceStart.get() + i;
-        float pitch = getSourceValue(sourceIndex);
-        if(i < static_cast<int>(deviationValues.size())) pitch += deviationValues[i];
-        currentPitches[i] = ofClamp(pitch + transpose.get(), 0.0f, 127.0f);
+        float basePitch = getSourceValue(sourceIndex);
+        float deviation = i < static_cast<int>(deviationValues.size()) ? deviationValues[i] : 0.0f;
+        currentPitches[i] = mapPitchWithDeviation(basePitch, deviation);
     }
 }
 
@@ -1595,13 +1842,13 @@ void polyphonicArpeggiatorGUI::rebuildEuclideanOutputs() {
     std::vector<int> durationValues(size, 0);
 
     if(!euclideanPattern.empty()) {
-        for(int i = 0; i < size; i++) gateValues[i] = euclideanPattern[wrapIndex(i, static_cast<int>(euclideanPattern.size()))] ? 1 : 0;
+        for(int i = 0; i < size; i++) gateValues[i] = euclideanPattern[wrapIndex(getShiftedSequenceStepIndex(i), static_cast<int>(euclideanPattern.size()))] ? 1 : 0;
     }
     if(!euclideanAccents.empty()) {
-        for(int i = 0; i < size; i++) accentValues[i] = euclideanAccents[wrapIndex(i, static_cast<int>(euclideanAccents.size()))] ? 1 : 0;
+        for(int i = 0; i < size; i++) accentValues[i] = euclideanAccents[wrapIndex(getShiftedSequenceStepIndex(i), static_cast<int>(euclideanAccents.size()))] ? 1 : 0;
     }
     if(!euclideanDurations.empty()) {
-        for(int i = 0; i < size; i++) durationValues[i] = euclideanDurations[wrapIndex(i, static_cast<int>(euclideanDurations.size()))] ? 1 : 0;
+        for(int i = 0; i < size; i++) durationValues[i] = euclideanDurations[wrapIndex(getShiftedSequenceStepIndex(i), static_cast<int>(euclideanDurations.size()))] ? 1 : 0;
     }
 
     eucGateOut.set(gateValues);
@@ -1681,10 +1928,11 @@ float polyphonicArpeggiatorGUI::computePreviewStrumOffset(int stepIndex, int voi
 
 polyphonicArpeggiatorGUI::StepPreviewInfo polyphonicArpeggiatorGUI::buildStepPreview(int stepIndex) const {
     StepPreviewInfo info;
-    info.gate = euclideanPattern.empty() || euclideanPattern[wrapIndex(stepIndex, static_cast<int>(euclideanPattern.size()))];
-    info.accent = !euclideanAccents.empty() && euclideanAccents[wrapIndex(stepIndex, static_cast<int>(euclideanAccents.size()))];
-    info.velocity = computePreviewVelocity(stepIndex);
-    info.duration = computePreviewDuration(stepIndex);
+    int shiftedStepIndex = getShiftedSequenceStepIndex(stepIndex);
+    info.gate = euclideanPattern.empty() || euclideanPattern[wrapIndex(shiftedStepIndex, static_cast<int>(euclideanPattern.size()))];
+    info.accent = !euclideanAccents.empty() && euclideanAccents[wrapIndex(shiftedStepIndex, static_cast<int>(euclideanAccents.size()))];
+    info.velocity = computePreviewVelocity(shiftedStepIndex);
+    info.duration = computePreviewDuration(shiftedStepIndex);
 
     if(!info.gate) return info;
 
@@ -1696,26 +1944,52 @@ polyphonicArpeggiatorGUI::StepPreviewInfo polyphonicArpeggiatorGUI::buildStepPre
     int baseRelativeOffset = patternOffset * std::max(0, sourceStride.get());
     int baseSourceIndex = sourceStart.get() + baseRelativeOffset;
     int baseDuration = durBase.get();
-    if(!euclideanDurations.empty() && euclideanDurations[wrapIndex(stepIndex, static_cast<int>(euclideanDurations.size()))]) {
+    if(!euclideanDurations.empty() && euclideanDurations[wrapIndex(shiftedStepIndex, static_cast<int>(euclideanDurations.size()))]) {
         baseDuration += durEucStrength.get();
     }
     baseDuration = ofClamp(baseDuration, 1, 60000);
-    std::mt19937 durationRng(4253 + stepIndex * 197);
+    std::mt19937 durationRng(4253 + shiftedStepIndex * 197);
     int sharedDuration = baseDuration;
     if(durationRndPerStep.get() && durRndm.get() > 0) {
         sharedDuration = ofClamp(baseDuration + static_cast<int>(durRndm.get() * std::uniform_real_distribution<float>(0.0f, 1.0f)(durationRng)), 1, 60000);
     }
 
+    float previousPreviewPitch = std::numeric_limits<float>::quiet_NaN();
     for(int voice = 0; voice < poly; voice++) {
-        int outputIndex = wrapIndex(baseRelativeOffset + voice * interval, size);
-        float pitch = getSourceValue(baseSourceIndex + voice * interval);
-        if(outputIndex < static_cast<int>(deviationValues.size())) pitch += deviationValues[outputIndex];
-        info.notes.push_back(ofClamp(pitch + transpose.get(), 0.0f, 127.0f));
+        int sourceIndex = baseSourceIndex + voice * interval;
+        float mappedPitch = 60.0f;
+        int maxAttempts = std::max(1, static_cast<int>(activeSourceValues.size()));
+        bool applyFold = (voice == 0) || foldPoly.get();
+
+        for(int attempt = 0; attempt < maxAttempts; attempt++) {
+            int candidateIndex = sourceIndex + attempt;
+            std::mt19937 previewPitchRng(5527 + shiftedStepIndex * 197 + voice * 31 + size * 7 + candidateIndex * 13);
+            float basePitch = getSourceValue(candidateIndex);
+            float deviation = generateDeviationForSourceIndex(candidateIndex, previewPitchRng);
+            mappedPitch = mapPitchWithDeviation(basePitch, deviation, applyFold);
+            if(!std::isfinite(previousPreviewPitch) || std::abs(mappedPitch - previousPreviewPitch) > 0.001f) {
+                break;
+            }
+        }
+
+        previousPreviewPitch = mappedPitch;
+        info.notes.push_back(mappedPitch);
         int previewDuration = sharedDuration;
         if(!durationRndPerStep.get() && durRndm.get() > 0) {
             previewDuration = ofClamp(baseDuration + static_cast<int>(durRndm.get() * std::uniform_real_distribution<float>(0.0f, 1.0f)(durationRng)), 1, 60000);
         }
         info.noteDurations.push_back(previewDuration);
+    }
+
+    std::mt19937 bassPreviewRng(7919 + shiftedStepIndex * 173 + size * 19);
+    bool shouldAddBass = addBass.get() &&
+                         (!bassOnAccent.get() || info.accent) &&
+                         (bassProb.get() >= 1.0f || std::uniform_real_distribution<float>(0.0f, 1.0f)(bassPreviewRng) <= bassProb.get());
+    if(shouldAddBass) {
+        float referenceTopPitch = info.notes.empty() ? std::numeric_limits<float>::infinity()
+                                                     : *std::min_element(info.notes.begin(), info.notes.end());
+        info.notes.insert(info.notes.begin(), mapBassPitch(referenceTopPitch));
+        info.noteDurations.insert(info.noteDurations.begin(), sharedDuration);
     }
 
     if(!info.noteDurations.empty()) info.duration = info.noteDurations.front();
@@ -1768,7 +2042,7 @@ float polyphonicArpeggiatorGUI::getVisualizationStepDurationMs() const {
 }
 
 std::vector<float> polyphonicArpeggiatorGUI::getSourcePreviewNotes() const {
-    if(sourceMode.get() == ChordPool) return activeSourceValues;
+    if(sourceMode.get() == ChordPool) return sourceChangePending ? pendingSourceValues : activeSourceValues;
 
     std::vector<float> preview;
     preview.reserve(scale.get().size());
@@ -1846,6 +2120,11 @@ void polyphonicArpeggiatorGUI::saveSnapshotToDisk(int slot) const {
     json["idxPattern"] = snap.idxPattern;
     json["sourceStart"] = snap.sourceStart;
     json["sourceStride"] = snap.sourceStride;
+    json["stepShift"] = snap.stepShift;
+    json["octave"] = snap.octave;
+    json["octaveFold"] = snap.octaveFold;
+    json["foldPoly"] = snap.foldPoly;
+    json["root"] = snap.root;
     json["pitchExpand"] = snap.pitchExpand;
     json["expandStep"] = snap.expandStep;
     json["transpose"] = snap.transpose;
@@ -1854,6 +2133,10 @@ void polyphonicArpeggiatorGUI::saveSnapshotToDisk(int slot) const {
     json["sourceChangeMode"] = snap.sourceChangeMode;
     json["polyphony"] = snap.polyphony;
     json["polyInterval"] = snap.polyInterval;
+    json["addBass"] = snap.addBass;
+    json["bassOctave"] = snap.bassOctave;
+    json["bassProb"] = snap.bassProb;
+    json["bassOnAccent"] = snap.bassOnAccent;
     json["skipSteps"] = snap.skipSteps;
     json["strum"] = snap.strum;
     json["strumRndm"] = snap.strumRndm;
@@ -1910,6 +2193,11 @@ void polyphonicArpeggiatorGUI::loadSnapshotFromDisk(int slot) {
     snap.idxPattern = json.value("idxPattern", std::vector<int>{0, 1, 2, 3});
     snap.sourceStart = json.value("sourceStart", 0);
     snap.sourceStride = json.value("sourceStride", 1);
+    snap.stepShift = json.value("stepShift", 0);
+    snap.octave = json.value("octave", 0);
+    snap.octaveFold = json.value("octaveFold", 0);
+    snap.foldPoly = json.value("foldPoly", true);
+    snap.root = json.value("root", 0.0f);
     snap.pitchExpand = json.value("pitchExpand", false);
     snap.expandStep = json.value("expandStep", 12);
     snap.transpose = json.value("transpose", 0);
@@ -1918,6 +2206,10 @@ void polyphonicArpeggiatorGUI::loadSnapshotFromDisk(int slot) {
     snap.sourceChangeMode = json.value("sourceChangeMode", KeepPhase);
     snap.polyphony = json.value("polyphony", 1);
     snap.polyInterval = json.value("polyInterval", 2);
+    snap.addBass = json.value("addBass", false);
+    snap.bassOctave = json.value("bassOctave", -2);
+    snap.bassProb = json.value("bassProb", 1.0f);
+    snap.bassOnAccent = json.value("bassOnAccent", false);
     snap.skipSteps = json.value("skipSteps", 0);
     snap.strum = json.value("strum", 0.0f);
     snap.strumRndm = json.value("strumRndm", 0.0f);
@@ -1983,6 +2275,11 @@ void polyphonicArpeggiatorGUI::storeToSlot(int slot) {
     snap.idxPattern = idxPattern.get();
     snap.sourceStart = sourceStart.get();
     snap.sourceStride = sourceStride.get();
+    snap.stepShift = stepShift.get();
+    snap.octave = octave.get();
+    snap.octaveFold = octaveFold.get();
+    snap.foldPoly = foldPoly.get();
+    snap.root = root.get();
     snap.pitchExpand = pitchExpand.get();
     snap.expandStep = expandStep.get();
     snap.transpose = transpose.get();
@@ -1991,6 +2288,10 @@ void polyphonicArpeggiatorGUI::storeToSlot(int slot) {
     snap.sourceChangeMode = sourceChangeMode.get();
     snap.polyphony = polyphony.get();
     snap.polyInterval = polyInterval.get();
+    snap.addBass = addBass.get();
+    snap.bassOctave = bassOctave.get();
+    snap.bassProb = bassProb.get();
+    snap.bassOnAccent = bassOnAccent.get();
     snap.skipSteps = skipSteps.get();
     snap.strum = strum.get();
     snap.strumRndm = strumRndm.get();
@@ -2044,6 +2345,11 @@ void polyphonicArpeggiatorGUI::recallSlot(int slot) {
         idxPattern = snap.idxPattern;
         sourceStart = snap.sourceStart;
         sourceStride = snap.sourceStride;
+        stepShift = snap.stepShift;
+        octave = snap.octave;
+        octaveFold = snap.octaveFold;
+        foldPoly = snap.foldPoly;
+        root = snap.root;
         pitchExpand = snap.pitchExpand;
         expandStep = snap.expandStep;
         transpose = snap.transpose;
@@ -2052,6 +2358,10 @@ void polyphonicArpeggiatorGUI::recallSlot(int slot) {
         sourceChangeMode = snap.sourceChangeMode;
         polyphony = snap.polyphony;
         polyInterval = snap.polyInterval;
+        addBass = snap.addBass;
+        bassOctave = snap.bassOctave;
+        bassProb = snap.bassProb;
+        bassOnAccent = snap.bassOnAccent;
         skipSteps = snap.skipSteps;
         strum = snap.strum;
         strumRndm = snap.strumRndm;
@@ -2097,6 +2407,11 @@ void polyphonicArpeggiatorGUI::recallSlot(int slot) {
         startSnapshot.idxPattern = idxPattern.get();
         startSnapshot.sourceStart = sourceStart.get();
         startSnapshot.sourceStride = sourceStride.get();
+        startSnapshot.stepShift = stepShift.get();
+        startSnapshot.octave = octave.get();
+        startSnapshot.octaveFold = octaveFold.get();
+        startSnapshot.foldPoly = foldPoly.get();
+        startSnapshot.root = root.get();
         startSnapshot.pitchExpand = pitchExpand.get();
         startSnapshot.expandStep = expandStep.get();
         startSnapshot.transpose = transpose.get();
@@ -2105,6 +2420,10 @@ void polyphonicArpeggiatorGUI::recallSlot(int slot) {
         startSnapshot.sourceChangeMode = sourceChangeMode.get();
         startSnapshot.polyphony = polyphony.get();
         startSnapshot.polyInterval = polyInterval.get();
+        startSnapshot.addBass = addBass.get();
+        startSnapshot.bassOctave = bassOctave.get();
+        startSnapshot.bassProb = bassProb.get();
+        startSnapshot.bassOnAccent = bassOnAccent.get();
         startSnapshot.skipSteps = skipSteps.get();
         startSnapshot.strum = strum.get();
         startSnapshot.strumRndm = strumRndm.get();
@@ -2154,10 +2473,16 @@ void polyphonicArpeggiatorGUI::updateMorph() {
     beatDiv = ofLerp(startSnapshot.beatDiv, targetSnapshot.beatDiv, progress);
     sourceStart = static_cast<int>(ofLerp(startSnapshot.sourceStart, targetSnapshot.sourceStart, progress));
     sourceStride = static_cast<int>(ofLerp(startSnapshot.sourceStride, targetSnapshot.sourceStride, progress));
+    stepShift = static_cast<int>(ofLerp(startSnapshot.stepShift, targetSnapshot.stepShift, progress));
+    octave = static_cast<int>(ofLerp(startSnapshot.octave, targetSnapshot.octave, progress));
+    octaveFold = static_cast<int>(ofLerp(startSnapshot.octaveFold, targetSnapshot.octaveFold, progress));
+    root = ofLerp(startSnapshot.root, targetSnapshot.root, progress);
     expandStep = static_cast<int>(ofLerp(startSnapshot.expandStep, targetSnapshot.expandStep, progress));
     transpose = static_cast<int>(ofLerp(startSnapshot.transpose, targetSnapshot.transpose, progress));
     polyphony = static_cast<int>(ofLerp(startSnapshot.polyphony, targetSnapshot.polyphony, progress));
     polyInterval = static_cast<int>(ofLerp(startSnapshot.polyInterval, targetSnapshot.polyInterval, progress));
+    bassOctave = static_cast<int>(ofLerp(startSnapshot.bassOctave, targetSnapshot.bassOctave, progress));
+    bassProb = ofLerp(startSnapshot.bassProb, targetSnapshot.bassProb, progress);
     skipSteps = static_cast<int>(ofLerp(startSnapshot.skipSteps, targetSnapshot.skipSteps, progress));
     strum = ofLerp(startSnapshot.strum, targetSnapshot.strum, progress);
     strumRndm = ofLerp(startSnapshot.strumRndm, targetSnapshot.strumRndm, progress);
@@ -2194,12 +2519,21 @@ void polyphonicArpeggiatorGUI::updateMorph() {
         patternMode = targetSnapshot.patternMode;
         idxPattern = targetSnapshot.idxPattern;
         beatDiv = targetSnapshot.beatDiv;
+        stepShift = targetSnapshot.stepShift;
+        octave = targetSnapshot.octave;
+        octaveFold = targetSnapshot.octaveFold;
+        foldPoly = targetSnapshot.foldPoly;
+        root = targetSnapshot.root;
         pitchExpand = targetSnapshot.pitchExpand;
         expandStep = targetSnapshot.expandStep;
         sortPool = targetSnapshot.sortPool;
         removeDuplicates = targetSnapshot.removeDuplicates;
         sourceChangeMode = targetSnapshot.sourceChangeMode;
+        addBass = targetSnapshot.addBass;
         strumDir = targetSnapshot.strumDir;
+        bassOctave = targetSnapshot.bassOctave;
+        bassProb = targetSnapshot.bassProb;
+        bassOnAccent = targetSnapshot.bassOnAccent;
         dynamicMode = targetSnapshot.dynamicMode;
         accentOnsetMode = targetSnapshot.accentOnsetMode;
         durationRndPerStep = targetSnapshot.durationRndPerStep;
@@ -2230,6 +2564,11 @@ void polyphonicArpeggiatorGUI::presetSave(ofJson &json) {
     state["seqSize"] = seqSize.get();
     state["sourceStart"] = sourceStart.get();
     state["sourceStride"] = sourceStride.get();
+    state["stepShift"] = stepShift.get();
+    state["octave"] = octave.get();
+    state["octaveFold"] = octaveFold.get();
+    state["foldPoly"] = foldPoly.get();
+    state["root"] = root.get();
     state["pitchExpand"] = pitchExpand.get();
     state["expandStep"] = expandStep.get();
     state["transpose"] = transpose.get();
@@ -2237,6 +2576,10 @@ void polyphonicArpeggiatorGUI::presetSave(ofJson &json) {
     state["accentOnsetMode"] = accentOnsetMode.get();
     state["polyphony"] = polyphony.get();
     state["polyInterval"] = polyInterval.get();
+    state["addBass"] = addBass.get();
+    state["bassOctave"] = bassOctave.get();
+    state["bassProb"] = bassProb.get();
+    state["bassOnAccent"] = bassOnAccent.get();
     state["skipSteps"] = skipSteps.get();
     state["strum"] = strum.get();
     state["strumRndm"] = strumRndm.get();
@@ -2292,6 +2635,11 @@ void polyphonicArpeggiatorGUI::presetRecallAfterSettingParameters(ofJson &json) 
         idxPattern = state.value("idxPattern", idxPattern.get());
         sourceStart = state.value("sourceStart", sourceStart.get());
         sourceStride = state.value("sourceStride", sourceStride.get());
+        stepShift = state.value("stepShift", stepShift.get());
+        octave = state.value("octave", octave.get());
+        octaveFold = state.value("octaveFold", octaveFold.get());
+        foldPoly = state.value("foldPoly", foldPoly.get());
+        root = state.value("root", root.get());
         pitchExpand = state.value("pitchExpand", pitchExpand.get());
         expandStep = state.value("expandStep", expandStep.get());
         transpose = state.value("transpose", transpose.get());
@@ -2299,6 +2647,10 @@ void polyphonicArpeggiatorGUI::presetRecallAfterSettingParameters(ofJson &json) 
         accentOnsetMode = state.value("accentOnsetMode", accentOnsetMode.get());
         polyphony = state.value("polyphony", polyphony.get());
         polyInterval = state.value("polyInterval", polyInterval.get());
+        addBass = state.value("addBass", addBass.get());
+        bassOctave = state.value("bassOctave", bassOctave.get());
+        bassProb = state.value("bassProb", bassProb.get());
+        bassOnAccent = state.value("bassOnAccent", bassOnAccent.get());
         skipSteps = state.value("skipSteps", skipSteps.get());
         strum = state.value("strum", strum.get());
         strumRndm = state.value("strumRndm", strumRndm.get());

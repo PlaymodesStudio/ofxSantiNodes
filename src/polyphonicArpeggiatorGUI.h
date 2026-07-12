@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <random>
 #include <string>
 #include <vector>
@@ -21,6 +22,11 @@ struct polyphonicArpeggiatorGUISnapshot {
     std::vector<int> idxPattern;
     int sourceStart = 0;
     int sourceStride = 1;
+    int stepShift = 0;
+    int octave = 0;
+    int octaveFold = 0;
+    bool foldPoly = true;
+    float root = 0.0f;
     bool pitchExpand = false;
     int expandStep = 12;
     int transpose = 0;
@@ -30,6 +36,10 @@ struct polyphonicArpeggiatorGUISnapshot {
 
     int polyphony = 1;
     int polyInterval = 2;
+    bool addBass = false;
+    int bassOctave = -2;
+    float bassProb = 1.0f;
+    bool bassOnAccent = false;
     int skipSteps = 0;
     float strum = 0.0f;
     float strumRndm = 0.0f;
@@ -138,6 +148,11 @@ private:
     ofParameter<int> seqSize;
     ofParameter<int> sourceStart;
     ofParameter<int> sourceStride;
+    ofParameter<int> stepShift;
+    ofParameter<int> octave;
+    ofParameter<int> octaveFold;
+    ofParameter<bool> foldPoly;
+    ofParameter<float> root;
     ofParameter<bool> pitchExpand;
     ofParameter<int> expandStep;
     ofParameter<int> transpose;
@@ -146,6 +161,10 @@ private:
 
     ofParameter<int> polyphony;
     ofParameter<int> polyInterval;
+    ofParameter<bool> addBass;
+    ofParameter<int> bassOctave;
+    ofParameter<float> bassProb;
+    ofParameter<bool> bassOnAccent;
     ofParameter<int> skipSteps;
     ofParameter<float> strum;
     ofParameter<float> strumRndm;
@@ -204,6 +223,7 @@ private:
     float currentBpm = 120.0f;
     bool internalClockNeedsSync = true;
     bool oneShotCycleActive = false;
+    bool sourceChangePending = false;
     float editorZoom = 1.0f;
     uint64_t lastExternalTriggerTimeMs = 0;
     int oneShotStepsRemaining = 0;
@@ -212,6 +232,7 @@ private:
     std::vector<bool> euclideanAccents;
     std::vector<bool> euclideanDurations;
     std::vector<float> activeSourceValues;
+    std::vector<float> pendingSourceValues;
     std::vector<float> currentPitches;
     std::vector<int> currentGates;
     std::vector<float> currentVelocities;
@@ -246,15 +267,25 @@ private:
     void onReset();
     void onResetNext();
     void processStep();
+    int getOutputSlotCount() const;
     void syncUserPatternToSequenceSize();
     std::string describeBeatDiv(float beatDivision) const;
 
     void generateEuclideanPattern(std::vector<bool> &pattern, int length, int hits, int offset);
+    std::vector<float> buildSourceMaterialFromParameters() const;
     void rebuildSourceMaterial();
     void handleSourceMaterialChange();
+    void applyPendingSourceMaterialChange();
     float getSourceValue(int index) const;
+    float mapOutputPitch(float pitch, bool applyFold = true) const;
+    float mapPitchWithDeviation(float basePitch, float deviation, bool applyFold = true) const;
+    float mapBassPitch(float referenceTopPitch = std::numeric_limits<float>::infinity()) const;
+    int findAvailableOutputIndex(int preferredIndex, std::vector<bool> &claimedSlots) const;
+    int getShiftedSequenceStepIndex(int stepIndex) const;
+    int getBidirectionalPatternOffset(int stepIndex, bool startAscending) const;
     int getPatternOffsetForStepLive(int stepIndex);
     int getPatternOffsetForStepPreview(int stepIndex) const;
+    float generateDeviationForSourceIndex(int sourceIndex, std::mt19937 &generator) const;
     void rebuildDeviations();
     void rebuildPitchSequence();
     void rebuildEuclideanOutputs();
