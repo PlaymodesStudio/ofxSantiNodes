@@ -36,6 +36,7 @@ struct polyphonicArpeggiatorGUISnapshot {
 
     int polyphony = 1;
     int polyInterval = 2;
+    int polyAccent = 0;
     bool addBass = false;
     int bassOctave = -2;
     float bassProb = 1.0f;
@@ -72,6 +73,8 @@ struct polyphonicArpeggiatorGUISnapshot {
     int eucDurHits = 4;
     int eucDurOff = 0;
 
+    float seqProb = 1.0f;
+    int seqProbCycles = 1;
     float stepChance = 1.0f;
     float noteChance = 1.0f;
 
@@ -161,6 +164,7 @@ private:
 
     ofParameter<int> polyphony;
     ofParameter<int> polyInterval;
+    ofParameter<int> polyAccent;
     ofParameter<bool> addBass;
     ofParameter<int> bassOctave;
     ofParameter<float> bassProb;
@@ -180,6 +184,8 @@ private:
     ofParameter<int> eucLen;
     ofParameter<int> eucHits;
     ofParameter<int> eucOff;
+    ofParameter<float> seqProb;
+    ofParameter<int> seqProbCycles;
     ofParameter<float> stepChance;
     ofParameter<float> noteChance;
 
@@ -224,7 +230,11 @@ private:
     bool internalClockNeedsSync = true;
     bool oneShotCycleActive = false;
     bool sourceChangePending = false;
+    bool currentSequenceCycleShouldPlay = true;
+    bool sequenceCycleDecisionPending = true;
+    int skippedSequenceCyclesRemaining = 0;
     float editorZoom = 1.0f;
+    uint64_t observedSnapshotStorageRevision = 0;
     uint64_t lastExternalTriggerTimeMs = 0;
     int oneShotStepsRemaining = 0;
 
@@ -332,6 +342,7 @@ private:
     void deleteSnapshotFromDisk(int slot);
     std::string getSnapshotsFolderPath() const;
     std::string getSnapshotFilePath(int slot) const;
+    void refreshSnapshotsFromSharedStorage(bool force = false);
 };
 
 #endif
