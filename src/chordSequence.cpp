@@ -23,6 +23,7 @@ namespace {
     const char *functionalGroupLabels[] = {"Tonic", "Subdominant", "Dominant"};
     const char *voicingLabels[] = {"None", "Close", "Open", "Drop 2", "Drop 3", "Shell"};
     const char *outputSourceLabels[] = {"Chord", "Scale", "Root", "Key", "Chord Sum"};
+    constexpr double transportResetBeatWindow = 0.05;
     float chordSequenceLayoutZoom = 1.0f;
     float chordSequenceFontZoom = 1.0f;
 
@@ -41,16 +42,18 @@ namespace {
                sourceMode == chordSequenceOutputConfig::ChordSum;
     }
 
-    const ImVec4 snapshotsBg = ImVec4(0.12f, 0.17f, 0.24f, 0.94f);
-    const ImVec4 snapshotsTitle = ImVec4(0.80f, 0.90f, 1.00f, 1.00f);
-    const ImVec4 globalBg = ImVec4(0.20f, 0.18f, 0.11f, 0.94f);
-    const ImVec4 globalTitle = ImVec4(1.00f, 0.92f, 0.66f, 1.00f);
-    const ImVec4 cypherBg = ImVec4(0.25f, 0.15f, 0.10f, 0.94f);
-    const ImVec4 cypherTitle = ImVec4(1.00f, 0.80f, 0.60f, 1.00f);
-    const ImVec4 stepsBg = ImVec4(0.11f, 0.19f, 0.11f, 0.94f);
-    const ImVec4 stepsTitle = ImVec4(0.70f, 1.00f, 0.72f, 1.00f);
-    const ImVec4 outputsBg = ImVec4(0.08f, 0.18f, 0.20f, 0.94f);
-    const ImVec4 outputsTitle = ImVec4(0.72f, 0.96f, 1.00f, 1.00f);
+    const ImVec4 snapshotsBg = ImVec4(0.24f, 0.46f, 0.28f, 0.97f);
+    const ImVec4 snapshotsTitle = ImVec4(0.92f, 1.00f, 0.94f, 1.00f);
+    const ImVec4 globalBg = ImVec4(0.21f, 0.42f, 0.25f, 0.97f);
+    const ImVec4 globalTitle = ImVec4(0.89f, 0.99f, 0.91f, 1.00f);
+    const ImVec4 randomationBg = ImVec4(0.18f, 0.38f, 0.23f, 0.97f);
+    const ImVec4 randomationTitle = ImVec4(0.85f, 0.98f, 0.88f, 1.00f);
+    const ImVec4 cypherBg = ImVec4(0.15f, 0.34f, 0.21f, 0.97f);
+    const ImVec4 cypherTitle = ImVec4(0.82f, 0.96f, 0.85f, 1.00f);
+    const ImVec4 stepsBg = ImVec4(0.12f, 0.30f, 0.18f, 0.97f);
+    const ImVec4 stepsTitle = ImVec4(0.78f, 0.94f, 0.82f, 1.00f);
+    const ImVec4 outputsBg = ImVec4(0.09f, 0.26f, 0.16f, 0.97f);
+    const ImVec4 outputsTitle = ImVec4(0.75f, 0.93f, 0.79f, 1.00f);
 
     struct ChordSequenceKeyGeometry {
         bool isBlack;
@@ -195,16 +198,16 @@ namespace {
         ImDrawList *drawList = ImGui::GetWindowDrawList();
         ImGui::InvisibleButton(id, ImVec2(std::max(1.0f, width), std::max(1.0f, height)));
 
-        ImU32 frameBg = active ? IM_COL32(28, 42, 28, 255) : IM_COL32(24, 24, 24, 255);
-        drawList->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), frameBg, 4.0f);
-        drawList->AddRect(pos, ImVec2(pos.x + width, pos.y + height), IM_COL32(70, 70, 70, 255), 4.0f);
+        ImU32 frameBg = active ? IM_COL32(16, 30, 28, 255) : IM_COL32(16, 18, 24, 255);
+        drawList->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), frameBg, 6.0f);
+        drawList->AddRect(pos, ImVec2(pos.x + width, pos.y + height), IM_COL32(66, 86, 96, 220), 6.0f);
 
         if(geometry.empty()) return;
 
         float blackKeyHeight = height * 0.62f;
-        ImU32 whiteKeyColor = IM_COL32(242, 242, 242, 255);
-        ImU32 blackKeyColor = IM_COL32(15, 15, 15, 255);
-        ImU32 highlightColor = active ? IM_COL32(90, 235, 120, 180) : IM_COL32(80, 170, 235, 170);
+        ImU32 whiteKeyColor = IM_COL32(244, 239, 232, 255);
+        ImU32 blackKeyColor = IM_COL32(28, 30, 38, 255);
+        ImU32 highlightColor = active ? IM_COL32(255, 182, 96, 200) : IM_COL32(96, 216, 224, 185);
 
         for(size_t i = 0; i < geometry.size(); i++) {
             if(geometry[i].isBlack) continue;
@@ -213,7 +216,7 @@ namespace {
             ImVec2 keyPos(pos.x + geometry[i].x, pos.y);
             ImVec2 keyEnd(keyPos.x + geometry[i].w, pos.y + height);
             drawList->AddRectFilled(keyPos, keyEnd, whiteKeyColor);
-            drawList->AddRect(keyPos, keyEnd, IM_COL32(110, 110, 110, 255));
+            drawList->AddRect(keyPos, keyEnd, IM_COL32(102, 104, 110, 255));
 
             auto countIt = noteCounts.find(note);
             if(countIt != noteCounts.end()) {
@@ -234,7 +237,7 @@ namespace {
             ImVec2 keyPos(pos.x + geometry[i].x, pos.y);
             ImVec2 keyEnd(keyPos.x + geometry[i].w, pos.y + blackKeyHeight);
             drawList->AddRectFilled(keyPos, keyEnd, blackKeyColor);
-            drawList->AddRect(keyPos, keyEnd, IM_COL32(70, 70, 70, 255));
+            drawList->AddRect(keyPos, keyEnd, IM_COL32(78, 80, 88, 255));
 
             auto countIt = noteCounts.find(note);
             if(countIt != noteCounts.end()) {
@@ -294,10 +297,33 @@ namespace {
                              float fontScale,
                              ImGuiWindowFlags flags = 0) {
         ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(titleColor.x * 0.55f, titleColor.y * 0.55f, titleColor.z * 0.55f, 0.30f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, scaledUi(9.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
         float collapsedHeight = std::max(ImGui::GetTextLineHeightWithSpacing() + scaledUi(10.0f), scaledUi(30.0f));
         ImGui::BeginChild(id, ImVec2(size.x, expanded ? size.y : collapsedHeight), true, flags);
-        ImGui::PopStyleColor();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(2);
         ImGui::SetWindowFontScale(fontScale);
+
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+        ImVec2 childPos = ImGui::GetWindowPos();
+        ImVec2 childSize = ImGui::GetWindowSize();
+        float headerHeight = std::max(scaledUi(24.0f), ImGui::GetTextLineHeightWithSpacing() + scaledUi(10.0f));
+        ImU32 headerFill = IM_COL32(static_cast<int>(titleColor.x * 255.0f),
+                                    static_cast<int>(titleColor.y * 255.0f),
+                                    static_cast<int>(titleColor.z * 255.0f),
+                                    34);
+        ImU32 headerLine = IM_COL32(static_cast<int>(titleColor.x * 255.0f),
+                                    static_cast<int>(titleColor.y * 255.0f),
+                                    static_cast<int>(titleColor.z * 255.0f),
+                                    170);
+        drawList->AddRectFilled(childPos, ImVec2(childPos.x + childSize.x, childPos.y + headerHeight), headerFill, scaledUi(9.0f), ImDrawFlags_RoundCornersTop);
+        drawList->AddLine(ImVec2(childPos.x, childPos.y + headerHeight),
+                          ImVec2(childPos.x + childSize.x, childPos.y + headerHeight),
+                          headerLine,
+                          2.0f);
+
         std::string arrowId = std::string("##") + id + "Arrow";
         if(ImGui::ArrowButton(arrowId.c_str(), expanded ? ImGuiDir_Down : ImGuiDir_Right)) {
             expanded = !expanded;
@@ -388,6 +414,16 @@ namespace {
         float height = getSectionHeaderHeight();
         height += rowHeight * 6.0f;
         height += scaledUi(8.0f);
+        return height;
+    }
+
+    float getRandomationSectionHeight() {
+        float rowHeight = ImGui::GetFrameHeightWithSpacing();
+        float textHeight = ImGui::GetTextLineHeightWithSpacing();
+        float height = getSectionHeaderHeight();
+        height += textHeight * 2.0f;
+        height += rowHeight * 6.0f;
+        height += scaledUi(12.0f);
         return height;
     }
 
@@ -530,6 +566,12 @@ ofJson chordSequenceSnapshot::toJson() const {
     json["globalScaleName"] = globalScaleName;
     json["globalTranspose"] = globalTranspose;
     json["globalInvert"] = globalInvert;
+    json["transposeRandomRange"] = transposeRandomRange;
+    json["transposeRandomQuantization"] = transposeRandomQuantization;
+    json["transposeRandomStep"] = transposeRandomStep;
+    json["inversionRandomRange"] = inversionRandomRange;
+    json["inversionRandomQuantization"] = inversionRandomQuantization;
+    json["inversionRandomStep"] = inversionRandomStep;
     json["globalPitchBend"] = globalPitchBend;
     json["progressionOrder"] = progressionOrder;
     json["internalTimingEnabled"] = internalTimingEnabled;
@@ -559,6 +601,12 @@ chordSequenceSnapshot chordSequenceSnapshot::fromJson(const ofJson &json) {
     snapshot.globalScaleName = json.value("globalScaleName", std::string());
     snapshot.globalTranspose = json.value("globalTranspose", 0);
     snapshot.globalInvert = json.value("globalInvert", 0);
+    snapshot.transposeRandomRange = std::max(0, json.value("transposeRandomRange", 0));
+    snapshot.transposeRandomQuantization = std::max(1, json.value("transposeRandomQuantization", 1));
+    snapshot.transposeRandomStep = json.value("transposeRandomStep", false);
+    snapshot.inversionRandomRange = std::max(0, json.value("inversionRandomRange", 0));
+    snapshot.inversionRandomQuantization = std::max(1, json.value("inversionRandomQuantization", 1));
+    snapshot.inversionRandomStep = json.value("inversionRandomStep", false);
     snapshot.globalPitchBend = json.value("globalPitchBend", json.value("pitchBend", 0.0f));
     if(json.contains("progressionOrder")) {
         snapshot.progressionOrder = ofClamp(json.value("progressionOrder", 0), 0, 4);
@@ -610,6 +658,7 @@ void chordSequence::setup() {
     addParameter(pitchBendParameter.set("Pitchbend", 0.0f, -24.0f, 24.0f));
     addParameter(inversionParameter.set("Inversion", 0, -16, 16));
     addParameter(resetSequenceParameter.set("Reset"));
+    addOutputParameter(rootOutput.set("Root", 0.0f, 0.0f, 11.0f));
     addParameter(showEditor.set("Show", false));
 
     addInspectorParameter(editorWidth.set("Editor Width", 980.0f, 560.0f, 1800.0f));
@@ -645,6 +694,8 @@ void chordSequence::setup() {
         resetInternalSequence(true);
     }));
 
+    effectiveGlobalTranspose = globalTranspose;
+    effectiveGlobalInvert = globalInvert;
     refreshAllOutputs(true);
 }
 
@@ -671,7 +722,10 @@ void chordSequence::update(ofEventArgs &) {
 
     if(usesInternalProgressionOrder() && !progression.empty()) {
         if(ofxOceanodeTransportUtils::didTransportDiscontinuity(frameState)) {
-            resetInternalSequence(true);
+            const bool returnedToStart = frameState.current.beatPosition <= transportResetBeatWindow &&
+                                         (ofxOceanodeTransportUtils::didGenerationChange(frameState) ||
+                                          ofxOceanodeTransportUtils::didBeatRewind(frameState, transportResetBeatWindow));
+            resetInternalSequence(true, returnedToStart ? 0.0 : frameState.current.beatPosition);
         } else if(frameState.current.isPlaying) {
             if(nextInternalStepBeat < 0.0) {
                 resetInternalSequence(true);
@@ -1665,6 +1719,17 @@ float chordSequence::getEntryRootValue(const chordSequenceEntry &entry) const {
     return static_cast<float>(entry.transpose);
 }
 
+float chordSequence::getEntryDisplayRootPitchClass(const chordSequenceEntry &entry) const {
+    float rootPitchClass = std::fmod(getEntryRootValue(entry) + static_cast<float>(effectiveGlobalTranspose), 12.0f);
+    if(rootPitchClass < 0.0f) rootPitchClass += 12.0f;
+    return rootPitchClass;
+}
+
+std::string chordSequence::getEntryDisplayRootLabel(const chordSequenceEntry &entry) const {
+    int pitchClass = ofClamp(static_cast<int>(std::round(getEntryDisplayRootPitchClass(entry))), 0, 11);
+    return keyNames[pitchClass];
+}
+
 std::vector<float> chordSequence::buildEntryPreviewOutput(const chordSequenceEntry &entry) const {
     if(entry.mode == chordSequenceEntry::Degree || entry.mode == chordSequenceEntry::Functional) {
         std::vector<float> values = buildDegreeValues(entry);
@@ -1840,10 +1905,18 @@ std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &en
     float outputRoot = 0.0f;
     std::vector<float> values = buildOutputSourceValues(entry, config, outputRoot);
 
-    // Output processing intentionally flows from harmonic source -> voicing/size ->
-    // stochastic color -> absolute register -> optional continuity/range cleanup.
+    // Output processing intentionally flows from harmonic source -> global
+    // transpose/fold -> voicing/size -> stochastic color -> absolute register
+    // -> optional continuity/range cleanup.
     if(!outputSourceUsesScaleLikeMaterial(config.sourceMode)) {
-        values = applyInversion(values, globalInvert + config.inversion);
+        values = applyInversion(values, effectiveGlobalInvert + config.inversion);
+    }
+
+    if(std::abs(effectiveGlobalTranspose) > 0) {
+        for(auto &value : values) {
+            value += static_cast<float>(effectiveGlobalTranspose);
+        }
+        outputRoot += static_cast<float>(effectiveGlobalTranspose);
     }
 
     if(config.fold12) {
@@ -1885,7 +1958,7 @@ std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &en
     }
 
     float pitchOffset = globalPitchBend + config.pitchBend;
-    float noteOffset = static_cast<float>(globalTranspose + config.transpose + config.octave * 12);
+    float noteOffset = static_cast<float>(config.transpose + config.octave * 12);
     for(auto &value : values) {
         value += noteOffset + pitchOffset;
         if(config.perNoteDetune > 0.0f) {
@@ -2017,13 +2090,15 @@ float chordSequence::getStepDurationMs(int stepIndex) const {
     return progression[stepIndex].beatDuration * (60000.0f / bpm);
 }
 
-void chordSequence::resetInternalSequence(bool forceInstant) {
+void chordSequence::resetInternalSequence(bool forceInstant, double anchorBeat) {
     sanitizeProgression();
+    pendingRandomationSequenceRestart = true;
+    pendingRandomationStepAdvance = true;
     internalActiveStep = 0;
     if(usesInternalProgressionOrder() && !progression.empty()) {
         internalActiveStep = ofClamp(internalActiveStep, 0, static_cast<int>(progression.size()) - 1);
-        nextInternalStepBeat = getFrameTransportState().current.beatPosition +
-                               std::max(0.001f, progression[internalActiveStep].beatDuration);
+        const double scheduleBeat = anchorBeat >= 0.0 ? anchorBeat : getFrameTransportState().current.beatPosition;
+        nextInternalStepBeat = scheduleBeat + std::max(0.001f, progression[internalActiveStep].beatDuration);
     } else {
         nextInternalStepBeat = -1.0;
     }
@@ -2080,19 +2155,62 @@ void chordSequence::advanceInternalSequence() {
         return;
     }
 
+    int previousStep = internalActiveStep;
     double currentBoundaryBeat = nextInternalStepBeat;
     if(currentBoundaryBeat < 0.0) {
         currentBoundaryBeat = getFrameTransportState().current.beatPosition;
     }
     internalActiveStep = chooseNextInternalStep(internalActiveStep);
+    pendingRandomationStepAdvance = true;
+    pendingRandomationSequenceRestart = (progressionOrder == Ascendent) &&
+                                        (progression.size() == 1 ||
+                                         (previousStep == static_cast<int>(progression.size()) - 1 && internalActiveStep == 0));
     outputBuildDirty = true;
     refreshAllOutputs(false);
     nextInternalStepBeat = currentBoundaryBeat + std::max(0.001f, progression[internalActiveStep].beatDuration);
 }
 
+int chordSequence::generateRandomizedModifier(int range, int quantization) {
+    range = std::max(0, range);
+    quantization = std::max(1, quantization);
+    if(range <= 0) return 0;
+
+    int maxStep = range / quantization;
+    if(maxStep <= 0) return 0;
+    return std::uniform_int_distribution<int>(0, maxStep)(randomEngine) * quantization;
+}
+
+void chordSequence::updateEffectiveGlobalModifiers(bool sequenceRestart, bool stepAdvance, bool forceReroll) {
+    bool rerollTranspose = forceReroll || (transposeRandomStep ? stepAdvance : sequenceRestart);
+    bool rerollInvert = forceReroll || (inversionRandomStep ? stepAdvance : sequenceRestart);
+
+    if(rerollTranspose) {
+        currentTransposeRandomOffset = generateRandomizedModifier(transposeRandomRange, transposeRandomQuantization);
+    }
+    if(rerollInvert) {
+        currentInversionRandomOffset = generateRandomizedModifier(inversionRandomRange, inversionRandomQuantization);
+    }
+
+    effectiveGlobalTranspose = globalTranspose + currentTransposeRandomOffset;
+    effectiveGlobalInvert = globalInvert + currentInversionRandomOffset;
+}
+
 void chordSequence::refreshAllOutputs(bool forceInstant) {
     sanitizeProgression();
     int activeIndex = resolveActiveIndex();
+    bool stepAdvance = pendingRandomationStepAdvance || lastRefreshedActiveIndex < 0 || activeIndex != lastRefreshedActiveIndex;
+    bool sequenceRestart = pendingRandomationSequenceRestart ||
+                           lastRefreshedActiveIndex < 0 ||
+                           (activeIndex == 0 && activeIndex != lastRefreshedActiveIndex);
+    updateEffectiveGlobalModifiers(sequenceRestart, stepAdvance, false);
+    pendingRandomationStepAdvance = false;
+    pendingRandomationSequenceRestart = false;
+
+    if(activeIndex < 0 || activeIndex >= static_cast<int>(progression.size())) {
+        rootOutput = 0.0f;
+    } else {
+        rootOutput = getEntryDisplayRootPitchClass(progression[activeIndex]);
+    }
 
     if(forceInstant) {
         outputBuildDirty = true;
@@ -2176,8 +2294,8 @@ void chordSequence::drawEditor() {
     ImVec2 availableRegion = ImGui::GetContentRegionAvail();
     float baseWidth = 1320.0f;
     float widthScale = availableRegion.x > 1.0f ? availableRegion.x / baseWidth : 1.0f;
-    editorZoom = ofClamp(widthScale, 0.42f, 1.0f);
-    editorFontZoom = ofClamp(editorZoom + 0.08f, 0.50f, 1.0f);
+    editorZoom = ofClamp(widthScale * manualEditorZoom, 0.42f, 2.0f);
+    editorFontZoom = ofClamp(editorZoom + 0.08f, 0.50f, 2.0f);
     chordSequenceLayoutZoom = editorZoom;
     chordSequenceFontZoom = editorFontZoom;
 
@@ -2185,17 +2303,41 @@ void chordSequence::drawEditor() {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(scaledUi(8.0f), scaledUi(4.0f)));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scaledUi(4.0f), scaledUi(3.0f)));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(scaledUi(8.0f), scaledUi(8.0f)));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.08f, 0.11f, 0.09f, 0.96f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.12f, 0.16f, 0.13f, 0.98f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.16f, 0.21f, 0.17f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.82f, 0.95f, 0.85f, 0.30f));
+
+    float toolbarRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
+    float buttonWidth = scaledUi(28.0f);
+    float spacing = ImGui::GetStyle().ItemSpacing.x;
+    std::string zoomLabel = "Zoom " + ofToString(static_cast<int>(std::round(editorZoom * 100.0f))) + "%";
+    float labelWidth = ImGui::CalcTextSize(zoomLabel.c_str()).x;
+    float toolbarWidth = buttonWidth * 2.0f + labelWidth + spacing * 2.0f;
+    ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), toolbarRight - toolbarWidth));
+    if(ImGui::Button("-##ChordSequenceZoom", ImVec2(buttonWidth, 0.0f))) {
+        manualEditorZoom = std::max(0.5f, manualEditorZoom - 0.1f);
+    }
+    ImGui::SameLine(0.0f, spacing);
+    ImGui::TextUnformatted(zoomLabel.c_str());
+    ImGui::SameLine(0.0f, spacing);
+    if(ImGui::Button("+##ChordSequenceZoom", ImVec2(buttonWidth, 0.0f))) {
+        manualEditorZoom = std::min(2.0f, manualEditorZoom + 0.1f);
+    }
+    ImGui::Spacing();
 
     float gap = scaledUi(6.0f);
     float availableWidth = ImGui::GetContentRegionAvail().x;
-    float snapshotsWidth = std::max(scaledUi(320.0f), availableWidth * 0.27f);
-    float globalWidth = std::max(scaledUi(360.0f), availableWidth * 0.38f);
-    float cypherWidth = std::max(scaledUi(240.0f), availableWidth - snapshotsWidth - globalWidth - gap * 2.0f);
+    float snapshotsWidth = std::max(scaledUi(280.0f), availableWidth * 0.20f);
+    float globalWidth = std::max(scaledUi(320.0f), availableWidth * 0.23f);
+    float randomationWidth = std::max(scaledUi(280.0f), availableWidth * 0.22f);
+    float cypherWidth = std::max(scaledUi(240.0f), availableWidth - snapshotsWidth - globalWidth - randomationWidth - gap * 3.0f);
     bool hasActiveSnapshot = activeSnapshotSlot >= 0 &&
                              activeSnapshotSlot < SnapshotSlots &&
                              snapshotSlots[activeSnapshotSlot].hasData;
     float snapshotsHeight = getSnapshotsSectionHeight(snapshotsWidth, hasActiveSnapshot);
     float globalHeight = getGlobalSectionHeight();
+    float randomationHeight = getRandomationSectionHeight();
     float cypherHeight = getCypherSectionHeight(!importedProgressionNames.empty(), !jazzStandardNames.empty());
 
     float maxStepCardHeight = 0.0f;
@@ -2239,6 +2381,19 @@ void chordSequence::drawEditor() {
 
     ImGui::SameLine(0.0f, gap);
 
+    beginColoredSection("RandomationSection",
+                        "Randomation",
+                        ImVec2(randomationWidth, randomationHeight),
+                        randomationBg,
+                        randomationTitle,
+                        randomationSectionExpanded,
+                        editorFontZoom,
+                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    if(randomationSectionExpanded) drawRandomationControls();
+    ImGui::EndChild();
+
+    ImGui::SameLine(0.0f, gap);
+
     beginColoredSection("CypherSection",
                         "Cyphered Progressions",
                         ImVec2(cypherWidth, cypherHeight),
@@ -2272,6 +2427,7 @@ void chordSequence::drawEditor() {
     if(outputsSectionExpanded) drawOutputs();
     ImGui::EndChild();
 
+    ImGui::PopStyleColor(4);
     ImGui::PopStyleVar(3);
     ImGui::SetWindowFontScale(1.0f);
 }
@@ -2287,12 +2443,12 @@ void chordSequence::drawGlobalControls() {
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
-        if(ImGui::InputInt("Number of Chords", &numChords)) {
+        if(ImGui::InputInt("ChordNum", &numChords)) {
             numChordsParameter = ofClamp(numChords, numChordsParameter.getMin(), numChordsParameter.getMax());
         }
 
         ImGui::TableSetColumnIndex(1);
-        if(ImGui::InputInt("Active Index", &displayIndex)) {
+        if(ImGui::InputInt("Index", &displayIndex)) {
             int clampedIndex = ofClamp(displayIndex, 0, std::max(0, static_cast<int>(progression.size()) - 1));
             if(usesInternalProgressionOrder()) {
                 internalActiveStep = clampedIndex;
@@ -2309,7 +2465,7 @@ void chordSequence::drawGlobalControls() {
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
-        if(ImGui::InputInt("Num Outputs", &requestedOutputs)) {
+        if(ImGui::InputInt("OutputNum", &requestedOutputs)) {
             ensureOutputCount(requestedOutputs);
             refreshAllOutputs(true);
         }
@@ -2402,6 +2558,42 @@ void chordSequence::drawGlobalControls() {
     }
 }
 
+void chordSequence::drawRandomationControls() {
+    auto rerollAndRefresh = [this]() {
+        updateEffectiveGlobalModifiers(false, false, true);
+        outputBuildDirty = true;
+        lastRefreshedActiveIndex = -1;
+        refreshAllOutputs(true);
+    };
+
+    ImGui::TextDisabled("Transpose");
+    if(ImGui::InputInt("randomRange##TransposeRandomRange", &transposeRandomRange)) {
+        transposeRandomRange = std::max(0, transposeRandomRange);
+        rerollAndRefresh();
+    }
+    if(ImGui::InputInt("Q##TransposeRandomQ", &transposeRandomQuantization)) {
+        transposeRandomQuantization = std::max(1, transposeRandomQuantization);
+        rerollAndRefresh();
+    }
+    if(ImGui::Checkbox("step##TransposeRandomStep", &transposeRandomStep)) {
+        rerollAndRefresh();
+    }
+
+    ImGui::Separator();
+    ImGui::TextDisabled("Inversion");
+    if(ImGui::InputInt("randomRange##InversionRandomRange", &inversionRandomRange)) {
+        inversionRandomRange = std::max(0, inversionRandomRange);
+        rerollAndRefresh();
+    }
+    if(ImGui::InputInt("Q##InversionRandomQ", &inversionRandomQuantization)) {
+        inversionRandomQuantization = std::max(1, inversionRandomQuantization);
+        rerollAndRefresh();
+    }
+    if(ImGui::Checkbox("step##InversionRandomStep", &inversionRandomStep)) {
+        rerollAndRefresh();
+    }
+}
+
 void chordSequence::drawImportTools() {
     ImGui::SetNextItemWidth(std::min(scaledUi(220.0f), ImGui::GetContentRegionAvail().x));
     if(ImGui::InputText("Chord List", importChordBuffer.data(), importChordBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -2488,9 +2680,9 @@ void chordSequence::drawImportTools() {
 
 void chordSequence::drawEntries() {
     float availableWidth = ImGui::GetContentRegionAvail().x;
-    int visibleColumns = std::min(std::max(1, static_cast<int>(progression.size())), 6);
+    const int visibleColumns = 8;
     float gap = scaledUi(6.0f);
-    float slotWidth = std::max(scaledUi(170.0f), (availableWidth - gap * (visibleColumns - 1)) / static_cast<float>(visibleColumns));
+    float slotWidth = std::max(1.0f, (availableWidth - gap * (visibleColumns - 1)) / static_cast<float>(visibleColumns));
     float slotHeight = 0.0f;
     for(const auto &entry : progression) {
         slotHeight = std::max(slotHeight, getChordSequenceEntryCardHeight(entry.mode, markovEnabled));
@@ -2510,14 +2702,14 @@ void chordSequence::drawEntryEditor(int index, float width) {
     float cardHeight = getChordSequenceEntryCardHeight(entry.mode, markovEnabled);
 
     ImGui::PushID(index);
-    ImVec4 headerColor = isActive ? ImVec4(0.15f, 0.33f, 0.15f, 0.88f) : ImVec4(0.12f, 0.12f, 0.12f, 0.86f);
+    ImVec4 headerColor = isActive ? ImVec4(0.23f, 0.52f, 0.29f, 0.96f) : ImVec4(0.08f, 0.22f, 0.13f, 0.92f);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, headerColor);
     ImGui::BeginChild("StepEntryCard", ImVec2(width, cardHeight), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::PopStyleColor();
 
     ImGui::Text("Step %d", index);
     ImGui::SameLine();
-    ImGui::TextColored(isActive ? ImVec4(0.50f, 1.0f, 0.50f, 1.0f) : ImVec4(0.60f, 0.60f, 0.60f, 1.0f), isActive ? "ACTIVE" : "idle");
+    ImGui::TextColored(isActive ? ImVec4(0.92f, 1.00f, 0.94f, 1.0f) : ImVec4(0.70f, 0.88f, 0.74f, 1.0f), isActive ? "ACTIVE" : "idle");
 
     float rowWidth = std::max(scaledUi(140.0f), ImGui::GetContentRegionAvail().x * 0.94f);
     float labelGap = scaledUi(10.0f);
@@ -2736,9 +2928,24 @@ void chordSequence::drawEntryEditor(int index, float width) {
             if(j > 0) ImGui::SameLine(0.0f, innerGap);
             ImGui::BeginGroup();
             ImVec2 sliderSize(sliderWidth, sliderHeight);
+            ImGui::PushStyleColor(ImGuiCol_SliderGrab, IM_COL32(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_SliderGrabActive, IM_COL32(0, 0, 0, 0));
             if(ImGui::VSliderFloat(("##To" + ofToString(j)).c_str(), sliderSize, &entry.markovWeights[j], 0.0f, 1.0f, "")) {
                 entry.markovWeights[j] = std::max(0.0f, entry.markovWeights[j]);
             }
+            ImVec2 sliderMin = ImGui::GetItemRectMin();
+            ImVec2 sliderMax = ImGui::GetItemRectMax();
+            float normalizedWeight = ofClamp(entry.markovWeights[j], 0.0f, 1.0f);
+            float fillTop = sliderMax.y - (sliderMax.y - sliderMin.y) * normalizedWeight;
+            ImDrawList *drawList = ImGui::GetWindowDrawList();
+            ImU32 fillColor = ImGui::GetColorU32(ImGuiCol_PlotHistogram);
+            ImU32 borderColor = ImGui::GetColorU32(ImGuiCol_Border);
+            drawList->AddRectFilled(ImVec2(sliderMin.x, fillTop),
+                                    sliderMax,
+                                    fillColor,
+                                    2.0f);
+            drawList->AddRect(sliderMin, sliderMax, borderColor, 2.0f);
+            ImGui::PopStyleColor(2);
             std::string stepLabel = ofToString(j);
             float textWidth = ImGui::CalcTextSize(stepLabel.c_str()).x;
             float centeredX = ImGui::GetCursorPosX() + std::max(0.0f, (sliderWidth - textWidth) * 0.5f);
@@ -2766,6 +2973,16 @@ void chordSequence::drawEntryEditor(int index, float width) {
         refreshAllOutputs(true);
     }
     drawRowLabel(rowStartX, "Transpose");
+
+    rowStartX = ImGui::GetCursorPosX();
+    ImGui::SetNextItemWidth(controlWidth);
+    std::string rootLabel = getEntryDisplayRootLabel(entry);
+    char rootBuf[32];
+    std::snprintf(rootBuf, sizeof(rootBuf), "%s", rootLabel.c_str());
+    ImGui::BeginDisabled();
+    ImGui::InputText("##Root", rootBuf, sizeof(rootBuf), ImGuiInputTextFlags_ReadOnly);
+    ImGui::EndDisabled();
+    drawRowLabel(rowStartX, "Root");
 
     rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
@@ -2818,7 +3035,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
     float cardHeight = getOutputCardHeight(config);
 
     ImGui::PushID(index);
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.10f, 0.14f, 0.15f, 0.88f));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.07f, 0.20f, 0.12f, 0.92f));
     ImGui::BeginChild("OutputCard", ImVec2(width, cardHeight), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::PopStyleColor();
 
@@ -3097,8 +3314,8 @@ void chordSequence::drawSnapshotManager() {
 
         bool hasData = snapshotSlots[i].hasData;
         bool isActive = activeSnapshotSlot == i;
-        ImVec4 color = hasData ? ImVec4(0.22f, 0.36f, 0.52f, 1.0f) : ImVec4(0.18f, 0.18f, 0.18f, 1.0f);
-        if(isActive) color = ImVec4(0.42f, 0.62f, 0.86f, 1.0f);
+        ImVec4 color = hasData ? ImVec4(0.17f, 0.28f, 0.35f, 1.0f) : ImVec4(0.11f, 0.12f, 0.15f, 1.0f);
+        if(isActive) color = ImVec4(0.76f, 0.48f, 0.26f, 1.0f);
 
         ImGui::PushID(i);
         ImGui::PushStyleColor(ImGuiCol_Button, color);
@@ -3175,6 +3392,12 @@ ofJson chordSequence::serializeCurrentState() const {
     json["globalScaleName"] = globalScaleName;
     json["globalTranspose"] = globalTranspose;
     json["globalInvert"] = globalInvert;
+    json["transposeRandomRange"] = transposeRandomRange;
+    json["transposeRandomQuantization"] = transposeRandomQuantization;
+    json["transposeRandomStep"] = transposeRandomStep;
+    json["inversionRandomRange"] = inversionRandomRange;
+    json["inversionRandomQuantization"] = inversionRandomQuantization;
+    json["inversionRandomStep"] = inversionRandomStep;
     json["globalPitchBend"] = globalPitchBend;
     json["progressionOrder"] = progressionOrder;
     json["internalTimingEnabled"] = internalTimingEnabled;
@@ -3199,6 +3422,18 @@ void chordSequence::deserializeState(const ofJson &json, bool forceInstant) {
     globalScaleName = json.value("globalScaleName", std::string());
     globalTranspose = json.value("globalTranspose", 0);
     globalInvert = json.value("globalInvert", 0);
+    transposeRandomRange = std::max(0, json.value("transposeRandomRange", 0));
+    transposeRandomQuantization = std::max(1, json.value("transposeRandomQuantization", 1));
+    transposeRandomStep = json.value("transposeRandomStep", false);
+    inversionRandomRange = std::max(0, json.value("inversionRandomRange", 0));
+    inversionRandomQuantization = std::max(1, json.value("inversionRandomQuantization", 1));
+    inversionRandomStep = json.value("inversionRandomStep", false);
+    currentTransposeRandomOffset = 0;
+    currentInversionRandomOffset = 0;
+    effectiveGlobalTranspose = globalTranspose;
+    effectiveGlobalInvert = globalInvert;
+    pendingRandomationStepAdvance = false;
+    pendingRandomationSequenceRestart = false;
     globalPitchBend = json.value("globalPitchBend", json.value("pitchBend", 0.0f));
     int loadedProgressionOrder = InputIdx;
     if(json.contains("progressionOrder")) {
@@ -3265,6 +3500,12 @@ void chordSequence::storeToSlot(int slot) {
     snapshot.globalScaleName = globalScaleName;
     snapshot.globalTranspose = globalTranspose;
     snapshot.globalInvert = globalInvert;
+    snapshot.transposeRandomRange = transposeRandomRange;
+    snapshot.transposeRandomQuantization = transposeRandomQuantization;
+    snapshot.transposeRandomStep = transposeRandomStep;
+    snapshot.inversionRandomRange = inversionRandomRange;
+    snapshot.inversionRandomQuantization = inversionRandomQuantization;
+    snapshot.inversionRandomStep = inversionRandomStep;
     snapshot.globalPitchBend = globalPitchBend;
     snapshot.progressionOrder = progressionOrder;
     snapshot.internalTimingEnabled = internalTimingEnabled;

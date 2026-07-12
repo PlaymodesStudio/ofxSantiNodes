@@ -103,6 +103,12 @@ struct chordSequenceSnapshot {
     std::string globalScaleName;
     int globalTranspose = 0;
     int globalInvert = 0;
+    int transposeRandomRange = 0;
+    int transposeRandomQuantization = 1;
+    bool transposeRandomStep = false;
+    int inversionRandomRange = 0;
+    int inversionRandomQuantization = 1;
+    bool inversionRandomStep = false;
     float globalPitchBend = 0.0f;
     int progressionOrder = 0;
     bool internalTimingEnabled = false;
@@ -146,6 +152,7 @@ private:
     ofParameter<float> pitchBendParameter;
     ofParameter<int> inversionParameter;
     ofParameter<void> resetSequenceParameter;
+    ofParameter<float> rootOutput;
     ofParameter<bool> showEditor;
     ofParameter<float> editorWidth;
     ofParameter<float> editorHeight;
@@ -178,6 +185,18 @@ private:
     std::string globalScaleName;
     int globalTranspose = 0;
     int globalInvert = 0;
+    int transposeRandomRange = 0;
+    int transposeRandomQuantization = 1;
+    bool transposeRandomStep = false;
+    int inversionRandomRange = 0;
+    int inversionRandomQuantization = 1;
+    bool inversionRandomStep = false;
+    int currentTransposeRandomOffset = 0;
+    int currentInversionRandomOffset = 0;
+    int effectiveGlobalTranspose = 0;
+    int effectiveGlobalInvert = 0;
+    bool pendingRandomationStepAdvance = false;
+    bool pendingRandomationSequenceRestart = false;
     float globalPitchBend = 0.0f;
     int progressionOrder = InputIdx;
     bool internalTimingEnabled = false;
@@ -189,9 +208,11 @@ private:
     bool outputBuildDirty = true;
     float editorZoom = 1.0f;
     float editorFontZoom = 1.0f;
+    float manualEditorZoom = 1.0f;
     std::mt19937 randomEngine;
     bool snapshotsSectionExpanded = true;
     bool globalSectionExpanded = true;
+    bool randomationSectionExpanded = true;
     bool cypherSectionExpanded = true;
     bool stepsSectionExpanded = true;
     bool outputsSectionExpanded = true;
@@ -258,6 +279,8 @@ private:
                                                const chordSequenceOutputConfig &config,
                                                float &outputRoot) const;
     float getEntryRootValue(const chordSequenceEntry &entry) const;
+    float getEntryDisplayRootPitchClass(const chordSequenceEntry &entry) const;
+    std::string getEntryDisplayRootLabel(const chordSequenceEntry &entry) const;
     std::vector<float> buildEntryPreviewOutput(const chordSequenceEntry &entry) const;
     std::vector<float> applyVoicing(const std::vector<float> &values, int voicingMode) const;
     std::vector<float> applyVoicingSpread(const std::vector<float> &values, float spread) const;
@@ -280,9 +303,11 @@ private:
     void setProgressionOrder(int order, bool refreshSequence);
     int resolveActiveIndex() const;
     float getStepDurationMs(int stepIndex) const;
-    void resetInternalSequence(bool forceInstant);
+    void resetInternalSequence(bool forceInstant, double anchorBeat = -1.0);
     int chooseNextInternalStep(int currentStep);
     void advanceInternalSequence();
+    int generateRandomizedModifier(int range, int quantization);
+    void updateEffectiveGlobalModifiers(bool sequenceRestart, bool stepAdvance, bool forceReroll = false);
 
     void refreshAllOutputs(bool forceInstant = false);
     void beginGlideTo(int outputIndex, const std::vector<float> &nextTarget, bool forceInstant);
@@ -293,6 +318,7 @@ private:
 
     void drawEditor();
     void drawGlobalControls();
+    void drawRandomationControls();
     void drawImportTools();
     void drawEntries();
     void drawEntryEditor(int index, float width);
