@@ -2303,10 +2303,6 @@ void chordSequence::drawEditor() {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(scaledUi(8.0f), scaledUi(4.0f)));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scaledUi(4.0f), scaledUi(3.0f)));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(scaledUi(8.0f), scaledUi(8.0f)));
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.08f, 0.11f, 0.09f, 0.96f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.12f, 0.16f, 0.13f, 0.98f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.16f, 0.21f, 0.17f, 1.00f));
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.82f, 0.95f, 0.85f, 0.30f));
 
     float toolbarRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
     float buttonWidth = scaledUi(28.0f);
@@ -2427,7 +2423,6 @@ void chordSequence::drawEditor() {
     if(outputsSectionExpanded) drawOutputs();
     ImGui::EndChild();
 
-    ImGui::PopStyleColor(4);
     ImGui::PopStyleVar(3);
     ImGui::SetWindowFontScale(1.0f);
 }
