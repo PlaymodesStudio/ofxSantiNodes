@@ -5,7 +5,9 @@
 #include "ofxOceanodeShared.h"
 #include "imgui.h"
 #include <algorithm>
+#include <cmath>
 #include <functional>
+#include <limits>
 
 class histogram2 : public ofxOceanodeNodeModel {
 public:
@@ -52,6 +54,7 @@ public:
 		addInspectorParameter(showGrid.set("Grid", true));
 		addInspectorParameter(laneHeight.set("Lane Height", 80.0f, 40.0f, 200.0f));
 		addInspectorParameter(lineThickness.set("Line Thickness", 1.5f, 0.5f, 5.0f));
+		addInspectorParameter(drawMode.set("Draw Mode", 0, 0, 1));
 
 		// Embedded node GUI region
 		addCustomRegion(
@@ -247,12 +250,16 @@ private:
 		float timeWindowSeconds = ofClamp(timeWindow.get(), 0.1f, maxBufferTime);
 		int samplesToDisplay = (int)(timeWindowSeconds * 60.0f);
 		samplesToDisplay = ofClamp(samplesToDisplay, 10, maxBufferSamples);
+		const int pixelColumns = std::max(2, (int)std::round(targetW));
+		const bool aggregateColumns = samplesToDisplay > pixelColumns;
 		
 		// Layout calculation
-		const float laneH = laneHeight.get();
+		const float availableHeight = std::max(1.0f, targetH);
+		const float laneH = std::max(8.0f, availableHeight / std::max<size_t>(1, numLanes));
 		const float totalHeight = laneH * numLanes;
 		const float gainValue = gain.get();
 		const float thickness = lineThickness.get();
+		const bool filledMode = drawMode.get() == 1;
 
 		ImVec2 start = cursorPos;
 		ImVec2 end = ImVec2(start.x + targetW, start.y + totalHeight);
@@ -309,6 +316,8 @@ private:
 				if(buffer.empty()) continue;
 				
 				const int channelOffset = lane * maxBufferSamples;
+				const int recentIdx = (writeIndex - 1 + maxBufferSamples) % maxBufferSamples;
+				const int oldestIdx = (recentIdx - samplesToDisplay + 1 + maxBufferSamples) % maxBufferSamples;
 				
 				// Calculate alpha: 100%, 75%, 50%, 25% for inputs 0, 1, 2, 3...
 				// Formula: (numInputs - inputIdx) / numInputs
@@ -316,56 +325,110 @@ private:
 				
 				// Same hue for same lane, but different alpha per input
 				ImU32 color = ImColor::HSV(hue, 0.6f, 0.9f, alpha);
+				ImU32 aggregateBandColor = ImColor::HSV(hue, 0.45f, 0.85f, alpha * 0.35f);
 
-				// Draw waveform - one line segment per pixel
-				for(int px = 0; px < (int)targetW - 1; ++px) {
-					// Map pixel to sample index
-					float t1 = (float)px / (float)(targetW - 1);
-					float t2 = (float)(px + 1) / (float)(targetW - 1);
-					
-					// Calculate sample indices
-					int recentIdx = (writeIndex - 1 + maxBufferSamples) % maxBufferSamples;
-					int oldestIdx = (recentIdx - samplesToDisplay + 1 + maxBufferSamples) % maxBufferSamples;
-					
-					// Get samples for this pixel
-					int sampleIdx1, sampleIdx2;
-					if(oldestIdx < recentIdx) {
-						// No wrap-around
-						sampleIdx1 = oldestIdx + (int)(t1 * samplesToDisplay);
-						sampleIdx2 = oldestIdx + (int)(t2 * samplesToDisplay);
-					} else {
-						// Circular buffer wraps around
-						int idx1 = (int)(t1 * samplesToDisplay);
-						int idx2 = (int)(t2 * samplesToDisplay);
-						sampleIdx1 = (oldestIdx + idx1) % maxBufferSamples;
-						sampleIdx2 = (oldestIdx + idx2) % maxBufferSamples;
+				const float fillBaseY = laneY + laneH * 0.95f;
+				auto bufferValueAtDisplayOffset = [&](int displayOffset) {
+					int wrappedIndex = (oldestIdx + displayOffset) % maxBufferSamples;
+					return buffer[channelOffset + wrappedIndex];
+				};
+				auto valueToY = [&](float value) {
+					float clampedValue = ofClamp(value * gainValue, minV, maxV);
+					float normalized = (clampedValue - minV) / range;
+					return laneY + laneH - (normalized * laneH * 0.9f) - (laneH * 0.05f);
+				};
+
+				if(aggregateColumns) {
+					float previousAvgY = 0.0f;
+					bool hasPreviousAvg = false;
+
+					for(int px = 0; px < pixelColumns; ++px) {
+						int offsetStart = (px * samplesToDisplay) / pixelColumns;
+						int offsetEnd = ((px + 1) * samplesToDisplay) / pixelColumns;
+						offsetEnd = std::max(offsetEnd, offsetStart + 1);
+
+						float minSample = std::numeric_limits<float>::max();
+						float maxSample = std::numeric_limits<float>::lowest();
+						float sumSample = 0.0f;
+						int sampleCount = 0;
+						for(int offset = offsetStart; offset < offsetEnd; ++offset) {
+							float sample = bufferValueAtDisplayOffset(offset);
+							minSample = std::min(minSample, sample);
+							maxSample = std::max(maxSample, sample);
+							sumSample += sample;
+							sampleCount++;
+						}
+						if(sampleCount <= 0) continue;
+
+						float avgSample = sumSample / (float)sampleCount;
+						float yMin = valueToY(minSample);
+						float yMax = valueToY(maxSample);
+						if(yMin > yMax) std::swap(yMin, yMax);
+						float yAvg = valueToY(avgSample);
+						float x = start.x + ((float)px / (float)std::max(1, pixelColumns - 1)) * targetW;
+
+						if(filledMode) {
+							drawList->AddLine(
+								ImVec2(x, fillBaseY),
+								ImVec2(x, yAvg),
+								color,
+								std::max(1.0f, thickness)
+							);
+						} else {
+							drawList->AddLine(
+								ImVec2(x, yMin),
+								ImVec2(x, yMax),
+								aggregateBandColor,
+								std::max(1.0f, thickness)
+							);
+							if(hasPreviousAvg) {
+								float prevX = start.x + ((float)(px - 1) / (float)std::max(1, pixelColumns - 1)) * targetW;
+								drawList->AddLine(
+									ImVec2(prevX, previousAvgY),
+									ImVec2(x, yAvg),
+									color,
+									thickness
+								);
+							}
+						}
+
+						previousAvgY = yAvg;
+						hasPreviousAvg = true;
 					}
-					
-					// Read values from buffer
-					float val1 = buffer[channelOffset + sampleIdx1];
-					float val2 = buffer[channelOffset + sampleIdx2];
-					
-					// Apply gain and clamp
-					val1 = ofClamp(val1 * gainValue, minV, maxV);
-					val2 = ofClamp(val2 * gainValue, minV, maxV);
-					
-					// Normalize to [0,1] within range
-					float norm1 = (val1 - minV) / range;
-					float norm2 = (val2 - minV) / range;
-					
-					// Convert to screen Y coordinates (flip so high values are at top)
-					float y1 = laneY + laneH - (norm1 * laneH * 0.9f) - (laneH * 0.05f);
-					float y2 = laneY + laneH - (norm2 * laneH * 0.9f) - (laneH * 0.05f);
-					
-					float x1 = start.x + px;
-					float x2 = start.x + px + 1;
-					
-					drawList->AddLine(
-						ImVec2(x1, y1),
-						ImVec2(x2, y2),
-						color,
-						thickness
-					);
+				} else {
+					// Draw waveform - preserve direct detail when there are fewer samples than pixels.
+					for(int px = 0; px < pixelColumns - 1; ++px) {
+						float t1 = (float)px / (float)std::max(1, pixelColumns - 1);
+						float t2 = (float)(px + 1) / (float)std::max(1, pixelColumns - 1);
+						int offset1 = ofClamp((int)(t1 * samplesToDisplay), 0, samplesToDisplay - 1);
+						int offset2 = ofClamp((int)(t2 * samplesToDisplay), 0, samplesToDisplay - 1);
+						float y1 = valueToY(bufferValueAtDisplayOffset(offset1));
+						float y2 = valueToY(bufferValueAtDisplayOffset(offset2));
+						float x1 = start.x + t1 * targetW;
+						float x2 = start.x + t2 * targetW;
+
+						if(filledMode) {
+							drawList->AddLine(
+								ImVec2(x1, fillBaseY),
+								ImVec2(x1, y1),
+								color,
+								std::max(1.0f, thickness)
+							);
+							drawList->AddLine(
+								ImVec2(x2, fillBaseY),
+								ImVec2(x2, y2),
+								color,
+								std::max(1.0f, thickness)
+							);
+						} else {
+							drawList->AddLine(
+								ImVec2(x1, y1),
+								ImVec2(x2, y2),
+								color,
+								thickness
+							);
+						}
+					}
 				}
 			}
 		}
@@ -393,6 +456,7 @@ private:
 	ofParameter<bool> showGrid;
 	ofParameter<float> laneHeight;
 	ofParameter<float> lineThickness;
+	ofParameter<int> drawMode;
 
 	// Internal state - multiple sliding buffers (one per input)
 	std::vector<std::vector<float>> slidingBuffers;  // One buffer per input
