@@ -257,30 +257,31 @@ namespace {
                                      float speed,
                                      float minValue,
                                      float maxValue,
-                                     const char *format) {
+                                     const char *format,
+                                     const std::function<void()> &popupExtras = {}) {
         bool changed = ImGui::DragFloat(label, &value, speed, minValue, maxValue, format);
         value = ofClamp(value, minValue, maxValue);
 
         if(ImGui::BeginPopupContextItem()) {
             static char valueBuffer[64] = "";
-            static ImGuiID activePopupItem = 0;
-            ImGuiID currentItem = ImGui::GetItemID();
-
-            if(activePopupItem != currentItem) {
+            if(ImGui::IsWindowAppearing()) {
                 std::snprintf(valueBuffer, sizeof(valueBuffer), format, value);
-                activePopupItem = currentItem;
+                ImGui::SetKeyboardFocusHere();
             }
 
             ImGui::SetNextItemWidth(scaledUi(120.0f));
-            ImGui::SetKeyboardFocusHere();
             if(ImGui::InputText("##value", valueBuffer, sizeof(valueBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
                 try {
                     value = ofClamp(std::stof(std::string(valueBuffer)), minValue, maxValue);
                     changed = true;
                 } catch(...) {
                 }
-                activePopupItem = 0;
                 ImGui::CloseCurrentPopup();
+            }
+
+            if(popupExtras) {
+                ImGui::Separator();
+                popupExtras();
             }
             ImGui::EndPopup();
         }
@@ -668,6 +669,7 @@ void chordSequence::setup() {
     loadImportSources();
     initializeDefaultProgression();
     ensureOutputCount(numOutputs);
+    initializePublishableEditorParameters();
     syncNodeGuiParametersFromState();
     loadAllSnapshotsFromDisk();
     setProgressionOrder(progressionOrder, false);
@@ -779,6 +781,18 @@ void chordSequence::draw(ofEventArgs &) {
 void chordSequence::presetSave(ofJson &json) {
     json["state"] = serializeCurrentState();
     json["activeSnapshotSlot"] = activeSnapshotSlot;
+    json["publishedEditorParameters"] = publishedEditorParameterKeys;
+}
+
+void chordSequence::presetRecallBeforeSettingParameters(ofJson &json) {
+    std::vector<std::string> publishedKeys;
+    if(json.contains("publishedEditorParameters") && json["publishedEditorParameters"].is_array()) {
+        try {
+            publishedKeys = json["publishedEditorParameters"].get<std::vector<std::string>>();
+        } catch(...) {
+        }
+    }
+    syncPublishedEditorParameters(publishedKeys);
 }
 
 void chordSequence::presetRecallAfterSettingParameters(ofJson &json) {
@@ -927,6 +941,8 @@ void chordSequence::loadImportSources() {
 
 void chordSequence::reloadLibraries() {
     loadLibraries();
+    initializePublishableEditorParameters();
+    syncPublishedEditorParameters(publishedEditorParameterKeys);
     sanitizeProgression();
     refreshAllOutputs(true);
 }
@@ -936,6 +952,8 @@ void chordSequence::ensureOutputCount(int newCount) {
     int oldCount = static_cast<int>(outputs.size());
     if(newCount == oldCount) {
         numOutputs = newCount;
+        initializePublishableEditorParameters();
+        syncNodeGuiParametersFromState();
         return;
     }
 
@@ -968,6 +986,8 @@ void chordSequence::ensureOutputCount(int newCount) {
 
     numOutputs = newCount;
     rebuildOutputSizeParameters();
+    initializePublishableEditorParameters();
+    syncPublishedEditorParameters(publishedEditorParameterKeys);
     syncNodeGuiParametersFromState();
 }
 
@@ -1042,6 +1062,735 @@ void chordSequence::syncNodeGuiParametersFromState() {
             outputSizeParameters[i]->set(outputConfigs[i].outputSize);
         }
     }
+
+    syncPublishedEditorProxyValuesFromState();
+}
+
+void chordSequence::initializePublishableEditorParameters() {
+    publishableEditorParameters.clear();
+
+    auto registerNative = [this](const std::string &key, auto &parameter) {
+        EditorPublishAction action;
+        action.key = key;
+        action.publish = [this, key, &parameter]() { return publishEditorParameterToNode(key, parameter); };
+        action.unpublish = [this, key]() { return unpublishEditorParameterFromNode(key); };
+        action.isPublished = [this, key]() { return isEditorParameterPublished(key); };
+        action.isAvailableInNode = [this, &parameter]() { return getParameterGroup().contains(parameter.getEscapedName()); };
+        publishableEditorParameters.push_back(std::move(action));
+    };
+
+    auto registerExistingOnly = [this](const std::string &key, const std::function<bool()> &availableInNode) {
+        EditorPublishAction action;
+        action.key = key;
+        action.publish = []() { return false; };
+        action.unpublish = []() { return false; };
+        action.isPublished = []() { return false; };
+        action.isAvailableInNode = availableInNode;
+        publishableEditorParameters.push_back(std::move(action));
+    };
+
+    auto registerIntProxy = [this](const std::string &key,
+                                   const std::string &name,
+                                   int minValue,
+                                   int maxValue,
+                                   const std::function<int()> &getter,
+                                   const std::function<void(int)> &setter,
+                                   const std::vector<std::string> &options = std::vector<std::string>()) {
+        EditorPublishAction action;
+        action.key = key;
+        action.publish = [this, key, name, minValue, maxValue, getter, setter, options]() {
+            return publishEditorIntProxyToNode(key, name, minValue, maxValue, getter, setter, options);
+        };
+        action.unpublish = [this, key]() { return unpublishEditorParameterFromNode(key); };
+        action.isPublished = [this, key]() { return isEditorParameterPublished(key); };
+        action.isAvailableInNode = []() { return false; };
+        action.syncFromState = [this, key, getter]() { syncPublishedEditorIntProxyValue(key, getter()); };
+        publishableEditorParameters.push_back(std::move(action));
+    };
+
+    auto registerFloatProxy = [this](const std::string &key,
+                                     const std::string &name,
+                                     float minValue,
+                                     float maxValue,
+                                     const std::function<float()> &getter,
+                                     const std::function<void(float)> &setter) {
+        EditorPublishAction action;
+        action.key = key;
+        action.publish = [this, key, name, minValue, maxValue, getter, setter]() {
+            return publishEditorFloatProxyToNode(key, name, minValue, maxValue, getter, setter);
+        };
+        action.unpublish = [this, key]() { return unpublishEditorParameterFromNode(key); };
+        action.isPublished = [this, key]() { return isEditorParameterPublished(key); };
+        action.isAvailableInNode = []() { return false; };
+        action.syncFromState = [this, key, getter]() { syncPublishedEditorFloatProxyValue(key, getter()); };
+        publishableEditorParameters.push_back(std::move(action));
+    };
+
+    auto registerBoolProxy = [this](const std::string &key,
+                                    const std::string &name,
+                                    const std::function<bool()> &getter,
+                                    const std::function<void(bool)> &setter) {
+        EditorPublishAction action;
+        action.key = key;
+        action.publish = [this, key, name, getter, setter]() {
+            return publishEditorBoolProxyToNode(key, name, getter, setter);
+        };
+        action.unpublish = [this, key]() { return unpublishEditorParameterFromNode(key); };
+        action.isPublished = [this, key]() { return isEditorParameterPublished(key); };
+        action.isAvailableInNode = []() { return false; };
+        action.syncFromState = [this, key, getter]() { syncPublishedEditorBoolProxyValue(key, getter()); };
+        publishableEditorParameters.push_back(std::move(action));
+    };
+
+    registerNative("index", indexInput);
+    registerNative("numChords", numChordsParameter);
+    registerNative("transpose", transposeParameter);
+    registerNative("pitchBend", pitchBendParameter);
+    registerNative("inversion", inversionParameter);
+    registerNative("resetSequence", resetSequenceParameter);
+
+    registerIntProxy("numOutputs", "OutputNum", 1, MaxOutputs,
+                     [this]() { return numOutputs; },
+                     [this](int value) {
+                         ensureOutputCount(ofClamp(value, 1, MaxOutputs));
+                         refreshAllOutputs(true);
+                     });
+
+    registerIntProxy("progressionOrder", "Progression", InputIdx, Markov,
+                     [this]() { return progressionOrder; },
+                     [this](int value) { setProgressionOrder(ofClamp(value, InputIdx, Markov), true); },
+                     {"Input Idx", "Ascendent", "Descendent", "Random", "Markov"});
+
+    std::vector<std::string> keyOptions(std::begin(keyNames), std::end(keyNames));
+    registerIntProxy("globalKey", "Key Root", 0, 11,
+                     [this]() { return globalKey; },
+                     [this](int value) {
+                         globalKey = ofClamp(value, 0, 11);
+                         refreshAllOutputs(true);
+                     },
+                     keyOptions);
+
+    std::vector<std::string> scaleOptions;
+    scaleOptions.reserve(scaleLibrary.size());
+    for(const auto &item : scaleLibrary) scaleOptions.push_back(item.name);
+    registerIntProxy("globalScale", "Key Scale", 0, std::max(0, static_cast<int>(scaleOptions.size()) - 1),
+                     [this]() { return getGlobalScaleSafeIndex(); },
+                     [this](int value) {
+                         if(scaleLibrary.empty()) return;
+                         int index = ofClamp(value, 0, static_cast<int>(scaleLibrary.size()) - 1);
+                         globalScaleIndex = index;
+                         globalScaleName = scaleLibrary[index].name;
+                         sanitizeProgression();
+                         refreshAllOutputs(true);
+                     },
+                     scaleOptions);
+
+    registerIntProxy("transposeRandomRange", "Transpose Random Range", 0, 48,
+                     [this]() { return transposeRandomRange; },
+                     [this](int value) {
+                         transposeRandomRange = std::max(0, value);
+                         updateEffectiveGlobalModifiers(false, false, true);
+                         refreshAllOutputs(true);
+                     });
+    registerIntProxy("transposeRandomQuantization", "Transpose Random Q", 1, 48,
+                     [this]() { return transposeRandomQuantization; },
+                     [this](int value) {
+                         transposeRandomQuantization = std::max(1, value);
+                         updateEffectiveGlobalModifiers(false, false, true);
+                         refreshAllOutputs(true);
+                     });
+    registerBoolProxy("transposeRandomStep", "Transpose Random Step",
+                      [this]() { return transposeRandomStep; },
+                      [this](bool value) {
+                          transposeRandomStep = value;
+                          updateEffectiveGlobalModifiers(false, false, true);
+                          refreshAllOutputs(true);
+                      });
+    registerIntProxy("inversionRandomRange", "Inversion Random Range", 0, 24,
+                     [this]() { return inversionRandomRange; },
+                     [this](int value) {
+                         inversionRandomRange = std::max(0, value);
+                         updateEffectiveGlobalModifiers(false, false, true);
+                         refreshAllOutputs(true);
+                     });
+    registerIntProxy("inversionRandomQuantization", "Inversion Random Q", 1, 24,
+                     [this]() { return inversionRandomQuantization; },
+                     [this](int value) {
+                         inversionRandomQuantization = std::max(1, value);
+                         updateEffectiveGlobalModifiers(false, false, true);
+                         refreshAllOutputs(true);
+                     });
+    registerBoolProxy("inversionRandomStep", "Inversion Random Step",
+                      [this]() { return inversionRandomStep; },
+                      [this](bool value) {
+                          inversionRandomStep = value;
+                          updateEffectiveGlobalModifiers(false, false, true);
+                          refreshAllOutputs(true);
+                      });
+
+    for(int i = 0; i < static_cast<int>(progression.size()); i++) {
+        const std::string prefix = stepPublishPrefix(i);
+        const std::string labelPrefix = "Step " + ofToString(i + 1) + " ";
+        registerIntProxy(prefix + "mode", labelPrefix + "Type", chordSequenceEntry::Chord, chordSequenceEntry::Functional,
+                         [this, i]() { return progression[i].mode; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(progression.size())) return;
+                             chordSequenceEntry &entry = progression[i];
+                             entry.mode = ofClamp(value, chordSequenceEntry::Chord, chordSequenceEntry::Functional);
+                             if(entry.mode == chordSequenceEntry::Cypher) {
+                                 entry.itemName = entry.itemName.empty() ? "C" : entry.itemName;
+                             } else if(entry.mode == chordSequenceEntry::Degree) {
+                                 entry.itemIndex = 0;
+                                 entry.itemName = "Degree " + ofToString(std::max(1, entry.degree));
+                             } else if(entry.mode == chordSequenceEntry::Functional) {
+                                 entry.itemIndex = 0;
+                                 entry.functionalGroup = 0;
+                                 entry.functionalVariantIndex = 0;
+                                 if(entry.functionalVariantLabel.empty()) entry.functionalVariantLabel = "I";
+                             } else {
+                                 entry.itemIndex = getDefaultIndexForMode(entry.mode);
+                                 entry.itemName.clear();
+                             }
+                             sanitizeEntry(entry);
+                             refreshAllOutputs(true);
+                         },
+                         {"Chord", "Scale", "Cypher", "Degree", "Functional"});
+
+        registerIntProxy(prefix + "functionalGroup", labelPrefix + "Function", 0, 2,
+                         [this, i]() { return progression[i].functionalGroup; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(progression.size())) return;
+                             chordSequenceEntry &entry = progression[i];
+                             entry.functionalGroup = ofClamp(value, 0, 2);
+                             entry.functionalVariantIndex = 0;
+                             entry.functionalVariantLabel.clear();
+                             sanitizeEntry(entry);
+                             refreshAllOutputs(true);
+                         },
+                         {"Tonic", "Subdominant", "Dominant"});
+
+        registerIntProxy(prefix + "degree", labelPrefix + "Degree", 1, 32,
+                         [this, i]() { return progression[i].degree; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(progression.size())) return;
+                             progression[i].degree = std::max(1, value);
+                             sanitizeEntry(progression[i]);
+                             refreshAllOutputs(true);
+                         });
+        registerIntProxy(prefix + "chordSize", labelPrefix + "Chord Size", 1, 16,
+                         [this, i]() { return progression[i].chordSize; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(progression.size())) return;
+                             progression[i].chordSize = std::max(1, value);
+                             sanitizeEntry(progression[i]);
+                             refreshAllOutputs(true);
+                         });
+        registerIntProxy(prefix + "stepInterval", labelPrefix + "Step Interval", 1, 16,
+                         [this, i]() { return progression[i].stepInterval; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(progression.size())) return;
+                             progression[i].stepInterval = std::max(1, value);
+                             sanitizeEntry(progression[i]);
+                             refreshAllOutputs(true);
+                         });
+        registerFloatProxy(prefix + "diatonicDeviationProbability", labelPrefix + "Diat Dev %",
+                           0.0f, 100.0f,
+                           [this, i]() { return progression[i].diatonicDeviationProbability; },
+                           [this, i](float value) {
+                               if(i >= static_cast<int>(progression.size())) return;
+                               progression[i].diatonicDeviationProbability = ofClamp(value, 0.0f, 100.0f);
+                               sanitizeEntry(progression[i]);
+                               refreshAllOutputs(true);
+                           });
+        registerIntProxy(prefix + "diatonicDeviationRange", labelPrefix + "Diat Dev Range", 0, 24,
+                         [this, i]() { return progression[i].diatonicDeviationRange; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(progression.size())) return;
+                             progression[i].diatonicDeviationRange = std::max(0, value);
+                             sanitizeEntry(progression[i]);
+                             refreshAllOutputs(true);
+                         });
+        registerFloatProxy(prefix + "beatDuration", labelPrefix + "Beats",
+                           0.001f, 64.0f,
+                           [this, i]() { return progression[i].beatDuration; },
+                           [this, i](float value) {
+                               if(i >= static_cast<int>(progression.size())) return;
+                               progression[i].beatDuration = std::max(0.001f, value);
+                               outputBuildDirty = true;
+                               if(usesInternalProgressionOrder() && !progression.empty()) {
+                                   int activeStep = ofClamp(resolveActiveIndex(), 0, static_cast<int>(progression.size()) - 1);
+                                   nextInternalStepBeat = getFrameTransportState().current.beatPosition +
+                                                          std::max(0.001f, progression[activeStep].beatDuration);
+                               }
+                           });
+        registerIntProxy(prefix + "transpose", labelPrefix + "Transpose", -48, 48,
+                         [this, i]() { return progression[i].transpose; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(progression.size())) return;
+                             progression[i].transpose = value;
+                             refreshAllOutputs(true);
+                         });
+        registerIntProxy(prefix + "inversion", labelPrefix + "Inversion", -16, 16,
+                         [this, i]() { return progression[i].inversion; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(progression.size())) return;
+                             progression[i].inversion = value;
+                             refreshAllOutputs(true);
+                         });
+    }
+
+    for(int i = 0; i < static_cast<int>(outputConfigs.size()); i++) {
+        const std::string prefix = outputPublishPrefix(i);
+        const std::string labelPrefix = "Output " + ofToString(i + 1) + " ";
+        registerIntProxy(prefix + "octave", labelPrefix + "Octave", -8, 8,
+                         [this, i]() { return outputConfigs[i].octave; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(outputConfigs.size())) return;
+                             outputConfigs[i].octave = value;
+                             refreshAllOutputs(true);
+                         });
+        registerIntProxy(prefix + "transpose", labelPrefix + "Transpose", -48, 48,
+                         [this, i]() { return outputConfigs[i].transpose; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(outputConfigs.size())) return;
+                             outputConfigs[i].transpose = value;
+                             refreshAllOutputs(true);
+                         });
+        registerFloatProxy(prefix + "pitchBend", labelPrefix + "Pitch Bend", -24.0f, 24.0f,
+                           [this, i]() { return outputConfigs[i].pitchBend; },
+                           [this, i](float value) {
+                               if(i >= static_cast<int>(outputConfigs.size())) return;
+                               outputConfigs[i].pitchBend = ofClamp(value, -24.0f, 24.0f);
+                               refreshAllOutputs(true);
+                           });
+        registerFloatProxy(prefix + "detune", labelPrefix + "Detune", 0.0f, 2.0f,
+                           [this, i]() { return outputConfigs[i].perNoteDetune; },
+                           [this, i](float value) {
+                               if(i >= static_cast<int>(outputConfigs.size())) return;
+                               outputConfigs[i].perNoteDetune = std::max(0.0f, value);
+                               refreshAllOutputs(true);
+                           });
+        registerFloatProxy(prefix + "octRandProbability", labelPrefix + "Oct Rand %", 0.0f, 100.0f,
+                           [this, i]() { return outputConfigs[i].octaveRandomProbability; },
+                           [this, i](float value) {
+                               if(i >= static_cast<int>(outputConfigs.size())) return;
+                               outputConfigs[i].octaveRandomProbability = ofClamp(value, 0.0f, 100.0f);
+                               refreshAllOutputs(true);
+                           });
+        registerIntProxy(prefix + "octRandRange", labelPrefix + "Oct Rand Range", 0, 8,
+                         [this, i]() { return outputConfigs[i].octaveRandomRange; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(outputConfigs.size())) return;
+                             outputConfigs[i].octaveRandomRange = std::max(0, value);
+                             refreshAllOutputs(true);
+                         });
+        registerFloatProxy(prefix + "chromDevProbability", labelPrefix + "Chrom Dev %", 0.0f, 100.0f,
+                           [this, i]() { return outputConfigs[i].chromaticDeviationProbability; },
+                           [this, i](float value) {
+                               if(i >= static_cast<int>(outputConfigs.size())) return;
+                               outputConfigs[i].chromaticDeviationProbability = ofClamp(value, 0.0f, 100.0f);
+                               refreshAllOutputs(true);
+                           });
+        registerIntProxy(prefix + "chromDevRange", labelPrefix + "Chrom Dev Range", 0, 12,
+                         [this, i]() { return outputConfigs[i].chromaticDeviationRange; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(outputConfigs.size())) return;
+                             outputConfigs[i].chromaticDeviationRange = std::max(0, value);
+                             refreshAllOutputs(true);
+                         });
+        registerIntProxy(prefix + "source", labelPrefix + "Source",
+                         chordSequenceOutputConfig::Chord, chordSequenceOutputConfig::ChordSum,
+                         [this, i]() { return outputConfigs[i].sourceMode; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(outputConfigs.size())) return;
+                             outputConfigs[i].sourceMode = ofClamp(value,
+                                                                   chordSequenceOutputConfig::Chord,
+                                                                   chordSequenceOutputConfig::ChordSum);
+                             refreshAllOutputs(true);
+                         },
+                         {"Chord", "Scale", "Root", "Key", "Chord Sum"});
+        registerBoolProxy(prefix + "fold12", labelPrefix + "Fold12",
+                          [this, i]() { return outputConfigs[i].fold12; },
+                          [this, i](bool value) {
+                              if(i >= static_cast<int>(outputConfigs.size())) return;
+                              outputConfigs[i].fold12 = value;
+                              refreshAllOutputs(true);
+                          });
+        registerBoolProxy(prefix + "addBass", labelPrefix + "AddBass",
+                          [this, i]() { return outputConfigs[i].addBass; },
+                          [this, i](bool value) {
+                              if(i >= static_cast<int>(outputConfigs.size())) return;
+                              outputConfigs[i].addBass = value;
+                              refreshAllOutputs(true);
+                          });
+        registerIntProxy(prefix + "inversion", labelPrefix + "Inversion", -16, 16,
+                         [this, i]() { return outputConfigs[i].inversion; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(outputConfigs.size())) return;
+                             outputConfigs[i].inversion = value;
+                             refreshAllOutputs(true);
+                         });
+        registerIntProxy(prefix + "voicing", labelPrefix + "Voicing",
+                         chordSequenceOutputConfig::None, chordSequenceOutputConfig::Shell,
+                         [this, i]() { return outputConfigs[i].voicingMode; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(outputConfigs.size())) return;
+                             outputConfigs[i].voicingMode = ofClamp(value,
+                                                                    chordSequenceOutputConfig::None,
+                                                                    chordSequenceOutputConfig::Shell);
+                             refreshAllOutputs(true);
+                         },
+                         {"None", "Close", "Open", "Drop 2", "Drop 3", "Shell"});
+        registerFloatProxy(prefix + "spread", labelPrefix + "Spread", 0.0f, 24.0f,
+                           [this, i]() { return outputConfigs[i].voicingSpread; },
+                           [this, i](float value) {
+                               if(i >= static_cast<int>(outputConfigs.size())) return;
+                               outputConfigs[i].voicingSpread = std::max(0.0f, value);
+                               refreshAllOutputs(true);
+                           });
+        registerIntProxy(prefix + "bassOct", labelPrefix + "BassOct", -8, 8,
+                         [this, i]() { return outputConfigs[i].bassOct; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(outputConfigs.size())) return;
+                             outputConfigs[i].bassOct = value;
+                             refreshAllOutputs(true);
+                         });
+        registerFloatProxy(prefix + "glide", labelPrefix + "Glide", 0.0f, 10000.0f,
+                           [this, i]() { return outputConfigs[i].glideMs; },
+                           [this, i](float value) {
+                               if(i >= static_cast<int>(outputConfigs.size())) return;
+                               outputConfigs[i].glideMs = std::max(0.0f, value);
+                           });
+        registerBoolProxy(prefix + "voiceLeading", labelPrefix + "Voice Lead",
+                          [this, i]() { return outputConfigs[i].voiceLeading; },
+                          [this, i](bool value) {
+                              if(i >= static_cast<int>(outputConfigs.size())) return;
+                              outputConfigs[i].voiceLeading = value;
+                              refreshAllOutputs(true);
+                          });
+        registerIntProxy(prefix + "minNote", labelPrefix + "Min Note", 0, 127,
+                         [this, i]() { return outputConfigs[i].minNote; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(outputConfigs.size())) return;
+                             outputConfigs[i].minNote = ofClamp(value, 0, 127);
+                             if(outputConfigs[i].minNote > outputConfigs[i].maxNote) outputConfigs[i].maxNote = outputConfigs[i].minNote;
+                             refreshAllOutputs(true);
+                         });
+        registerIntProxy(prefix + "maxNote", labelPrefix + "Max Note", 0, 127,
+                         [this, i]() { return outputConfigs[i].maxNote; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(outputConfigs.size())) return;
+                             outputConfigs[i].maxNote = ofClamp(value, 0, 127);
+                             if(outputConfigs[i].maxNote < outputConfigs[i].minNote) outputConfigs[i].minNote = outputConfigs[i].maxNote;
+                             refreshAllOutputs(true);
+                         });
+        registerBoolProxy(prefix + "expand", labelPrefix + "Expand",
+                          [this, i]() { return outputConfigs[i].expandOutput; },
+                          [this, i](bool value) {
+                              if(i >= static_cast<int>(outputConfigs.size())) return;
+                              outputConfigs[i].expandOutput = value;
+                              refreshAllOutputs(true);
+                          });
+        registerBoolProxy(prefix + "sort", labelPrefix + "Sort",
+                          [this, i]() { return outputConfigs[i].sortOutput; },
+                          [this, i](bool value) {
+                              if(i >= static_cast<int>(outputConfigs.size())) return;
+                              outputConfigs[i].sortOutput = value;
+                              refreshAllOutputs(true);
+                          });
+
+        registerExistingOnly(prefix + "outputSize", [this, i]() {
+            return i < static_cast<int>(outputSizeParameters.size()) &&
+                   outputSizeParameters[i] &&
+                   getParameterGroup().contains(outputSizeParameters[i]->getEscapedName());
+        });
+    }
+}
+
+void chordSequence::syncPublishedEditorProxyValuesFromState() {
+    for(const auto &action : publishableEditorParameters) {
+        if(action.syncFromState && action.isPublished && action.isPublished()) {
+            action.syncFromState();
+        }
+    }
+}
+
+std::string chordSequence::stepPublishPrefix(int index) const {
+    return "step" + ofToString(index + 1) + ".";
+}
+
+std::string chordSequence::outputPublishPrefix(int index) const {
+    return "output" + ofToString(index + 1) + ".";
+}
+
+bool chordSequence::isEditorParameterPublished(const std::string &key) const {
+    return publishedEditorParameterHandles.find(key) != publishedEditorParameterHandles.end();
+}
+
+const chordSequence::EditorPublishAction *chordSequence::findPublishableEditorParameter(const std::string &key) const {
+    auto it = std::find_if(publishableEditorParameters.begin(), publishableEditorParameters.end(),
+                           [&](const EditorPublishAction &action) { return action.key == key; });
+    return it == publishableEditorParameters.end() ? nullptr : &(*it);
+}
+
+bool chordSequence::publishEditorIntProxyToNode(const std::string &key,
+                                                const std::string &name,
+                                                int minValue,
+                                                int maxValue,
+                                                const std::function<int()> &getter,
+                                                const std::function<void(int)> &setter,
+                                                const std::vector<std::string> &options,
+                                                ofxOceanodeParameterFlags flags) {
+    if(isEditorParameterPublished(key)) return false;
+    if(!publishedEditorSeparatorAdded) {
+        addSeparator("Published", ofColor(200));
+        publishedEditorSeparatorAdded = true;
+    }
+
+    auto parameter = std::make_shared<ofParameter<int>>();
+    int initialValue = getter();
+    if(maxValue < minValue) maxValue = minValue;
+    parameter->set(name, ofClamp(initialValue, minValue, maxValue), minValue, maxValue);
+
+    auto published = addParameter(parameter, flags);
+    if(!options.empty()) published->setDropdownOptions(options);
+    publishedEditorParameterHandles[key] = published;
+    publishedEditorIntProxyParameters[key] = parameter;
+    publishedEditorProxyListeners[key] = std::make_unique<ofEventListener>(parameter->newListener([this, key, setter](int &value) {
+        if(publishedEditorProxySyncKeys.count(key) > 0) return;
+        setter(value);
+        syncPublishedEditorProxyValuesFromState();
+    }));
+
+    if(std::find(publishedEditorParameterKeys.begin(), publishedEditorParameterKeys.end(), key) == publishedEditorParameterKeys.end()) {
+        publishedEditorParameterKeys.push_back(key);
+    }
+    return true;
+}
+
+bool chordSequence::publishEditorFloatProxyToNode(const std::string &key,
+                                                  const std::string &name,
+                                                  float minValue,
+                                                  float maxValue,
+                                                  const std::function<float()> &getter,
+                                                  const std::function<void(float)> &setter,
+                                                  ofxOceanodeParameterFlags flags) {
+    if(isEditorParameterPublished(key)) return false;
+    if(!publishedEditorSeparatorAdded) {
+        addSeparator("Published", ofColor(200));
+        publishedEditorSeparatorAdded = true;
+    }
+
+    auto parameter = std::make_shared<ofParameter<float>>();
+    float initialValue = getter();
+    if(maxValue < minValue) maxValue = minValue;
+    parameter->set(name, ofClamp(initialValue, minValue, maxValue), minValue, maxValue);
+
+    publishedEditorParameterHandles[key] = addParameter(parameter, flags);
+    publishedEditorFloatProxyParameters[key] = parameter;
+    publishedEditorProxyListeners[key] = std::make_unique<ofEventListener>(parameter->newListener([this, key, setter](float &value) {
+        if(publishedEditorProxySyncKeys.count(key) > 0) return;
+        setter(value);
+        syncPublishedEditorProxyValuesFromState();
+    }));
+
+    if(std::find(publishedEditorParameterKeys.begin(), publishedEditorParameterKeys.end(), key) == publishedEditorParameterKeys.end()) {
+        publishedEditorParameterKeys.push_back(key);
+    }
+    return true;
+}
+
+bool chordSequence::publishEditorBoolProxyToNode(const std::string &key,
+                                                 const std::string &name,
+                                                 const std::function<bool()> &getter,
+                                                 const std::function<void(bool)> &setter,
+                                                 ofxOceanodeParameterFlags flags) {
+    if(isEditorParameterPublished(key)) return false;
+    if(!publishedEditorSeparatorAdded) {
+        addSeparator("Published", ofColor(200));
+        publishedEditorSeparatorAdded = true;
+    }
+
+    auto parameter = std::make_shared<ofParameter<bool>>();
+    parameter->set(name, getter());
+
+    publishedEditorParameterHandles[key] = addParameter(parameter, flags);
+    publishedEditorBoolProxyParameters[key] = parameter;
+    publishedEditorProxyListeners[key] = std::make_unique<ofEventListener>(parameter->newListener([this, key, setter](bool &value) {
+        if(publishedEditorProxySyncKeys.count(key) > 0) return;
+        setter(value);
+        syncPublishedEditorProxyValuesFromState();
+    }));
+
+    if(std::find(publishedEditorParameterKeys.begin(), publishedEditorParameterKeys.end(), key) == publishedEditorParameterKeys.end()) {
+        publishedEditorParameterKeys.push_back(key);
+    }
+    return true;
+}
+
+void chordSequence::syncPublishedEditorIntProxyValue(const std::string &key, int value) {
+    auto it = publishedEditorIntProxyParameters.find(key);
+    if(it == publishedEditorIntProxyParameters.end() || !it->second) return;
+    if(it->second->get() == value) return;
+    publishedEditorProxySyncKeys.insert(key);
+    it->second->setWithoutEventNotifications(value);
+    publishedEditorProxySyncKeys.erase(key);
+}
+
+void chordSequence::syncPublishedEditorFloatProxyValue(const std::string &key, float value) {
+    auto it = publishedEditorFloatProxyParameters.find(key);
+    if(it == publishedEditorFloatProxyParameters.end() || !it->second) return;
+    if(std::abs(it->second->get() - value) < 0.0001f) return;
+    publishedEditorProxySyncKeys.insert(key);
+    it->second->setWithoutEventNotifications(value);
+    publishedEditorProxySyncKeys.erase(key);
+}
+
+void chordSequence::syncPublishedEditorBoolProxyValue(const std::string &key, bool value) {
+    auto it = publishedEditorBoolProxyParameters.find(key);
+    if(it == publishedEditorBoolProxyParameters.end() || !it->second) return;
+    if(it->second->get() == value) return;
+    publishedEditorProxySyncKeys.insert(key);
+    it->second->setWithoutEventNotifications(value);
+    publishedEditorProxySyncKeys.erase(key);
+}
+
+bool chordSequence::publishEditorParameterToNode(const std::string &key) {
+    const EditorPublishAction *action = findPublishableEditorParameter(key);
+    if(action == nullptr) return false;
+    bool changed = action->publish();
+    if(changed) parameterGroupChanged.notify(this);
+    return changed;
+}
+
+bool chordSequence::unpublishEditorParameterFromNode(const std::string &key) {
+    auto it = publishedEditorParameterHandles.find(key);
+    if(it == publishedEditorParameterHandles.end()) return false;
+
+    removeParameter(it->second->getEscapedName());
+    publishedEditorParameterHandles.erase(it);
+    publishedEditorIntProxyParameters.erase(key);
+    publishedEditorFloatProxyParameters.erase(key);
+    publishedEditorBoolProxyParameters.erase(key);
+    publishedEditorProxyListeners.erase(key);
+    publishedEditorProxySyncKeys.erase(key);
+    publishedEditorParameterKeys.erase(std::remove(publishedEditorParameterKeys.begin(),
+                                                   publishedEditorParameterKeys.end(),
+                                                   key),
+                                       publishedEditorParameterKeys.end());
+
+    if(publishedEditorParameterHandles.empty() && publishedEditorSeparatorAdded) {
+        removeSeparator("Published");
+        publishedEditorSeparatorAdded = false;
+    }
+
+    parameterGroupChanged.notify(this);
+    return true;
+}
+
+void chordSequence::syncPublishedEditorParameters(const std::vector<std::string> &keys) {
+    std::vector<std::string> uniqueKeys;
+    uniqueKeys.reserve(keys.size());
+    for(const std::string &key : keys) {
+        if(findPublishableEditorParameter(key) == nullptr) continue;
+        if(std::find(uniqueKeys.begin(), uniqueKeys.end(), key) == uniqueKeys.end()) uniqueKeys.push_back(key);
+    }
+
+    bool changed = false;
+    for(auto &entry : publishedEditorParameterHandles) {
+        removeParameter(entry.second->getEscapedName());
+        changed = true;
+    }
+    publishedEditorParameterHandles.clear();
+    publishedEditorIntProxyParameters.clear();
+    publishedEditorFloatProxyParameters.clear();
+    publishedEditorBoolProxyParameters.clear();
+    publishedEditorProxyListeners.clear();
+    publishedEditorProxySyncKeys.clear();
+
+    if(publishedEditorSeparatorAdded) {
+        removeSeparator("Published");
+        publishedEditorSeparatorAdded = false;
+        changed = true;
+    }
+
+    publishedEditorParameterKeys.clear();
+    for(const std::string &key : uniqueKeys) {
+        const EditorPublishAction *action = findPublishableEditorParameter(key);
+        if(action != nullptr) changed = action->publish() || changed;
+    }
+
+    if(publishedEditorParameterHandles.empty()) {
+        publishedEditorSeparatorAdded = false;
+    }
+
+    syncPublishedEditorProxyValuesFromState();
+    if(changed) parameterGroupChanged.notify(this);
+}
+
+void chordSequence::drawPublishedLabelUnderline(const std::string &key,
+                                                const char *label,
+                                                float frameWidth,
+                                                bool checkbox) const {
+    if(!isEditorParameterPublished(key) || label == nullptr || label[0] == '\0' || label[0] == '#') return;
+
+    const ImVec2 itemMin = ImGui::GetItemRectMin();
+    const ImVec2 itemMax = ImGui::GetItemRectMax();
+    const ImGuiStyle &style = ImGui::GetStyle();
+    const float labelStartX = checkbox
+        ? itemMin.x + ImGui::GetFrameHeight() + style.ItemInnerSpacing.x
+        : itemMin.x + std::max(0.0f, frameWidth) + style.ItemInnerSpacing.x;
+    const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
+    const float labelEndX = std::min(labelStartX + textSize.x, itemMax.x);
+    if(labelEndX <= labelStartX) return;
+
+    const float lineY = itemMax.y - 2.0f;
+    ImGui::GetWindowDrawList()->AddLine(ImVec2(labelStartX, lineY),
+                                        ImVec2(labelEndX, lineY),
+                                        ImGui::GetColorU32(ImGuiCol_Text),
+                                        1.0f);
+}
+
+void chordSequence::drawPublishedCurrentItemUnderline(const std::string &key) const {
+    if(!isEditorParameterPublished(key)) return;
+
+    const ImVec2 itemMin = ImGui::GetItemRectMin();
+    const ImVec2 itemMax = ImGui::GetItemRectMax();
+    if(itemMax.x <= itemMin.x) return;
+
+    const float lineY = itemMax.y - 2.0f;
+    ImGui::GetWindowDrawList()->AddLine(ImVec2(itemMin.x, lineY),
+                                        ImVec2(itemMax.x, lineY),
+                                        ImGui::GetColorU32(ImGuiCol_Text),
+                                        1.0f);
+}
+
+void chordSequence::drawNodePublishMenuItems(const std::string &key) {
+    const EditorPublishAction *action = findPublishableEditorParameter(key);
+    if(action == nullptr) {
+        ImGui::TextDisabled("Not publishable");
+    } else if(action->isPublished()) {
+        ImGui::TextDisabled("Published in node");
+        if(ImGui::MenuItem("Unpublish from Node")) {
+            unpublishEditorParameterFromNode(key);
+        }
+    } else if(action->isAvailableInNode && action->isAvailableInNode()) {
+        ImGui::TextDisabled("Already in node");
+    } else {
+        if(ImGui::MenuItem("Publish to Node")) {
+            publishEditorParameterToNode(key);
+        }
+    }
+}
+
+void chordSequence::drawNodePublishContextMenu(const std::string &key,
+                                               const char *label,
+                                               float frameWidth,
+                                               bool checkbox) {
+    drawPublishedLabelUnderline(key, label, frameWidth, checkbox);
+    if(!ImGui::BeginPopupContextItem(("##PublishToNode_" + key).c_str())) return;
+    drawNodePublishMenuItems(key);
+    ImGui::EndPopup();
 }
 
 void chordSequence::initializeDefaultProgression() {
@@ -1081,6 +1830,8 @@ void chordSequence::resizeProgression(int newSize) {
     }
 
     sanitizeProgression();
+    initializePublishableEditorParameters();
+    syncPublishedEditorParameters(publishedEditorParameterKeys);
     if(numChordsParameter.get() != newSize) numChordsParameter = newSize;
     if(usesInternalProgressionOrder()) {
         internalActiveStep = ofClamp(internalActiveStep, 0, std::max(0, newSize - 1));
@@ -2291,6 +3042,8 @@ float chordSequence::sampleVector(const std::vector<float> &values, size_t index
 }
 
 void chordSequence::drawEditor() {
+    syncPublishedEditorProxyValuesFromState();
+
     ImVec2 availableRegion = ImGui::GetContentRegionAvail();
     float baseWidth = 1320.0f;
     float widthScale = availableRegion.x > 1.0f ? availableRegion.x / baseWidth : 1.0f;
@@ -2441,6 +3194,8 @@ void chordSequence::drawGlobalControls() {
         if(ImGui::InputInt("ChordNum", &numChords)) {
             numChordsParameter = ofClamp(numChords, numChordsParameter.getMin(), numChordsParameter.getMax());
         }
+        drawNodePublishContextMenu("numChords");
+        drawPublishedCurrentItemUnderline("numChords");
 
         ImGui::TableSetColumnIndex(1);
         if(ImGui::InputInt("Index", &displayIndex)) {
@@ -2456,6 +3211,8 @@ void chordSequence::drawGlobalControls() {
                 indexInput = clampedIndex;
             }
         }
+        drawNodePublishContextMenu("index");
+        drawPublishedCurrentItemUnderline("index");
 
         ImGui::TableNextRow();
 
@@ -2464,6 +3221,8 @@ void chordSequence::drawGlobalControls() {
             ensureOutputCount(requestedOutputs);
             refreshAllOutputs(true);
         }
+        drawNodePublishContextMenu("numOutputs");
+        drawPublishedCurrentItemUnderline("numOutputs");
 
         ImGui::TableSetColumnIndex(1);
         int orderValue = progressionOrder;
@@ -2480,6 +3239,8 @@ void chordSequence::drawGlobalControls() {
             }
             ImGui::EndCombo();
         }
+        drawNodePublishContextMenu("progressionOrder");
+        drawPublishedCurrentItemUnderline("progressionOrder");
 
         ImGui::TableNextRow();
 
@@ -2497,6 +3258,8 @@ void chordSequence::drawGlobalControls() {
             }
             ImGui::EndCombo();
         }
+        drawNodePublishContextMenu("globalKey");
+        drawPublishedCurrentItemUnderline("globalKey");
 
         ImGui::TableSetColumnIndex(1);
         sanitizeGlobalScaleSelection();
@@ -2514,18 +3277,24 @@ void chordSequence::drawGlobalControls() {
             }
             ImGui::EndCombo();
         }
+        drawNodePublishContextMenu("globalScale");
+        drawPublishedCurrentItemUnderline("globalScale");
 
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
-        if(drawDraggableFloatWithPopup("Pitch Bend", globalPitchBend, 0.05f, -24.0f, 24.0f, "%.3f")) {
+        if(drawDraggableFloatWithPopup("Pitch Bend", globalPitchBend, 0.05f, -24.0f, 24.0f, "%.3f",
+                                       [this]() { drawNodePublishMenuItems("pitchBend"); })) {
             pitchBendParameter = globalPitchBend;
         }
+        drawPublishedCurrentItemUnderline("pitchBend");
 
         ImGui::TableSetColumnIndex(1);
         if(ImGui::InputInt("Transpose", &globalTranspose)) {
             transposeParameter = globalTranspose;
         }
+        drawNodePublishContextMenu("transpose");
+        drawPublishedCurrentItemUnderline("transpose");
 
         ImGui::TableNextRow();
 
@@ -2533,6 +3302,8 @@ void chordSequence::drawGlobalControls() {
         if(ImGui::InputInt("Invert", &globalInvert)) {
             inversionParameter = globalInvert;
         }
+        drawNodePublishContextMenu("inversion");
+        drawPublishedCurrentItemUnderline("inversion");
 
         ImGui::TableSetColumnIndex(1);
         ImGui::TextDisabled("%s", usesInternalProgressionOrder() ? "Transport paced" : "External index paced");
@@ -2548,6 +3319,8 @@ void chordSequence::drawGlobalControls() {
         if(ImGui::Button("Reset Sequence")) {
             resetInternalSequence(true);
         }
+        drawNodePublishContextMenu("resetSequence");
+        drawPublishedCurrentItemUnderline("resetSequence");
 
         ImGui::EndTable();
     }
@@ -2566,13 +3339,19 @@ void chordSequence::drawRandomationControls() {
         transposeRandomRange = std::max(0, transposeRandomRange);
         rerollAndRefresh();
     }
+    drawNodePublishContextMenu("transposeRandomRange");
+    drawPublishedCurrentItemUnderline("transposeRandomRange");
     if(ImGui::InputInt("Q##TransposeRandomQ", &transposeRandomQuantization)) {
         transposeRandomQuantization = std::max(1, transposeRandomQuantization);
         rerollAndRefresh();
     }
+    drawNodePublishContextMenu("transposeRandomQuantization");
+    drawPublishedCurrentItemUnderline("transposeRandomQuantization");
     if(ImGui::Checkbox("step##TransposeRandomStep", &transposeRandomStep)) {
         rerollAndRefresh();
     }
+    drawNodePublishContextMenu("transposeRandomStep");
+    drawPublishedCurrentItemUnderline("transposeRandomStep");
 
     ImGui::Separator();
     ImGui::TextDisabled("Inversion");
@@ -2580,13 +3359,19 @@ void chordSequence::drawRandomationControls() {
         inversionRandomRange = std::max(0, inversionRandomRange);
         rerollAndRefresh();
     }
+    drawNodePublishContextMenu("inversionRandomRange");
+    drawPublishedCurrentItemUnderline("inversionRandomRange");
     if(ImGui::InputInt("Q##InversionRandomQ", &inversionRandomQuantization)) {
         inversionRandomQuantization = std::max(1, inversionRandomQuantization);
         rerollAndRefresh();
     }
+    drawNodePublishContextMenu("inversionRandomQuantization");
+    drawPublishedCurrentItemUnderline("inversionRandomQuantization");
     if(ImGui::Checkbox("step##InversionRandomStep", &inversionRandomStep)) {
         rerollAndRefresh();
     }
+    drawNodePublishContextMenu("inversionRandomStep");
+    drawPublishedCurrentItemUnderline("inversionRandomStep");
 }
 
 void chordSequence::drawImportTools() {
@@ -2695,6 +3480,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
     chordSequenceEntry &entry = progression[index];
     bool isActive = index == resolveActiveIndex();
     float cardHeight = getChordSequenceEntryCardHeight(entry.mode, markovEnabled);
+    const std::string publishPrefix = stepPublishPrefix(index);
 
     ImGui::PushID(index);
     ImVec4 headerColor = isActive ? ImVec4(0.23f, 0.52f, 0.29f, 0.96f) : ImVec4(0.08f, 0.22f, 0.13f, 0.92f);
@@ -2755,6 +3541,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
         sanitizeEntry(entry);
         refreshAllOutputs(true);
     }
+    drawNodePublishContextMenu(publishPrefix + "mode", "Type", controlWidth);
     drawRowLabel(rowStartX, "Type");
 
     if(entry.mode == chordSequenceEntry::Cypher) {
@@ -2805,6 +3592,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
             }
             ImGui::EndCombo();
         }
+        drawNodePublishContextMenu(publishPrefix + "functionalGroup", "Function", controlWidth);
         drawRowLabel(rowStartX, "Function");
 
         const std::vector<chordSequenceFunctionalVariant> &variants = getFunctionalVariants(entry.functionalGroup);
@@ -2847,6 +3635,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
                 sanitizeEntry(entry);
                 refreshAllOutputs(true);
             }
+            drawNodePublishContextMenu(publishPrefix + "degree", "Degree", controlWidth);
         } else {
             int resolvedDegree = getResolvedEntryDegree(entry);
             ImGui::BeginDisabled();
@@ -2862,6 +3651,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
             sanitizeEntry(entry);
             refreshAllOutputs(true);
         }
+        drawNodePublishContextMenu(publishPrefix + "chordSize", "Chord Size", controlWidth);
         drawRowLabel(rowStartX, "Chord Size");
 
         rowStartX = ImGui::GetCursorPosX();
@@ -2871,6 +3661,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
             sanitizeEntry(entry);
             refreshAllOutputs(true);
         }
+        drawNodePublishContextMenu(publishPrefix + "stepInterval", "Step Interval", controlWidth);
         drawRowLabel(rowStartX, "Step Interval");
     }
 
@@ -2882,10 +3673,14 @@ void chordSequence::drawEntryEditor(int index, float width) {
                                        0.5f,
                                        0.0f,
                                        100.0f,
-                                       "%.1f")) {
+                                       "%.1f",
+                                       [this, publishPrefix]() {
+                                           drawNodePublishMenuItems(publishPrefix + "diatonicDeviationProbability");
+                                       })) {
             sanitizeEntry(entry);
             refreshAllOutputs(true);
         }
+        drawPublishedLabelUnderline(publishPrefix + "diatonicDeviationProbability", "Diat Dev %", controlWidth);
         drawRowLabel(rowStartX, "Diat Dev %");
 
         rowStartX = ImGui::GetCursorPosX();
@@ -2894,12 +3689,16 @@ void chordSequence::drawEntryEditor(int index, float width) {
             sanitizeEntry(entry);
             refreshAllOutputs(true);
         }
+        drawNodePublishContextMenu(publishPrefix + "diatonicDeviationRange", "Diat Dev Range", controlWidth);
         drawRowLabel(rowStartX, "Diat Dev Range");
     }
 
     rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
-    if(drawDraggableFloatWithPopup("##BeatDuration", entry.beatDuration, 0.05f, 0.001f, 64.0f, "%.3f")) {
+    if(drawDraggableFloatWithPopup("##BeatDuration", entry.beatDuration, 0.05f, 0.001f, 64.0f, "%.3f",
+                                   [this, publishPrefix]() {
+                                       drawNodePublishMenuItems(publishPrefix + "beatDuration");
+                                   })) {
         outputBuildDirty = true;
         if(usesInternalProgressionOrder() && !progression.empty()) {
             int activeStep = ofClamp(resolveActiveIndex(), 0, static_cast<int>(progression.size()) - 1);
@@ -2907,6 +3706,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
                                    std::max(0.001f, progression[activeStep].beatDuration);
         }
     }
+    drawPublishedLabelUnderline(publishPrefix + "beatDuration", "Beats", controlWidth);
     drawRowLabel(rowStartX, "Beats");
 
     if(markovEnabled) {
@@ -2967,6 +3767,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
     if(ImGui::InputInt("##Transpose", &entry.transpose)) {
         refreshAllOutputs(true);
     }
+    drawNodePublishContextMenu(publishPrefix + "transpose", "Transpose", controlWidth);
     drawRowLabel(rowStartX, "Transpose");
 
     rowStartX = ImGui::GetCursorPosX();
@@ -2984,6 +3785,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
     if(ImGui::InputInt("##Inversion", &entry.inversion)) {
         refreshAllOutputs(true);
     }
+    drawNodePublishContextMenu(publishPrefix + "inversion", "Inversion", controlWidth);
     drawRowLabel(rowStartX, "Inversion");
 
     std::vector<float> preview = buildEntryPreviewOutput(entry);
@@ -3028,6 +3830,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
     chordSequenceOutputConfig &config = outputConfigs[index];
     std::vector<float> displayedOutput = getDisplayedOutput(index);
     float cardHeight = getOutputCardHeight(config);
+    const std::string publishPrefix = outputPublishPrefix(index);
 
     ImGui::PushID(index);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.07f, 0.20f, 0.12f, 0.92f));
@@ -3072,10 +3875,11 @@ void chordSequence::drawOutputEditor(int index, float width) {
         ImGui::TextUnformatted(label);
     };
 
-    auto drawSingleToggleRow = [&](const char *id, bool &value, const char *label) {
+    auto drawSingleToggleRow = [&](const char *id, bool &value, const char *label, const std::string &key = std::string()) {
         if(ImGui::Checkbox(id, &value)) {
             refreshAllOutputs(true);
         }
+        if(!key.empty()) drawNodePublishContextMenu(key, label, 0.0f, true);
         ImGui::SameLine();
         ImGui::TextUnformatted(label);
     };
@@ -3085,7 +3889,9 @@ void chordSequence::drawOutputEditor(int index, float width) {
                                const char *leftLabel,
                                const char *rightId,
                                bool &rightValue,
-                               const char *rightLabel) {
+                               const char *rightLabel,
+                               const std::string &leftKey = std::string(),
+                               const std::string &rightKey = std::string()) {
         float rowStartX = ImGui::GetCursorPosX();
         float pairGap = scaledUi(12.0f);
         float pairWidth = std::max(scaledUi(70.0f), (rowWidth - pairGap) * 0.5f);
@@ -3094,6 +3900,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
         if(ImGui::Checkbox(leftId, &leftValue)) {
             refreshAllOutputs(true);
         }
+        if(!leftKey.empty()) drawNodePublishContextMenu(leftKey, leftLabel, 0.0f, true);
         ImGui::SameLine();
         ImGui::TextUnformatted(leftLabel);
 
@@ -3101,6 +3908,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
         if(ImGui::Checkbox(rightId, &rightValue)) {
             refreshAllOutputs(true);
         }
+        if(!rightKey.empty()) drawNodePublishContextMenu(rightKey, rightLabel, 0.0f, true);
         ImGui::SameLine();
         ImGui::TextUnformatted(rightLabel);
     };
@@ -3110,6 +3918,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
     if(ImGui::InputInt("##Octave", &config.octave)) {
         refreshAllOutputs(true);
     }
+    drawNodePublishContextMenu(publishPrefix + "octave", "Octave", controlWidth);
     drawRowLabel(rowStartX, "Octave");
 
     rowStartX = ImGui::GetCursorPosX();
@@ -3117,27 +3926,34 @@ void chordSequence::drawOutputEditor(int index, float width) {
     if(ImGui::InputInt("##Transpose", &config.transpose)) {
         refreshAllOutputs(true);
     }
+    drawNodePublishContextMenu(publishPrefix + "transpose", "Transpose", controlWidth);
     drawRowLabel(rowStartX, "Transpose");
 
     rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
-    if(drawDraggableFloatWithPopup("##PitchBend", config.pitchBend, 0.05f, -24.0f, 24.0f, "%.3f")) {
+    if(drawDraggableFloatWithPopup("##PitchBend", config.pitchBend, 0.05f, -24.0f, 24.0f, "%.3f",
+                                   [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "pitchBend"); })) {
         refreshAllOutputs(true);
     }
+    drawPublishedLabelUnderline(publishPrefix + "pitchBend", "Pitch Bend", controlWidth);
     drawRowLabel(rowStartX, "Pitch Bend");
 
     rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
-    if(drawDraggableFloatWithPopup("##Detune", config.perNoteDetune, 0.01f, 0.0f, 2.0f, "%.3f")) {
+    if(drawDraggableFloatWithPopup("##Detune", config.perNoteDetune, 0.01f, 0.0f, 2.0f, "%.3f",
+                                   [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "detune"); })) {
         refreshAllOutputs(true);
     }
+    drawPublishedLabelUnderline(publishPrefix + "detune", "Detune", controlWidth);
     drawRowLabel(rowStartX, "Detune");
 
     rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
-    if(drawDraggableFloatWithPopup("##OctRandProbability", config.octaveRandomProbability, 0.5f, 0.0f, 100.0f, "%.1f")) {
+    if(drawDraggableFloatWithPopup("##OctRandProbability", config.octaveRandomProbability, 0.5f, 0.0f, 100.0f, "%.1f",
+                                   [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "octRandProbability"); })) {
         refreshAllOutputs(true);
     }
+    drawPublishedLabelUnderline(publishPrefix + "octRandProbability", "Oct Rand %", controlWidth);
     drawRowLabel(rowStartX, "Oct Rand %");
 
     rowStartX = ImGui::GetCursorPosX();
@@ -3146,6 +3962,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
         config.octaveRandomRange = std::max(0, config.octaveRandomRange);
         refreshAllOutputs(true);
     }
+    drawNodePublishContextMenu(publishPrefix + "octRandRange", "Oct Rand Range", controlWidth);
     drawRowLabel(rowStartX, "Oct Rand Range");
 
     rowStartX = ImGui::GetCursorPosX();
@@ -3155,9 +3972,11 @@ void chordSequence::drawOutputEditor(int index, float width) {
                                    0.5f,
                                    0.0f,
                                    100.0f,
-                                   "%.1f")) {
+                                   "%.1f",
+                                   [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "chromDevProbability"); })) {
         refreshAllOutputs(true);
     }
+    drawPublishedLabelUnderline(publishPrefix + "chromDevProbability", "Chrom Dev %", controlWidth);
     drawRowLabel(rowStartX, "Chrom Dev %");
 
     rowStartX = ImGui::GetCursorPosX();
@@ -3166,6 +3985,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
         config.chromaticDeviationRange = std::max(0, config.chromaticDeviationRange);
         refreshAllOutputs(true);
     }
+    drawNodePublishContextMenu(publishPrefix + "chromDevRange", "Chrom Dev Range", controlWidth);
     drawRowLabel(rowStartX, "Chrom Dev Range");
 
     rowStartX = ImGui::GetCursorPosX();
@@ -3184,18 +4004,20 @@ void chordSequence::drawOutputEditor(int index, float width) {
         }
         ImGui::EndCombo();
     }
+    drawNodePublishContextMenu(publishPrefix + "source", "Source", controlWidth);
     drawRowLabel(rowStartX, "Source");
 
-    drawSingleToggleRow("##Fold12", config.fold12, "Fold12");
+    drawSingleToggleRow("##Fold12", config.fold12, "Fold12", publishPrefix + "fold12");
 
     if(!outputSourceUsesScaleLikeMaterial(config.sourceMode)) {
-        drawSingleToggleRow("##AddBass", config.addBass, "AddBass");
+        drawSingleToggleRow("##AddBass", config.addBass, "AddBass", publishPrefix + "addBass");
 
         rowStartX = ImGui::GetCursorPosX();
         ImGui::SetNextItemWidth(controlWidth);
         if(ImGui::InputInt("##Inversion", &config.inversion)) {
             refreshAllOutputs(true);
         }
+        drawNodePublishContextMenu(publishPrefix + "inversion", "Inversion", controlWidth);
         drawRowLabel(rowStartX, "Inversion");
 
         rowStartX = ImGui::GetCursorPosX();
@@ -3214,13 +4036,16 @@ void chordSequence::drawOutputEditor(int index, float width) {
             }
             ImGui::EndCombo();
         }
+        drawNodePublishContextMenu(publishPrefix + "voicing", "Voicing", controlWidth);
         drawRowLabel(rowStartX, "Voicing");
 
         rowStartX = ImGui::GetCursorPosX();
         ImGui::SetNextItemWidth(controlWidth);
-        if(drawDraggableFloatWithPopup("##Spread", config.voicingSpread, 0.1f, 0.0f, 24.0f, "%.2f")) {
+        if(drawDraggableFloatWithPopup("##Spread", config.voicingSpread, 0.1f, 0.0f, 24.0f, "%.2f",
+                                       [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "spread"); })) {
             refreshAllOutputs(true);
         }
+        drawPublishedLabelUnderline(publishPrefix + "spread", "Spread", controlWidth);
         drawRowLabel(rowStartX, "Spread");
 
         if(config.addBass) {
@@ -3229,13 +4054,16 @@ void chordSequence::drawOutputEditor(int index, float width) {
             if(ImGui::InputInt("##BassOct", &config.bassOct)) {
                 refreshAllOutputs(true);
             }
+            drawNodePublishContextMenu(publishPrefix + "bassOct", "BassOct", controlWidth);
             drawRowLabel(rowStartX, "BassOct");
         }
     }
 
     rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
-    drawDraggableFloatWithPopup("##Glide", config.glideMs, 2.0f, 0.0f, 10000.0f, "%.1f");
+    drawDraggableFloatWithPopup("##Glide", config.glideMs, 2.0f, 0.0f, 10000.0f, "%.1f",
+                                [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "glide"); });
+    drawPublishedLabelUnderline(publishPrefix + "glide", "Glide", controlWidth);
     drawRowLabel(rowStartX, "Glide");
 
     rowStartX = ImGui::GetCursorPosX();
@@ -3247,9 +4075,10 @@ void chordSequence::drawOutputEditor(int index, float width) {
         }
         refreshAllOutputs(true);
     }
+    drawNodePublishContextMenu(publishPrefix + "outputSize", "Output Size", controlWidth);
     drawRowLabel(rowStartX, "Output Size");
 
-    drawSingleToggleRow("##VoiceLeading", config.voiceLeading, "Voice Lead");
+    drawSingleToggleRow("##VoiceLeading", config.voiceLeading, "Voice Lead", publishPrefix + "voiceLeading");
 
     rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
@@ -3258,6 +4087,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
         if(config.minNote > config.maxNote) config.maxNote = config.minNote;
         refreshAllOutputs(true);
     }
+    drawNodePublishContextMenu(publishPrefix + "minNote", "Min Note", controlWidth);
     drawRowLabel(rowStartX, "Min Note");
 
     rowStartX = ImGui::GetCursorPosX();
@@ -3267,10 +4097,12 @@ void chordSequence::drawOutputEditor(int index, float width) {
         if(config.maxNote < config.minNote) config.minNote = config.maxNote;
         refreshAllOutputs(true);
     }
+    drawNodePublishContextMenu(publishPrefix + "maxNote", "Max Note", controlWidth);
     drawRowLabel(rowStartX, "Max Note");
 
     drawBoolPairRow("##Expand", config.expandOutput, "Expand",
-                    "##Sort", config.sortOutput, "Sort");
+                    "##Sort", config.sortOutput, "Sort",
+                    publishPrefix + "expand", publishPrefix + "sort");
 
     drawKeyboardDisplay("OutputKeyboard", displayedOutput, rowWidth, scaledUi(64.0f), true, false);
 
@@ -3475,6 +4307,8 @@ void chordSequence::deserializeState(const ofJson &json, bool forceInstant) {
 
     sanitizeProgression();
     sanitizeGlobalScaleSelection();
+    initializePublishableEditorParameters();
+    syncPublishedEditorParameters(publishedEditorParameterKeys);
     syncNodeGuiParametersFromState();
     setProgressionOrder(loadedProgressionOrder, false);
     outputBuildDirty = true;

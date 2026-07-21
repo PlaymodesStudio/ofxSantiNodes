@@ -3,8 +3,13 @@
 #include "santiNodesTransportCompat.h"
 #include "ofxOceanodeNodeModel.h"
 #ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
+#include <algorithm>
 #include <array>
+#include <functional>
+#include <map>
+#include <memory>
 #include <random>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -132,8 +137,18 @@ public:
     void presetRecallAfterSettingParameters(ofJson &json) override;
     void presetHasLoaded() override;
     void loadBeforeConnections(ofJson &json) override;
+    void presetRecallBeforeSettingParameters(ofJson &json) override;
 
 private:
+    struct EditorPublishAction {
+        std::string key;
+        std::function<bool()> publish;
+        std::function<bool()> unpublish;
+        std::function<bool()> isPublished;
+        std::function<bool()> isAvailableInNode;
+        std::function<void()> syncFromState;
+    };
+
     static constexpr int SnapshotSlots = 16;
     static constexpr int DefaultSequenceSize = 4;
     static constexpr int MaxOutputs = 16;
@@ -226,6 +241,15 @@ private:
     std::vector<std::vector<float>> glideStartOutputs;
     std::vector<bool> outputIsGliding;
     std::vector<uint64_t> outputGlideStartTimeMs;
+    std::vector<EditorPublishAction> publishableEditorParameters;
+    std::vector<std::string> publishedEditorParameterKeys;
+    std::map<std::string, std::shared_ptr<ofxOceanodeAbstractParameter>> publishedEditorParameterHandles;
+    std::map<std::string, std::shared_ptr<ofParameter<int>>> publishedEditorIntProxyParameters;
+    std::map<std::string, std::shared_ptr<ofParameter<float>>> publishedEditorFloatProxyParameters;
+    std::map<std::string, std::shared_ptr<ofParameter<bool>>> publishedEditorBoolProxyParameters;
+    std::map<std::string, std::unique_ptr<ofEventListener>> publishedEditorProxyListeners;
+    std::set<std::string> publishedEditorProxySyncKeys;
+    bool publishedEditorSeparatorAdded = false;
 
     void loadLibraries();
     void loadCypherAliases();
@@ -240,6 +264,10 @@ private:
     std::string outputSizeParameterName(int index) const;
     void rebuildOutputSizeParameters();
     void syncNodeGuiParametersFromState();
+    void initializePublishableEditorParameters();
+    void syncPublishedEditorProxyValuesFromState();
+    std::string stepPublishPrefix(int index) const;
+    std::string outputPublishPrefix(int index) const;
 
     void initializeDefaultProgression();
     void resizeProgression(int newSize);
@@ -325,6 +353,60 @@ private:
     void drawOutputs();
     void drawOutputEditor(int index, float width);
     void drawSnapshotManager();
+    bool isEditorParameterPublished(const std::string &key) const;
+    const EditorPublishAction *findPublishableEditorParameter(const std::string &key) const;
+    bool publishEditorParameterToNode(const std::string &key);
+    bool unpublishEditorParameterFromNode(const std::string &key);
+    void syncPublishedEditorParameters(const std::vector<std::string> &keys);
+    void drawPublishedLabelUnderline(const std::string &key,
+                                     const char *label,
+                                     float frameWidth = -1.0f,
+                                     bool checkbox = false) const;
+    void drawPublishedCurrentItemUnderline(const std::string &key) const;
+    void drawNodePublishMenuItems(const std::string &key);
+    void drawNodePublishContextMenu(const std::string &key,
+                                    const char *label = nullptr,
+                                    float frameWidth = -1.0f,
+                                    bool checkbox = false);
+    template<typename ParameterType>
+    bool publishEditorParameterToNode(const std::string &key,
+                                      ofParameter<ParameterType> &parameter,
+                                      ofxOceanodeParameterFlags flags = 0) {
+        if(getParameterGroup().contains(parameter.getEscapedName())) return false;
+        if(!publishedEditorSeparatorAdded) {
+            addSeparator("Published", ofColor(200));
+            publishedEditorSeparatorAdded = true;
+        }
+        publishedEditorParameterHandles[key] = addParameter(parameter, flags);
+        if(std::find(publishedEditorParameterKeys.begin(), publishedEditorParameterKeys.end(), key) == publishedEditorParameterKeys.end()) {
+            publishedEditorParameterKeys.push_back(key);
+        }
+        return true;
+    }
+
+    bool publishEditorIntProxyToNode(const std::string &key,
+                                     const std::string &name,
+                                     int minValue,
+                                     int maxValue,
+                                     const std::function<int()> &getter,
+                                     const std::function<void(int)> &setter,
+                                     const std::vector<std::string> &options = {},
+                                     ofxOceanodeParameterFlags flags = 0);
+    bool publishEditorFloatProxyToNode(const std::string &key,
+                                       const std::string &name,
+                                       float minValue,
+                                       float maxValue,
+                                       const std::function<float()> &getter,
+                                       const std::function<void(float)> &setter,
+                                       ofxOceanodeParameterFlags flags = 0);
+    bool publishEditorBoolProxyToNode(const std::string &key,
+                                      const std::string &name,
+                                      const std::function<bool()> &getter,
+                                      const std::function<void(bool)> &setter,
+                                      ofxOceanodeParameterFlags flags = 0);
+    void syncPublishedEditorIntProxyValue(const std::string &key, int value);
+    void syncPublishedEditorFloatProxyValue(const std::string &key, float value);
+    void syncPublishedEditorBoolProxyValue(const std::string &key, bool value);
 
     ofJson serializeCurrentState() const;
     void deserializeState(const ofJson &json, bool forceInstant);
