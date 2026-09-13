@@ -318,6 +318,7 @@
 // MIDI
 // ─────────────────────────────────────────────
 #include "rotoControlConfig.h"
+#include "midiKeyboardEmulator.h"
 
 // ─────────────────────────────────────────────
 // TTS (Text-to-Speech)
@@ -676,6 +677,7 @@ void registerModels(ofxOceanode *o)
     // ─────────────────────────────────────────────
     // MIDI
     // ─────────────────────────────────────────────
+    o->registerModel<midiKeyboardEmulator>("Santi/MIDI");
     o->registerModel<rotoControlConfig>("Santi/MIDI");
 
     // ─────────────────────────────────────────────
