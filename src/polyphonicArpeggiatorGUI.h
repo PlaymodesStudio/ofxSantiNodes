@@ -24,6 +24,9 @@ struct polyphonicArpeggiatorGUISnapshot {
     float geigerDensity = 0.45f;
     float geigerPeriodicity = 0.75f;
     float geigerChaos = 0.35f;
+    float bouncingBallSpeed = 1.0f;
+    float bouncingBallCurve = 0.0f;
+    bool bouncingBallSymmetric = false;
     int seqSize = 16;
     std::vector<float> scale;
     int patternMode = 0;
@@ -33,6 +36,7 @@ struct polyphonicArpeggiatorGUISnapshot {
     int modulo = 0;
     int sourceStart = 0;
     int sourceStride = 1;
+    bool gateAdvance = true;
     int stepShift = 0;
     float rndShiftChance = 0.0f;
     int rndShiftRange = 0;
@@ -53,6 +57,7 @@ struct polyphonicArpeggiatorGUISnapshot {
     int polyAccent = 0;
     bool addBass = false;
     int bassPatternMode = 0;
+    bool bassPatternInvert = false;
     int bassAlternateSteps = 2;
     int bassAlternateShift = 0;
     int bassEucLen = 8;
@@ -136,7 +141,7 @@ struct polyphonicArpeggiatorGUISnapshot {
     int eucDurOff = 0;
 
     float seqProb = 1.0f;
-    int seqProbCycles = 1;
+    float seqProbCycles = 1.0f;
     float runGateBeats = 16.0f;
     float runGateChance = 1.0f;
     float runGatePhase = 0.0f;
@@ -209,7 +214,8 @@ private:
         PeriodicPulse = 0,
         EuclideanPulse = 1,
         GeigerPulse = 2,
-        StepSeqPulse = 3
+        StepSeqPulse = 3,
+        BouncingBallPulse = 4
     };
 
     enum EventPatternMode {
@@ -267,9 +273,13 @@ private:
     ofParameter<float> geigerDensity;
     ofParameter<float> geigerPeriodicity;
     ofParameter<float> geigerChaos;
+    ofParameter<float> bouncingBallSpeed;
+    ofParameter<float> bouncingBallCurve;
+    ofParameter<bool> bouncingBallSymmetric;
     ofParameter<int> seqSize;
     ofParameter<int> sourceStart;
     ofParameter<int> sourceStride;
+    ofParameter<bool> gateAdvance;
     ofParameter<int> stepShift;
     ofParameter<float> rndShiftChance;
     ofParameter<int> rndShiftRange;
@@ -289,6 +299,7 @@ private:
     ofParameter<int> polyAccent;
     ofParameter<bool> addBass;
     ofParameter<int> bassPatternMode;
+    ofParameter<bool> bassPatternInvert;
     ofParameter<int> bassAlternateSteps;
     ofParameter<int> bassAlternateShift;
     ofParameter<int> bassEucLen;
@@ -329,7 +340,7 @@ private:
     ofParameter<int> eucHits;
     ofParameter<int> eucOff;
     ofParameter<float> seqProb;
-    ofParameter<int> seqProbCycles;
+    ofParameter<float> seqProbCycles;
     ofParameter<float> runGateBeats;
     ofParameter<float> runGateChance;
     ofParameter<float> runGatePhase;
@@ -396,6 +407,7 @@ private:
     bool shouldReset = false;
     int onsetCounter = 0;
     int absoluteStepCounter = 0;
+    int cycleGateCounter = 0;
     bool isMorphing = false;
     float morphStartTime = 0.0f;
     int activeSnapshotSlot = -1;
@@ -406,12 +418,12 @@ private:
     bool sourceChangePending = false;
     bool currentSequenceCycleShouldPlay = true;
     bool sequenceCycleDecisionPending = true;
-    int skippedSequenceCyclesRemaining = 0;
+    int mutedSequenceStepsRemaining = 0;
     int currentCycleRandomStepShift = 0;
     int64_t runGateWindowIndex = 0;
     bool runGateWindowStateValid = false;
     bool runGateCurrentShouldPlay = true;
-    bool geigerTransportPulseActive = false;
+    bool transportOffGridPulseActive = false;
     float pendingTransportOffsetMs = 0.0f;
     float editorZoom = 1.0f;
     uint64_t observedSnapshotStorageRevision = 0;
@@ -495,6 +507,9 @@ private:
     int getEffectiveStepShift() const;
     int getShiftedSequenceStepIndex(int stepIndex) const;
     int getPatternTraversalSize() const;
+    int getPitchProgressionIndexLive(int stepIndex);
+    int getPitchProgressionIndexPreview(int stepIndex) const;
+    int getGateProgressionIndexPreview(int stepIndex) const;
     int getBidirectionalPatternOffset(int stepIndex, bool startAscending) const;
     int getPatternOffsetForStepLive(int stepIndex);
     int getPatternOffsetForStepPreview(int stepIndex) const;
@@ -505,6 +520,10 @@ private:
     void updateOutputs();
     float computeGeigerPulseProbability(double beatPosition) const;
     bool isGeigerGridLockedPulseForStep(int stepIndex) const;
+    float getBouncingBallDensity(float normalizedPhase) const;
+    double getBouncingBallCycleLengthBeats() const;
+    double getBouncingBallPulseCountAtBeat(double beatPosition) const;
+    int countBouncingBallPulsesBetween(double startBeat, double endBeat) const;
     bool isPulseActiveForStepLive(int stepIndex);
     bool isPulseActiveForStepPreview(int stepIndex) const;
     bool isStepPatternAlternateActive(int stepIndex, int every, int shift = 0) const;
