@@ -3020,6 +3020,30 @@ std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &en
         value += noteOffset + pitchOffset;
     }
 
+    // rootLess must run BEFORE voice leading, not after. The vector this
+    // function returns is what beginGlideTo() stores as targetOutputs[i] --
+    // next step's `previousValues` -- and that already has the root removed
+    // (rootLess always strips it before returning, regardless of where in
+    // this pipeline it runs). If rootLess instead ran after voice leading,
+    // THIS step's assignment would match a full N-voice chord (root still
+    // present) against LAST step's memory, which only has N-1 voices (its
+    // own root was already stripped before being stored) -- a genuine
+    // voice-count mismatch, not just wasted work computing a placement for
+    // a note about to be discarded. Filtering first keeps the voice count
+    // (and hence the assignment) consistent step to step.
+    if(config.rootLess) {
+        auto pitchClass = [](float value) {
+            float result = std::fmod(value, 12.0f);
+            if(result < 0.0f) result += 12.0f;
+            return result;
+        };
+        float rootPitchClass = pitchClass(outputRoot + noteOffset + pitchOffset);
+        values.erase(std::remove_if(values.begin(), values.end(), [&](float value) {
+            float distance = std::abs(pitchClass(value) - rootPitchClass);
+            return distance <= 0.0001f || std::abs(distance - 12.0f) <= 0.0001f;
+        }), values.end());
+    }
+
     switch(config.voiceLeadingMode) {
         case chordSequenceOutputConfig::VOICE_LEADING_CLASSIC:
             values = applyVoiceLeading(previousValues, values, config.minNote, config.maxNote);
@@ -3033,19 +3057,6 @@ std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &en
             break;
     }
     values = applyRangeConstraints(values, config.minNote, config.maxNote);
-
-    if(config.rootLess) {
-        auto pitchClass = [](float value) {
-            float result = std::fmod(value, 12.0f);
-            if(result < 0.0f) result += 12.0f;
-            return result;
-        };
-        float rootPitchClass = pitchClass(outputRoot + noteOffset + pitchOffset);
-        values.erase(std::remove_if(values.begin(), values.end(), [&](float value) {
-            float distance = std::abs(pitchClass(value) - rootPitchClass);
-            return distance <= 0.0001f || std::abs(distance - 12.0f) <= 0.0001f;
-        }), values.end());
-    }
 
     if(config.perNoteDetune > 0.0f) {
         for(auto &value : values) {
