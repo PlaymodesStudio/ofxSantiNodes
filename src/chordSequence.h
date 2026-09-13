@@ -71,6 +71,14 @@ struct chordSequenceOutputConfig {
         ChordSum = 4
     };
 
+    // Voice-leading strategy applied when moving from one output chord to
+    // the next (see chordSequence::applyVoiceLeading / applySmoothGravityVoicing).
+    enum VoiceLeadingMode {
+        VOICE_LEADING_OFF = 0,
+        VOICE_LEADING_CLASSIC = 1,
+        SMOOTH_GRAVITY_0 = 2   // "Smooth Gravity (0-Anchor)"
+    };
+
     int octave = 0;
     int transpose = 0;
     float pitchBend = 0.0f;
@@ -79,9 +87,10 @@ struct chordSequenceOutputConfig {
     int octaveRandomRange = 0;
     float chromaticDeviationProbability = 0.0f;
     int chromaticDeviationRange = 0;
-    bool voiceLeading = false;
-    int minNote = 0;
-    int maxNote = 127;
+    int voiceLeadingMode = VOICE_LEADING_OFF;
+    float gravityAnchorWeight = 1.5f;
+    int minNote = -12;
+    int maxNote = 128;
     int sourceMode = Chord;
     bool addBass = false;
     int bassOct = -2;
@@ -89,6 +98,7 @@ struct chordSequenceOutputConfig {
     int voicingMode = None;
     float voicingSpread = 0.0f;
     bool fold12 = false;
+    bool rootLess = false;
     float glideMs = 0.0f;
     int outputSize = 4;
     bool expandOutput = false;
@@ -106,6 +116,7 @@ struct chordSequenceSnapshot {
     int globalKey = 0;
     int globalScaleIndex = 0;
     std::string globalScaleName;
+    bool useExternalScale = false;
     int globalTranspose = 0;
     int globalInvert = 0;
     int transposeRandomRange = 0;
@@ -166,8 +177,11 @@ private:
     ofParameter<int> transposeParameter;
     ofParameter<float> pitchBendParameter;
     ofParameter<int> inversionParameter;
+    ofParameter<std::vector<float>> externalScaleInput;
     ofParameter<void> resetSequenceParameter;
     ofParameter<float> rootOutput;
+    ofParameter<float> chordPhasorOutput;
+    ofParameter<float> progressionPhasorOutput;
     ofParameter<bool> showEditor;
     ofParameter<float> editorWidth;
     ofParameter<float> editorHeight;
@@ -198,6 +212,7 @@ private:
     int globalKey = 0;
     int globalScaleIndex = 0;
     std::string globalScaleName;
+    bool useExternalScale = false;
     int globalTranspose = 0;
     int globalInvert = 0;
     int transposeRandomRange = 0;
@@ -218,6 +233,8 @@ private:
     bool markovEnabled = false;
     float currentBPM = 120.0f;
     int internalActiveStep = 0;
+    double currentInternalStepStartBeat = -1.0;
+    double internalProgressionStartBeat = -1.0;
     double nextInternalStepBeat = -1.0;
     int lastRefreshedActiveIndex = -1;
     bool outputBuildDirty = true;
@@ -278,6 +295,7 @@ private:
     bool parseChordTokenToEntry(const std::string &token, chordSequenceEntry &entry) const;
     bool parseCypherRootAndQuality(const std::string &input, float &rootValue, std::string &quality) const;
     std::string normalizeChordQuality(const std::string &quality) const;
+    bool resolveCompoundChordQuality(const std::string &quality, std::vector<float> &values) const;
     int getNoteValue(const std::string &note) const;
     std::vector<std::string> parseChordSequenceString(const std::string &chordString) const;
     std::vector<std::string> extractJazzStandardChords(int songIndex) const;
@@ -291,6 +309,8 @@ private:
     std::string getItemLabel(const chordSequenceEntry &entry) const;
     const std::vector<chordSequenceLibraryItem> &getLibraryForMode(int mode) const;
     int getGlobalScaleSafeIndex() const;
+    int getGlobalScaleOptionIndex() const;
+    std::vector<float> getGlobalScaleValues() const;
     int getResolvedEntryDegree(const chordSequenceEntry &entry) const;
     const std::array<std::vector<chordSequenceFunctionalVariant>, 3> *getCurrentFunctionalGroups() const;
     const std::vector<chordSequenceFunctionalVariant> &getFunctionalVariants(int functionalGroup) const;
@@ -316,6 +336,11 @@ private:
                                          const std::vector<float> &nextValues,
                                          int minNote,
                                          int maxNote) const;
+    std::vector<float> applySmoothGravityVoicing(const std::vector<float> &previousValues,
+                                                 const std::vector<float> &nextValues,
+                                                 int minNote,
+                                                 int maxNote,
+                                                 float anchorWeight) const;
     std::vector<float> applyRangeConstraints(const std::vector<float> &values,
                                              int minNote,
                                              int maxNote) const;
@@ -330,12 +355,14 @@ private:
     bool usesInternalProgressionOrder() const;
     void setProgressionOrder(int order, bool refreshSequence);
     int resolveActiveIndex() const;
+    float getTotalProgressionBeats() const;
     float getStepDurationMs(int stepIndex) const;
     void resetInternalSequence(bool forceInstant, double anchorBeat = -1.0);
     int chooseNextInternalStep(int currentStep);
     void advanceInternalSequence();
     int generateRandomizedModifier(int range, int quantization);
     void updateEffectiveGlobalModifiers(bool sequenceRestart, bool stepAdvance, bool forceReroll = false);
+    void updatePhasorOutputs(double beatPosition);
 
     void refreshAllOutputs(bool forceInstant = false);
     void beginGlideTo(int outputIndex, const std::vector<float> &nextTarget, bool forceInstant);

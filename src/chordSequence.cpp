@@ -22,13 +22,22 @@ namespace {
     const char *functionalGroupKeys[] = {"tonic", "subdominant", "dominant"};
     const char *functionalGroupLabels[] = {"Tonic", "Subdominant", "Dominant"};
     const char *voicingLabels[] = {"None", "Close", "Open", "Drop 2", "Drop 3", "Shell"};
+    const char *voiceLeadingLabels[] = {"Off", "Classic", "Smooth Gravity (0-Anchor)"};
     const char *outputSourceLabels[] = {"Chord", "Scale", "Root", "Key", "Chord Sum"};
+    const char *externalScaleLabel = "External";
     constexpr double transportResetBeatWindow = 0.05;
     float chordSequenceLayoutZoom = 1.0f;
     float chordSequenceFontZoom = 1.0f;
 
     float scaledUi(float value) {
         return value * chordSequenceLayoutZoom;
+    }
+
+    void setNextLabeledItemWidth(const char *label) {
+        float availableWidth = ImGui::GetContentRegionAvail().x;
+        float labelWidth = ImGui::CalcTextSize(label).x;
+        float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+        ImGui::SetNextItemWidth(std::max(1.0f, availableWidth - labelWidth - spacing));
     }
 
     bool modeSupportsDiatonicDeviation(int mode) {
@@ -40,6 +49,21 @@ namespace {
     bool outputSourceUsesScaleLikeMaterial(int sourceMode) {
         return sourceMode == chordSequenceOutputConfig::Scale ||
                sourceMode == chordSequenceOutputConfig::ChordSum;
+    }
+
+    const std::map<std::string, std::vector<float>> &getSupplementalChordDefinitions() {
+        static const std::map<std::string, std::vector<float>> definitions = {
+            {"13sus2", {0.0f, 2.0f, 7.0f, 10.0f, 21.0f}}
+        };
+        return definitions;
+    }
+
+    bool getSupplementalChordDefinition(const std::string &name, std::vector<float> &values) {
+        const auto &definitions = getSupplementalChordDefinitions();
+        auto it = definitions.find(name);
+        if(it == definitions.end()) return false;
+        values = it->second;
+        return true;
     }
 
     const ImVec4 snapshotsBg = ImVec4(0.24f, 0.46f, 0.28f, 0.97f);
@@ -376,7 +400,7 @@ namespace {
         float rowHeight = ImGui::GetFrameHeightWithSpacing();
         float textHeight = ImGui::GetTextLineHeightWithSpacing();
         float height = scaledUi(24.0f); // header
-        float controlRows = 15.0f; // always-visible rows
+        float controlRows = 16.0f; // always-visible rows
         if(!outputSourceUsesScaleLikeMaterial(config.sourceMode)) {
             controlRows += 5.0f; // root/key, addBass, inversion, voicing, spread
             if(config.addBass) controlRows += 1.0f; // bass octave
@@ -499,7 +523,8 @@ ofJson chordSequenceOutputConfig::toJson() const {
         {"octaveRandomRange", octaveRandomRange},
         {"chromaticDeviationProbability", chromaticDeviationProbability},
         {"chromaticDeviationRange", chromaticDeviationRange},
-        {"voiceLeading", voiceLeading},
+        {"voiceLeadingMode", voiceLeadingMode},
+        {"gravityAnchorWeight", gravityAnchorWeight},
         {"minNote", minNote},
         {"maxNote", maxNote},
         {"sourceMode", sourceMode},
@@ -509,6 +534,7 @@ ofJson chordSequenceOutputConfig::toJson() const {
         {"voicingMode", voicingMode},
         {"voicingSpread", voicingSpread},
         {"fold12", fold12},
+        {"rootLess", rootLess},
         {"glideMs", glideMs},
         {"outputSize", outputSize},
         {"expandOutput", expandOutput},
@@ -526,9 +552,16 @@ chordSequenceOutputConfig chordSequenceOutputConfig::fromJson(const ofJson &json
     config.octaveRandomRange = std::max(0, json.value("octaveRandomRange", 0));
     config.chromaticDeviationProbability = ofClamp(json.value("chromaticDeviationProbability", 0.0f), 0.0f, 100.0f);
     config.chromaticDeviationRange = std::max(0, json.value("chromaticDeviationRange", 0));
-    config.voiceLeading = json.value("voiceLeading", false);
-    config.minNote = ofClamp(json.value("minNote", 0), 0, 127);
-    config.maxNote = ofClamp(json.value("maxNote", 127), 0, 127);
+    {
+        int legacyModeFromBool = json.value("voiceLeading", false) ? chordSequenceOutputConfig::VOICE_LEADING_CLASSIC
+                                                                    : chordSequenceOutputConfig::VOICE_LEADING_OFF;
+        config.voiceLeadingMode = ofClamp(json.value("voiceLeadingMode", legacyModeFromBool),
+                                          chordSequenceOutputConfig::VOICE_LEADING_OFF,
+                                          chordSequenceOutputConfig::SMOOTH_GRAVITY_0);
+    }
+    config.gravityAnchorWeight = std::max(0.0f, json.value("gravityAnchorWeight", 1.5f));
+    config.minNote = ofClamp(json.value("minNote", -12), -12, 128);
+    config.maxNote = ofClamp(json.value("maxNote", 128), -12, 128);
     if(config.minNote > config.maxNote) std::swap(config.minNote, config.maxNote);
     if(json.contains("sourceMode")) {
         config.sourceMode = ofClamp(json.value("sourceMode", chordSequenceOutputConfig::Chord),
@@ -551,6 +584,7 @@ chordSequenceOutputConfig chordSequenceOutputConfig::fromJson(const ofJson &json
                                  chordSequenceOutputConfig::Shell);
     config.voicingSpread = std::max(0.0f, json.value("voicingSpread", 0.0f));
     config.fold12 = json.value("fold12", false);
+    config.rootLess = json.value("rootLess", false);
     config.glideMs = json.value("glideMs", 0.0f);
     config.outputSize = std::max(1, json.value("outputSize", 4));
     config.expandOutput = json.value("expandOutput", false);
@@ -565,6 +599,7 @@ ofJson chordSequenceSnapshot::toJson() const {
     json["globalKey"] = globalKey;
     json["globalScaleIndex"] = globalScaleIndex;
     json["globalScaleName"] = globalScaleName;
+    json["useExternalScale"] = useExternalScale;
     json["globalTranspose"] = globalTranspose;
     json["globalInvert"] = globalInvert;
     json["transposeRandomRange"] = transposeRandomRange;
@@ -600,6 +635,7 @@ chordSequenceSnapshot chordSequenceSnapshot::fromJson(const ofJson &json) {
     snapshot.globalKey = ofClamp(json.value("globalKey", 0), 0, 11);
     snapshot.globalScaleIndex = std::max(0, json.value("globalScaleIndex", 0));
     snapshot.globalScaleName = json.value("globalScaleName", std::string());
+    snapshot.useExternalScale = json.value("useExternalScale", false);
     snapshot.globalTranspose = json.value("globalTranspose", 0);
     snapshot.globalInvert = json.value("globalInvert", 0);
     snapshot.transposeRandomRange = std::max(0, json.value("transposeRandomRange", 0));
@@ -658,8 +694,14 @@ void chordSequence::setup() {
     addParameter(transposeParameter.set("Transpose", 0, -48, 48));
     addParameter(pitchBendParameter.set("Pitchbend", 0.0f, -24.0f, 24.0f));
     addParameter(inversionParameter.set("Inversion", 0, -16, 16));
+    addParameter(externalScaleInput.set("Scale",
+                                        std::vector<float>{0, 2, 4, 5, 7, 9, 11},
+                                        std::vector<float>{-127.0f},
+                                        std::vector<float>{127.0f}));
     addParameter(resetSequenceParameter.set("Reset"));
     addOutputParameter(rootOutput.set("Root", 0.0f, 0.0f, 11.0f));
+    addOutputParameter(chordPhasorOutput.set("ChPh", 0.0f, 0.0f, 1.0f));
+    addOutputParameter(progressionPhasorOutput.set("ProgPh", 0.0f, 0.0f, 1.0f));
     addParameter(showEditor.set("Show", false));
 
     addInspectorParameter(editorWidth.set("Editor Width", 980.0f, 560.0f, 1800.0f));
@@ -691,6 +733,9 @@ void chordSequence::setup() {
     listeners.push(inversionParameter.newListener([this](int &value) {
         globalInvert = value;
         refreshAllOutputs(true);
+    }));
+    listeners.push(externalScaleInput.newListener([this](std::vector<float> &) {
+        if(useExternalScale) refreshAllOutputs(true);
     }));
     listeners.push(resetSequenceParameter.newListener([this]() {
         resetInternalSequence(true);
@@ -741,6 +786,7 @@ void chordSequence::update(ofEventArgs &) {
             }
         }
     }
+    updatePhasorOutputs(frameState.current.beatPosition);
 
     for(int i = 0; i < static_cast<int>(outputs.size()); i++) {
         if(!outputIsGliding[i]) continue;
@@ -1171,15 +1217,19 @@ void chordSequence::initializePublishableEditorParameters() {
                      keyOptions);
 
     std::vector<std::string> scaleOptions;
-    scaleOptions.reserve(scaleLibrary.size());
+    scaleOptions.reserve(scaleLibrary.size() + 1);
+    scaleOptions.push_back(externalScaleLabel);
     for(const auto &item : scaleLibrary) scaleOptions.push_back(item.name);
     registerIntProxy("globalScale", "Key Scale", 0, std::max(0, static_cast<int>(scaleOptions.size()) - 1),
-                     [this]() { return getGlobalScaleSafeIndex(); },
+                     [this]() { return getGlobalScaleOptionIndex(); },
                      [this](int value) {
-                         if(scaleLibrary.empty()) return;
-                         int index = ofClamp(value, 0, static_cast<int>(scaleLibrary.size()) - 1);
-                         globalScaleIndex = index;
-                         globalScaleName = scaleLibrary[index].name;
+                         int optionIndex = ofClamp(value, 0, static_cast<int>(scaleLibrary.size()));
+                         useExternalScale = optionIndex == 0;
+                         if(!useExternalScale && !scaleLibrary.empty()) {
+                             int libraryIndex = optionIndex - 1;
+                             globalScaleIndex = libraryIndex;
+                             globalScaleName = scaleLibrary[libraryIndex].name;
+                         }
                          sanitizeProgression();
                          refreshAllOutputs(true);
                      },
@@ -1319,8 +1369,11 @@ void chordSequence::initializePublishableEditorParameters() {
                                outputBuildDirty = true;
                                if(usesInternalProgressionOrder() && !progression.empty()) {
                                    int activeStep = ofClamp(resolveActiveIndex(), 0, static_cast<int>(progression.size()) - 1);
-                                   nextInternalStepBeat = getFrameTransportState().current.beatPosition +
+                                   double beatPosition = getFrameTransportState().current.beatPosition;
+                                   currentInternalStepStartBeat = beatPosition;
+                                   nextInternalStepBeat = beatPosition +
                                                           std::max(0.001f, progression[activeStep].beatDuration);
+                                   updatePhasorOutputs(beatPosition);
                                }
                            });
         registerIntProxy(prefix + "transpose", labelPrefix + "Transpose", -48, 48,
@@ -1416,6 +1469,13 @@ void chordSequence::initializePublishableEditorParameters() {
                               outputConfigs[i].fold12 = value;
                               refreshAllOutputs(true);
                           });
+        registerBoolProxy(prefix + "rootLess", labelPrefix + "rootLess",
+                          [this, i]() { return outputConfigs[i].rootLess; },
+                          [this, i](bool value) {
+                              if(i >= static_cast<int>(outputConfigs.size())) return;
+                              outputConfigs[i].rootLess = value;
+                              refreshAllOutputs(true);
+                          });
         registerBoolProxy(prefix + "addBass", labelPrefix + "AddBass",
                           [this, i]() { return outputConfigs[i].addBass; },
                           [this, i](bool value) {
@@ -1461,26 +1521,37 @@ void chordSequence::initializePublishableEditorParameters() {
                                if(i >= static_cast<int>(outputConfigs.size())) return;
                                outputConfigs[i].glideMs = std::max(0.0f, value);
                            });
-        registerBoolProxy(prefix + "voiceLeading", labelPrefix + "Voice Lead",
-                          [this, i]() { return outputConfigs[i].voiceLeading; },
-                          [this, i](bool value) {
-                              if(i >= static_cast<int>(outputConfigs.size())) return;
-                              outputConfigs[i].voiceLeading = value;
-                              refreshAllOutputs(true);
-                          });
-        registerIntProxy(prefix + "minNote", labelPrefix + "Min Note", 0, 127,
+        registerIntProxy(prefix + "voiceLeading", labelPrefix + "Voice Lead",
+                         chordSequenceOutputConfig::VOICE_LEADING_OFF, chordSequenceOutputConfig::SMOOTH_GRAVITY_0,
+                         [this, i]() { return outputConfigs[i].voiceLeadingMode; },
+                         [this, i](int value) {
+                             if(i >= static_cast<int>(outputConfigs.size())) return;
+                             outputConfigs[i].voiceLeadingMode = ofClamp(value,
+                                                                        chordSequenceOutputConfig::VOICE_LEADING_OFF,
+                                                                        chordSequenceOutputConfig::SMOOTH_GRAVITY_0);
+                             refreshAllOutputs(true);
+                         },
+                         {"Off", "Classic", "Smooth Gravity (0-Anchor)"});
+        registerFloatProxy(prefix + "gravityAnchorWeight", labelPrefix + "Gravity Wt", 0.0f, 8.0f,
+                           [this, i]() { return outputConfigs[i].gravityAnchorWeight; },
+                           [this, i](float value) {
+                               if(i >= static_cast<int>(outputConfigs.size())) return;
+                               outputConfigs[i].gravityAnchorWeight = std::max(0.0f, value);
+                               refreshAllOutputs(true);
+                           });
+        registerIntProxy(prefix + "minNote", labelPrefix + "Min Note", -12, 128,
                          [this, i]() { return outputConfigs[i].minNote; },
                          [this, i](int value) {
                              if(i >= static_cast<int>(outputConfigs.size())) return;
-                             outputConfigs[i].minNote = ofClamp(value, 0, 127);
+                             outputConfigs[i].minNote = ofClamp(value, -12, 128);
                              if(outputConfigs[i].minNote > outputConfigs[i].maxNote) outputConfigs[i].maxNote = outputConfigs[i].minNote;
                              refreshAllOutputs(true);
                          });
-        registerIntProxy(prefix + "maxNote", labelPrefix + "Max Note", 0, 127,
+        registerIntProxy(prefix + "maxNote", labelPrefix + "Max Note", -12, 128,
                          [this, i]() { return outputConfigs[i].maxNote; },
                          [this, i](int value) {
                              if(i >= static_cast<int>(outputConfigs.size())) return;
-                             outputConfigs[i].maxNote = ofClamp(value, 0, 127);
+                             outputConfigs[i].maxNote = ofClamp(value, -12, 128);
                              if(outputConfigs[i].maxNote < outputConfigs[i].minNote) outputConfigs[i].minNote = outputConfigs[i].maxNote;
                              refreshAllOutputs(true);
                          });
@@ -1835,8 +1906,11 @@ void chordSequence::resizeProgression(int newSize) {
     if(numChordsParameter.get() != newSize) numChordsParameter = newSize;
     if(usesInternalProgressionOrder()) {
         internalActiveStep = ofClamp(internalActiveStep, 0, std::max(0, newSize - 1));
-        nextInternalStepBeat = getFrameTransportState().current.beatPosition +
+        double beatPosition = getFrameTransportState().current.beatPosition;
+        currentInternalStepStartBeat = beatPosition;
+        nextInternalStepBeat = beatPosition +
                                std::max(0.001f, progression[internalActiveStep].beatDuration);
+        updatePhasorOutputs(beatPosition);
     }
     refreshAllOutputs(true);
 }
@@ -2008,6 +2082,14 @@ std::string chordSequence::normalizeChordQuality(const std::string &quality) con
     q.erase(std::remove(q.begin(), q.end(), ' '), q.end());
     if(q.empty()) return "M";
 
+    auto qualityExists = [this](const std::string &name) {
+        std::vector<float> supplementalValues;
+        if(getSupplementalChordDefinition(name, supplementalValues)) return true;
+        return std::any_of(chordLibrary.begin(), chordLibrary.end(), [&](const chordSequenceLibraryItem &item) {
+            return item.name == name;
+        });
+    };
+
     for(const auto &item : chordLibrary) {
         if(item.name == q) return item.name;
     }
@@ -2017,7 +2099,64 @@ std::string chordSequence::normalizeChordQuality(const std::string &quality) con
         if(item.name == resolved) return item.name;
     }
 
+    if(q.size() > 3 && q.compare(q.size() - 3, 3, "sus") == 0) {
+        std::string sus4Quality = q.substr(0, q.size() - 3) + "sus4";
+        if(qualityExists(sus4Quality)) return sus4Quality;
+    }
+
     return resolved;
+}
+
+// Splits a compound cypher quality such as "mAdd9" / "MinAdd9" into a base
+// triad prefix ("m") and an extension suffix ("add9"), then composes their
+// intervals: base triad intervals + the added tone from the suffix chord.
+//
+// chordSequence's chordLibrary (chords.txt) generally stores simple qualities
+// like "m" and "add9" separately rather than every combination someone might
+// type (there is no "madd9" entry), so a direct/aliased lookup of the whole
+// token fails even though both halves resolve fine on their own. chordCypher.h
+// already solves exactly this for its own (separate) parser -- combining a
+// prefix with an "addN" suffix by appending the added interval to the base
+// triad -- this ports that same fix into chordSequence's own cypher parsing,
+// which had no such compound handling.
+bool chordSequence::resolveCompoundChordQuality(const std::string &quality, std::vector<float> &values) const {
+    struct PrefixRule { std::string token; std::string base; };
+    static const std::vector<PrefixRule> prefixRules = {
+        {"min", "m"}, {"m", "m"},
+        {"maj", "M"}, {"M", "M"},
+        {"dim", "dim"},
+        {"aug", "aug"}
+    };
+
+    for(const auto &rule : prefixRules) {
+        if(quality.size() <= rule.token.size()) continue;
+        if(quality.compare(0, rule.token.size(), rule.token) != 0) continue;
+
+        std::string suffix = quality.substr(rule.token.size());
+        std::string resolvedSuffix = normalizeChordQuality(suffix);
+
+        // "addN" extensions append their added tone on top of the base
+        // triad rather than replacing it (root/3rd/5th stay intact).
+        if(resolvedSuffix != "add9" && resolvedSuffix != "add11" && resolvedSuffix != "add13") continue;
+
+        int baseIndex = findItemIndexByName(chordLibrary, rule.base);
+        if(baseIndex < 0) continue;
+
+        std::vector<float> suffixValues;
+        int suffixIndex = findItemIndexByName(chordLibrary, resolvedSuffix);
+        if(suffixIndex >= 0) {
+            suffixValues = chordLibrary[suffixIndex].values;
+        } else if(!getSupplementalChordDefinition(resolvedSuffix, suffixValues)) {
+            continue;
+        }
+        if(suffixValues.empty()) continue;
+
+        values = chordLibrary[baseIndex].values;
+        values.push_back(suffixValues.back());
+        return true;
+    }
+
+    return false;
 }
 
 int chordSequence::getNoteValue(const std::string &note) const {
@@ -2192,6 +2331,20 @@ int chordSequence::getGlobalScaleSafeIndex() const {
     return ofClamp(globalScaleIndex, 0, static_cast<int>(scaleLibrary.size()) - 1);
 }
 
+int chordSequence::getGlobalScaleOptionIndex() const {
+    if(useExternalScale) return 0;
+    int safeIndex = getGlobalScaleSafeIndex();
+    return safeIndex < 0 ? 0 : safeIndex + 1;
+}
+
+std::vector<float> chordSequence::getGlobalScaleValues() const {
+    if(useExternalScale) return externalScaleInput.get();
+
+    int safeScaleIndex = getGlobalScaleSafeIndex();
+    if(safeScaleIndex < 0 || safeScaleIndex >= static_cast<int>(scaleLibrary.size())) return {};
+    return scaleLibrary[safeScaleIndex].values;
+}
+
 int chordSequence::getResolvedEntryDegree(const chordSequenceEntry &entry) const {
     if(entry.mode == chordSequenceEntry::Functional) {
         const std::vector<chordSequenceFunctionalVariant> &variants = getFunctionalVariants(entry.functionalGroup);
@@ -2204,6 +2357,7 @@ int chordSequence::getResolvedEntryDegree(const chordSequenceEntry &entry) const
 }
 
 const std::array<std::vector<chordSequenceFunctionalVariant>, 3> *chordSequence::getCurrentFunctionalGroups() const {
+    if(useExternalScale) return nullptr;
     int safeScaleIndex = getGlobalScaleSafeIndex();
     if(safeScaleIndex < 0 || safeScaleIndex >= static_cast<int>(scaleLibrary.size())) return nullptr;
 
@@ -2253,10 +2407,7 @@ void chordSequence::applyFunctionalVariantToEntry(chordSequenceEntry &entry) con
 }
 
 std::vector<float> chordSequence::buildDegreeValues(const chordSequenceEntry &entry) const {
-    int safeScaleIndex = getGlobalScaleSafeIndex();
-    if(safeScaleIndex < 0) return {0.0f};
-
-    const std::vector<float> &scaleValues = scaleLibrary[safeScaleIndex].values;
+    std::vector<float> scaleValues = getGlobalScaleValues();
     if(scaleValues.empty()) return {0.0f};
 
     int scaleSize = static_cast<int>(scaleValues.size());
@@ -2284,7 +2435,15 @@ std::vector<float> chordSequence::buildEntryIntervals(const chordSequenceEntry &
         parseCypherRootAndQuality(entry.itemName, rootValue, quality);
 
         int qualityIndex = findItemIndexByName(chordLibrary, quality);
-        if(qualityIndex < 0) qualityIndex = defaultChordIndex;
+        if(qualityIndex < 0) {
+            std::vector<float> supplementalValues;
+            if(getSupplementalChordDefinition(quality, supplementalValues)) return supplementalValues;
+
+            std::vector<float> compoundValues;
+            if(resolveCompoundChordQuality(quality, compoundValues)) return compoundValues;
+
+            qualityIndex = defaultChordIndex;
+        }
         return chordLibrary[qualityIndex].values;
     }
 
@@ -2313,10 +2472,7 @@ std::vector<float> chordSequence::getDiatonicReferenceScale(const chordSequenceE
     }
 
     if(entry.mode == chordSequenceEntry::Degree || entry.mode == chordSequenceEntry::Functional) {
-        int safeScaleIndex = getGlobalScaleSafeIndex();
-        if(safeScaleIndex < 0 || safeScaleIndex >= static_cast<int>(scaleLibrary.size())) return {};
-
-        std::vector<float> reference = scaleLibrary[safeScaleIndex].values;
+        std::vector<float> reference = getGlobalScaleValues();
         for(auto &value : reference) {
             value += static_cast<float>(globalKey + entry.transpose);
         }
@@ -2422,9 +2578,8 @@ std::vector<float> chordSequence::buildOutputSourceValues(const chordSequenceEnt
                                                           float &outputRoot) const {
     if(config.sourceMode == chordSequenceOutputConfig::Scale) {
         outputRoot = static_cast<float>(globalKey);
-        int safeScaleIndex = getGlobalScaleSafeIndex();
-        if(safeScaleIndex >= 0 && safeScaleIndex < static_cast<int>(scaleLibrary.size())) {
-            std::vector<float> values = scaleLibrary[safeScaleIndex].values;
+        std::vector<float> values = getGlobalScaleValues();
+        if(!values.empty()) {
             for(auto &value : values) {
                 value += static_cast<float>(globalKey);
             }
@@ -2507,44 +2662,195 @@ std::vector<float> chordSequence::applyVoiceLeading(const std::vector<float> &pr
                                                     int maxNote) const {
     if(previousValues.empty() || nextValues.empty()) return nextValues;
 
-    minNote = ofClamp(minNote, 0, 127);
-    maxNote = ofClamp(maxNote, 0, 127);
+    minNote = ofClamp(minNote, -12, 128);
+    maxNote = ofClamp(maxNote, -12, 128);
     if(minNote > maxNote) std::swap(minNote, maxNote);
 
-    std::vector<float> voiced = nextValues;
-    for(size_t i = 0; i < voiced.size(); i++) {
-        float reference = sampleVector(previousValues, i);
-        float bestValue = voiced[i];
-        float bestDistance = std::numeric_limits<float>::max();
+    const int voiceCount = static_cast<int>(nextValues.size());
+    std::vector<std::vector<double>> costs(voiceCount, std::vector<double>(voiceCount, 0.0));
+    std::vector<std::vector<float>> candidates(voiceCount, std::vector<float>(voiceCount, 0.0f));
 
-        // Find the octave displacement that keeps each note closest to the
-        // previous emitted output while respecting the configured register.
-        for(int octaveShift = -8; octaveShift <= 8; octaveShift++) {
-            float candidate = voiced[i] + static_cast<float>(octaveShift * 12);
-            if(candidate < minNote || candidate > maxNote) continue;
+    for(int referenceIndex = 0; referenceIndex < voiceCount; referenceIndex++) {
+        float reference = sampleVector(previousValues, referenceIndex);
 
-            float distance = std::abs(candidate - reference);
-            if(distance < bestDistance) {
-                bestDistance = distance;
-                bestValue = candidate;
-            }
-        }
+        for(int noteIndex = 0; noteIndex < voiceCount; noteIndex++) {
+            float bestValue = nextValues[noteIndex];
+            float bestDistance = std::numeric_limits<float>::max();
 
-        if(bestDistance == std::numeric_limits<float>::max()) {
             for(int octaveShift = -8; octaveShift <= 8; octaveShift++) {
-                float candidate = voiced[i] + static_cast<float>(octaveShift * 12);
+                float candidate = nextValues[noteIndex] + static_cast<float>(octaveShift * 12);
+                if(candidate < minNote || candidate > maxNote) continue;
+
                 float distance = std::abs(candidate - reference);
                 if(distance < bestDistance) {
                     bestDistance = distance;
                     bestValue = candidate;
                 }
             }
-        }
 
-        voiced[i] = bestValue;
+            if(bestDistance == std::numeric_limits<float>::max()) {
+                for(int octaveShift = -8; octaveShift <= 8; octaveShift++) {
+                    float candidate = nextValues[noteIndex] + static_cast<float>(octaveShift * 12);
+                    float distance = std::abs(candidate - reference);
+                    if(distance < bestDistance) {
+                        bestDistance = distance;
+                        bestValue = candidate;
+                    }
+                }
+            }
+
+            costs[referenceIndex][noteIndex] = static_cast<double>(bestDistance);
+            candidates[referenceIndex][noteIndex] = bestValue;
+        }
+    }
+
+    const double infinity = std::numeric_limits<double>::max();
+    std::vector<double> rowPotential(voiceCount + 1, 0.0);
+    std::vector<double> columnPotential(voiceCount + 1, 0.0);
+    std::vector<int> matchedRowForColumn(voiceCount + 1, 0);
+    std::vector<int> previousColumn(voiceCount + 1, 0);
+
+    for(int row = 1; row <= voiceCount; row++) {
+        matchedRowForColumn[0] = row;
+        int column = 0;
+        std::vector<double> minimumColumnCost(voiceCount + 1, infinity);
+        std::vector<char> usedColumn(voiceCount + 1, false);
+
+        do {
+            usedColumn[column] = true;
+            int matchedRow = matchedRowForColumn[column];
+            double delta = infinity;
+            int nextColumn = 0;
+
+            for(int candidateColumn = 1; candidateColumn <= voiceCount; candidateColumn++) {
+                if(usedColumn[candidateColumn]) continue;
+
+                double currentCost = costs[matchedRow - 1][candidateColumn - 1] -
+                                     rowPotential[matchedRow] -
+                                     columnPotential[candidateColumn];
+                if(currentCost < minimumColumnCost[candidateColumn]) {
+                    minimumColumnCost[candidateColumn] = currentCost;
+                    previousColumn[candidateColumn] = column;
+                }
+                if(minimumColumnCost[candidateColumn] < delta) {
+                    delta = minimumColumnCost[candidateColumn];
+                    nextColumn = candidateColumn;
+                }
+            }
+
+            for(int candidateColumn = 0; candidateColumn <= voiceCount; candidateColumn++) {
+                if(usedColumn[candidateColumn]) {
+                    rowPotential[matchedRowForColumn[candidateColumn]] += delta;
+                    columnPotential[candidateColumn] -= delta;
+                } else {
+                    minimumColumnCost[candidateColumn] -= delta;
+                }
+            }
+
+            column = nextColumn;
+        } while(matchedRowForColumn[column] != 0);
+
+        do {
+            int nextColumn = previousColumn[column];
+            matchedRowForColumn[column] = matchedRowForColumn[nextColumn];
+            column = nextColumn;
+        } while(column != 0);
+    }
+
+    std::vector<int> assignedNoteForReference(voiceCount, 0);
+    for(int column = 1; column <= voiceCount; column++) {
+        if(matchedRowForColumn[column] > 0) {
+            assignedNoteForReference[matchedRowForColumn[column] - 1] = column - 1;
+        }
+    }
+
+    std::vector<float> voiced(voiceCount, 0.0f);
+    for(int referenceIndex = 0; referenceIndex < voiceCount; referenceIndex++) {
+        int noteIndex = assignedNoteForReference[referenceIndex];
+        voiced[referenceIndex] = candidates[referenceIndex][noteIndex];
     }
 
     return voiced;
+}
+
+// "Smooth Gravity (0-Anchor)" voice leading.
+//
+// An earlier version of this avoided applyVoiceLeading()'s Hungarian
+// assignment and instead matched each previous voice to the next chord's
+// pitch classes *by position* (voice 0 to voice 0, etc.), independently
+// octave-searching each one. That is not equivalent to finding the true
+// minimum-total-movement pairing: which previous voice should end up
+// closest to which target pitch class is itself part of what needs
+// solving, not something you can assume from index order. It produced
+// noticeably wrong (non-minimal) voicings on real progressions.
+//
+// applyVoiceLeading() already solves that exactly, in O(numVoices^3) via
+// a proper Hungarian assignment -- polynomial, not the O(N!*4^N) blow-up
+// that motivated removing permutation search in the first place. So
+// Smooth Gravity now reuses it for the shape, and only adds its own
+// "0-Anchor" character as a small refinement on top: the resulting bass
+// voice gets a one-octave-either-way check that also weighs Gravity Cost
+// (distance to the nearest pitch-class-0/C) alongside Voice Leading Cost,
+// which is where this mode differs from plain Classic.
+std::vector<float> chordSequence::applySmoothGravityVoicing(const std::vector<float> &previousValues,
+                                                             const std::vector<float> &nextValues,
+                                                             int minNote,
+                                                             int maxNote,
+                                                             float anchorWeight) const {
+    if(nextValues.empty()) return nextValues;
+
+    minNote = ofClamp(minNote, -12, 128);
+    maxNote = ofClamp(maxNote, -12, 128);
+    if(minNote > maxNote) std::swap(minNote, maxNote);
+
+    // refreshAllOutputs() passes an *empty* previousValues both on the very
+    // first chord after (re)start/preset load and on every forced/instant
+    // refresh (e.g. dragging Octave, or any other control that calls
+    // refreshAllOutputs(true)) -- there is no real prior chord in either
+    // case. Anchoring to a synthetic all-zero "previous chord" instead of
+    // skipping voice leading entirely means the very first chord (and every
+    // forced refresh) already sits anchored near pitch-class 0, with no
+    // manual Octave compensation needed.
+    std::vector<float> effectivePrevious = previousValues;
+    if(effectivePrevious.empty()) {
+        effectivePrevious.assign(nextValues.size(), 0.0f);
+    }
+
+    // Exact minimum-total-movement shape (same solver Classic mode uses).
+    std::vector<float> candidate = applyVoiceLeading(effectivePrevious, nextValues, minNote, maxNote);
+    if(candidate.empty()) return candidate;
+    std::sort(candidate.begin(), candidate.end());
+
+    // Gravity is a bass/register effect: after the optimal assignment is
+    // found, check whether shifting *just* the resulting bass voice by one
+    // octave either way lowers Total Cost = Voice Leading Cost + Gravity
+    // Cost * anchorWeight, where Gravity Cost pulls toward the nearest
+    // pitch-class-0 (C) to wherever the previous bass voice was.
+    {
+        float matchedPrev = sampleVector(effectivePrevious, 0);
+        float bassNote = candidate[0];
+        float anchorNote = std::round(matchedPrev / 12.0f) * 12.0f;
+
+        float bestBassNote = bassNote;
+        float bestTotal = std::numeric_limits<float>::max();
+        for(int octaveStep = -1; octaveStep <= 1; octaveStep++) {
+            float testNote = bassNote + static_cast<float>(octaveStep) * 12.0f;
+            if(testNote < static_cast<float>(minNote) || testNote > static_cast<float>(maxNote)) continue;
+            float voiceLeadingCost = std::abs(testNote - matchedPrev);
+            float gravityCost = std::abs(testNote - anchorNote) * anchorWeight;
+            float totalCost = voiceLeadingCost + gravityCost;
+            if(totalCost < bestTotal) {
+                bestTotal = totalCost;
+                bestBassNote = testNote;
+            }
+        }
+        candidate[0] = bestBassNote;
+        // Re-sort in case a large anchorWeight pulled the bass above the
+        // next voice up.
+        std::sort(candidate.begin(), candidate.end());
+    }
+
+    return candidate;
 }
 
 std::vector<float> chordSequence::applyRangeConstraints(const std::vector<float> &values,
@@ -2552,8 +2858,8 @@ std::vector<float> chordSequence::applyRangeConstraints(const std::vector<float>
                                                         int maxNote) const {
     if(values.empty()) return values;
 
-    minNote = ofClamp(minNote, 0, 127);
-    maxNote = ofClamp(maxNote, 0, 127);
+    minNote = ofClamp(minNote, -12, 128);
+    maxNote = ofClamp(maxNote, -12, 128);
     if(minNote > maxNote) std::swap(minNote, maxNote);
 
     std::vector<float> constrained = values;
@@ -2712,15 +3018,40 @@ std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &en
     float noteOffset = static_cast<float>(config.transpose + config.octave * 12);
     for(auto &value : values) {
         value += noteOffset + pitchOffset;
-        if(config.perNoteDetune > 0.0f) {
+    }
+
+    switch(config.voiceLeadingMode) {
+        case chordSequenceOutputConfig::VOICE_LEADING_CLASSIC:
+            values = applyVoiceLeading(previousValues, values, config.minNote, config.maxNote);
+            break;
+        case chordSequenceOutputConfig::SMOOTH_GRAVITY_0:
+            values = applySmoothGravityVoicing(previousValues, values, config.minNote, config.maxNote,
+                                               config.gravityAnchorWeight);
+            break;
+        case chordSequenceOutputConfig::VOICE_LEADING_OFF:
+        default:
+            break;
+    }
+    values = applyRangeConstraints(values, config.minNote, config.maxNote);
+
+    if(config.rootLess) {
+        auto pitchClass = [](float value) {
+            float result = std::fmod(value, 12.0f);
+            if(result < 0.0f) result += 12.0f;
+            return result;
+        };
+        float rootPitchClass = pitchClass(outputRoot + noteOffset + pitchOffset);
+        values.erase(std::remove_if(values.begin(), values.end(), [&](float value) {
+            float distance = std::abs(pitchClass(value) - rootPitchClass);
+            return distance <= 0.0001f || std::abs(distance - 12.0f) <= 0.0001f;
+        }), values.end());
+    }
+
+    if(config.perNoteDetune > 0.0f) {
+        for(auto &value : values) {
             value += ofRandom(-config.perNoteDetune, config.perNoteDetune);
         }
     }
-
-    if(config.voiceLeading) {
-        values = applyVoiceLeading(previousValues, values, config.minNote, config.maxNote);
-    }
-    values = applyRangeConstraints(values, config.minNote, config.maxNote);
 
     if(config.sortOutput) {
         std::sort(values.begin(), values.end());
@@ -2808,17 +3139,25 @@ void chordSequence::setProgressionOrder(int order, bool refreshSequence) {
     }
 
     if(!internalTimingEnabled) {
+        currentInternalStepStartBeat = -1.0;
+        internalProgressionStartBeat = -1.0;
         nextInternalStepBeat = -1.0;
+        updatePhasorOutputs(getFrameTransportState().current.beatPosition);
         if(indexInput.get() != internalActiveStep) {
             indexInput = internalActiveStep;
         }
     } else {
         const auto transportState = getFrameTransportState().current;
         if(!progression.empty()) {
+            currentInternalStepStartBeat = transportState.beatPosition;
+            internalProgressionStartBeat = transportState.beatPosition;
             nextInternalStepBeat = transportState.beatPosition + std::max(0.001f, progression[internalActiveStep].beatDuration);
         } else {
+            currentInternalStepStartBeat = -1.0;
+            internalProgressionStartBeat = -1.0;
             nextInternalStepBeat = -1.0;
         }
+        updatePhasorOutputs(transportState.beatPosition);
     }
 
     outputBuildDirty = true;
@@ -2835,6 +3174,14 @@ int chordSequence::resolveActiveIndex() const {
     return wrapIndex(indexInput.get(), static_cast<int>(progression.size()));
 }
 
+float chordSequence::getTotalProgressionBeats() const {
+    float total = 0.0f;
+    for(const auto &entry : progression) {
+        total += std::max(0.001f, entry.beatDuration);
+    }
+    return total;
+}
+
 float chordSequence::getStepDurationMs(int stepIndex) const {
     if(stepIndex < 0 || stepIndex >= static_cast<int>(progression.size())) return 0.0f;
     float bpm = std::max(1.0f, currentBPM);
@@ -2849,10 +3196,15 @@ void chordSequence::resetInternalSequence(bool forceInstant, double anchorBeat) 
     if(usesInternalProgressionOrder() && !progression.empty()) {
         internalActiveStep = ofClamp(internalActiveStep, 0, static_cast<int>(progression.size()) - 1);
         const double scheduleBeat = anchorBeat >= 0.0 ? anchorBeat : getFrameTransportState().current.beatPosition;
+        currentInternalStepStartBeat = scheduleBeat;
+        internalProgressionStartBeat = scheduleBeat;
         nextInternalStepBeat = scheduleBeat + std::max(0.001f, progression[internalActiveStep].beatDuration);
     } else {
+        currentInternalStepStartBeat = -1.0;
+        internalProgressionStartBeat = -1.0;
         nextInternalStepBeat = -1.0;
     }
+    updatePhasorOutputs(currentInternalStepStartBeat >= 0.0 ? currentInternalStepStartBeat : getFrameTransportState().current.beatPosition);
     outputBuildDirty = true;
     lastRefreshedActiveIndex = -1;
     refreshAllOutputs(forceInstant);
@@ -2912,6 +3264,7 @@ void chordSequence::advanceInternalSequence() {
         currentBoundaryBeat = getFrameTransportState().current.beatPosition;
     }
     internalActiveStep = chooseNextInternalStep(internalActiveStep);
+    currentInternalStepStartBeat = currentBoundaryBeat;
     pendingRandomationStepAdvance = true;
     pendingRandomationSequenceRestart = (progressionOrder == Ascendent) &&
                                         (progression.size() == 1 ||
@@ -2919,6 +3272,7 @@ void chordSequence::advanceInternalSequence() {
     outputBuildDirty = true;
     refreshAllOutputs(false);
     nextInternalStepBeat = currentBoundaryBeat + std::max(0.001f, progression[internalActiveStep].beatDuration);
+    updatePhasorOutputs(currentBoundaryBeat);
 }
 
 int chordSequence::generateRandomizedModifier(int range, int quantization) {
@@ -2944,6 +3298,32 @@ void chordSequence::updateEffectiveGlobalModifiers(bool sequenceRestart, bool st
 
     effectiveGlobalTranspose = globalTranspose + currentTransposeRandomOffset;
     effectiveGlobalInvert = globalInvert + currentInversionRandomOffset;
+}
+
+void chordSequence::updatePhasorOutputs(double beatPosition) {
+    if(!usesInternalProgressionOrder() || progression.empty()) {
+        chordPhasorOutput = 0.0f;
+        progressionPhasorOutput = 0.0f;
+        return;
+    }
+
+    int activeIndex = resolveActiveIndex();
+    if(activeIndex < 0 || activeIndex >= static_cast<int>(progression.size()) ||
+       currentInternalStepStartBeat < 0.0 || internalProgressionStartBeat < 0.0) {
+        chordPhasorOutput = 0.0f;
+        progressionPhasorOutput = 0.0f;
+        return;
+    }
+
+    double stepDuration = std::max(0.001, static_cast<double>(progression[activeIndex].beatDuration));
+    double stepElapsed = beatPosition - currentInternalStepStartBeat;
+    chordPhasorOutput = ofClamp(static_cast<float>(stepElapsed / stepDuration), 0.0f, 1.0f);
+
+    double totalDuration = std::max(0.001, static_cast<double>(getTotalProgressionBeats()));
+    double progressionElapsed = beatPosition - internalProgressionStartBeat;
+    double wrappedProgress = std::fmod(progressionElapsed, totalDuration);
+    if(wrappedProgress < 0.0) wrappedProgress += totalDuration;
+    progressionPhasorOutput = ofClamp(static_cast<float>(wrappedProgress / totalDuration), 0.0f, 1.0f);
 }
 
 void chordSequence::refreshAllOutputs(bool forceInstant) {
@@ -3056,6 +3436,11 @@ void chordSequence::drawEditor() {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(scaledUi(8.0f), scaledUi(4.0f)));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scaledUi(4.0f), scaledUi(3.0f)));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(scaledUi(8.0f), scaledUi(8.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_DisabledAlpha, 0.72f);
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.055f, 0.075f, 0.090f, 0.96f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.095f, 0.135f, 0.155f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.120f, 0.175f, 0.200f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.68f, 0.75f, 0.72f, 1.00f));
 
     float toolbarRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
     float buttonWidth = scaledUi(28.0f);
@@ -3176,7 +3561,8 @@ void chordSequence::drawEditor() {
     if(outputsSectionExpanded) drawOutputs();
     ImGui::EndChild();
 
-    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(4);
+    ImGui::PopStyleVar(4);
     ImGui::SetWindowFontScale(1.0f);
 }
 
@@ -3191,6 +3577,7 @@ void chordSequence::drawGlobalControls() {
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
+        setNextLabeledItemWidth("ChordNum");
         if(ImGui::InputInt("ChordNum", &numChords)) {
             numChordsParameter = ofClamp(numChords, numChordsParameter.getMin(), numChordsParameter.getMax());
         }
@@ -3198,12 +3585,16 @@ void chordSequence::drawGlobalControls() {
         drawPublishedCurrentItemUnderline("numChords");
 
         ImGui::TableSetColumnIndex(1);
+        setNextLabeledItemWidth("Index");
         if(ImGui::InputInt("Index", &displayIndex)) {
             int clampedIndex = ofClamp(displayIndex, 0, std::max(0, static_cast<int>(progression.size()) - 1));
             if(usesInternalProgressionOrder()) {
                 internalActiveStep = clampedIndex;
-                nextInternalStepBeat = getFrameTransportState().current.beatPosition +
+                double beatPosition = getFrameTransportState().current.beatPosition;
+                currentInternalStepStartBeat = beatPosition;
+                nextInternalStepBeat = beatPosition +
                                        std::max(0.001f, progression[internalActiveStep].beatDuration);
+                updatePhasorOutputs(beatPosition);
                 outputBuildDirty = true;
                 lastRefreshedActiveIndex = -1;
                 refreshAllOutputs(true);
@@ -3217,6 +3608,7 @@ void chordSequence::drawGlobalControls() {
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
+        setNextLabeledItemWidth("OutputNum");
         if(ImGui::InputInt("OutputNum", &requestedOutputs)) {
             ensureOutputCount(requestedOutputs);
             refreshAllOutputs(true);
@@ -3228,7 +3620,7 @@ void chordSequence::drawGlobalControls() {
         int orderValue = progressionOrder;
         int safeOrderValue = std::max(static_cast<int>(InputIdx), std::min(orderValue, static_cast<int>(Markov)));
         const char *orderLabel = progressionOrderLabels[safeOrderValue];
-        ImGui::SetNextItemWidth(-FLT_MIN);
+        setNextLabeledItemWidth("Progression");
         if(ImGui::BeginCombo("Progression", orderLabel)) {
             for(int i = InputIdx; i <= Markov; i++) {
                 bool selected = orderValue == i;
@@ -3245,7 +3637,7 @@ void chordSequence::drawGlobalControls() {
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
-        ImGui::SetNextItemWidth(-FLT_MIN);
+        setNextLabeledItemWidth("Key Root");
         int clampedGlobalKey = std::max(0, std::min(globalKey, 11));
         if(ImGui::BeginCombo("Key Root", keyNames[clampedGlobalKey])) {
             for(int i = 0; i < 12; i++) {
@@ -3263,14 +3655,24 @@ void chordSequence::drawGlobalControls() {
 
         ImGui::TableSetColumnIndex(1);
         sanitizeGlobalScaleSelection();
-        std::string scalePreview = scaleLibrary.empty() ? "---" : scaleLibrary[getGlobalScaleSafeIndex()].name;
-        ImGui::SetNextItemWidth(-FLT_MIN);
+        std::string scalePreview = useExternalScale
+                                 ? externalScaleLabel
+                                 : (scaleLibrary.empty() ? "---" : scaleLibrary[getGlobalScaleSafeIndex()].name);
+        setNextLabeledItemWidth("Key Scale");
         if(ImGui::BeginCombo("Key Scale", scalePreview.c_str())) {
+            if(ImGui::Selectable(externalScaleLabel, useExternalScale)) {
+                useExternalScale = true;
+                sanitizeProgression();
+                refreshAllOutputs(true);
+            }
+            if(useExternalScale) ImGui::SetItemDefaultFocus();
             for(int i = 0; i < static_cast<int>(scaleLibrary.size()); i++) {
-                bool selected = i == getGlobalScaleSafeIndex();
+                bool selected = !useExternalScale && i == getGlobalScaleSafeIndex();
                 if(ImGui::Selectable(scaleLibrary[i].name.c_str(), selected)) {
+                    useExternalScale = false;
                     globalScaleIndex = i;
                     globalScaleName = scaleLibrary[i].name;
+                    sanitizeProgression();
                     refreshAllOutputs(true);
                 }
                 if(selected) ImGui::SetItemDefaultFocus();
@@ -3283,6 +3685,7 @@ void chordSequence::drawGlobalControls() {
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
+        setNextLabeledItemWidth("Pitch Bend");
         if(drawDraggableFloatWithPopup("Pitch Bend", globalPitchBend, 0.05f, -24.0f, 24.0f, "%.3f",
                                        [this]() { drawNodePublishMenuItems("pitchBend"); })) {
             pitchBendParameter = globalPitchBend;
@@ -3290,6 +3693,7 @@ void chordSequence::drawGlobalControls() {
         drawPublishedCurrentItemUnderline("pitchBend");
 
         ImGui::TableSetColumnIndex(1);
+        setNextLabeledItemWidth("Transpose");
         if(ImGui::InputInt("Transpose", &globalTranspose)) {
             transposeParameter = globalTranspose;
         }
@@ -3299,6 +3703,7 @@ void chordSequence::drawGlobalControls() {
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
+        setNextLabeledItemWidth("Invert");
         if(ImGui::InputInt("Invert", &globalInvert)) {
             inversionParameter = globalInvert;
         }
@@ -3312,6 +3717,7 @@ void chordSequence::drawGlobalControls() {
 
         ImGui::TableSetColumnIndex(0);
         ImGui::BeginDisabled();
+        setNextLabeledItemWidth("BPM");
         ImGui::InputFloat("BPM", &bpmDisplay, 0.0f, 0.0f, "%.2f", ImGuiInputTextFlags_ReadOnly);
         ImGui::EndDisabled();
 
@@ -3601,7 +4007,8 @@ void chordSequence::drawEntryEditor(int index, float width) {
             ImGui::SetNextItemWidth(controlWidth);
             ImGui::BeginDisabled();
             char unavailableBuf[128];
-            std::snprintf(unavailableBuf, sizeof(unavailableBuf), "%s", ("No map for " + globalScaleName).c_str());
+            std::string unavailableLabel = useExternalScale ? externalScaleLabel : globalScaleName;
+            std::snprintf(unavailableBuf, sizeof(unavailableBuf), "%s", ("No map for " + unavailableLabel).c_str());
             ImGui::InputText("##FunctionalUnavailable", unavailableBuf, sizeof(unavailableBuf), ImGuiInputTextFlags_ReadOnly);
             ImGui::EndDisabled();
             drawRowLabel(rowStartX, "Variant");
@@ -3702,8 +4109,11 @@ void chordSequence::drawEntryEditor(int index, float width) {
         outputBuildDirty = true;
         if(usesInternalProgressionOrder() && !progression.empty()) {
             int activeStep = ofClamp(resolveActiveIndex(), 0, static_cast<int>(progression.size()) - 1);
-            nextInternalStepBeat = getFrameTransportState().current.beatPosition +
+            double beatPosition = getFrameTransportState().current.beatPosition;
+            currentInternalStepStartBeat = beatPosition;
+            nextInternalStepBeat = beatPosition +
                                    std::max(0.001f, progression[activeStep].beatDuration);
+            updatePhasorOutputs(beatPosition);
         }
     }
     drawPublishedLabelUnderline(publishPrefix + "beatDuration", "Beats", controlWidth);
@@ -3861,6 +4271,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
         ImGui::CalcTextSize("Voicing").x,
         ImGui::CalcTextSize("Spread").x,
         ImGui::CalcTextSize("Fold12").x,
+        ImGui::CalcTextSize("rootLess").x,
         ImGui::CalcTextSize("Glide").x,
         ImGui::CalcTextSize("Output Size").x,
         ImGui::CalcTextSize("Expand").x,
@@ -4008,6 +4419,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
     drawRowLabel(rowStartX, "Source");
 
     drawSingleToggleRow("##Fold12", config.fold12, "Fold12", publishPrefix + "fold12");
+    drawSingleToggleRow("##RootLess", config.rootLess, "rootLess", publishPrefix + "rootLess");
 
     if(!outputSourceUsesScaleLikeMaterial(config.sourceMode)) {
         drawSingleToggleRow("##AddBass", config.addBass, "AddBass", publishPrefix + "addBass");
@@ -4078,12 +4490,40 @@ void chordSequence::drawOutputEditor(int index, float width) {
     drawNodePublishContextMenu(publishPrefix + "outputSize", "Output Size", controlWidth);
     drawRowLabel(rowStartX, "Output Size");
 
-    drawSingleToggleRow("##VoiceLeading", config.voiceLeading, "Voice Lead", publishPrefix + "voiceLeading");
+    rowStartX = ImGui::GetCursorPosX();
+    ImGui::SetNextItemWidth(controlWidth);
+    int safeVoiceLeadingMode = ofClamp(config.voiceLeadingMode,
+                                       chordSequenceOutputConfig::VOICE_LEADING_OFF,
+                                       chordSequenceOutputConfig::SMOOTH_GRAVITY_0);
+    if(ImGui::BeginCombo("##VoiceLeading", voiceLeadingLabels[safeVoiceLeadingMode])) {
+        for(int i = chordSequenceOutputConfig::VOICE_LEADING_OFF; i <= chordSequenceOutputConfig::SMOOTH_GRAVITY_0; i++) {
+            bool selected = safeVoiceLeadingMode == i;
+            if(ImGui::Selectable(voiceLeadingLabels[i], selected)) {
+                config.voiceLeadingMode = i;
+                refreshAllOutputs(true);
+            }
+            if(selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    drawNodePublishContextMenu(publishPrefix + "voiceLeading", "Voice Lead", controlWidth);
+    drawRowLabel(rowStartX, "Voice Lead");
+
+    if(config.voiceLeadingMode == chordSequenceOutputConfig::SMOOTH_GRAVITY_0) {
+        rowStartX = ImGui::GetCursorPosX();
+        ImGui::SetNextItemWidth(controlWidth);
+        if(drawDraggableFloatWithPopup("##GravityWeight", config.gravityAnchorWeight, 0.05f, 0.0f, 8.0f, "%.2f",
+                                       [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "gravityAnchorWeight"); })) {
+            refreshAllOutputs(true);
+        }
+        drawPublishedLabelUnderline(publishPrefix + "gravityAnchorWeight", "Gravity Wt", controlWidth);
+        drawRowLabel(rowStartX, "Gravity Wt");
+    }
 
     rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
     if(ImGui::InputInt("##MinNote", &config.minNote)) {
-        config.minNote = ofClamp(config.minNote, 0, 127);
+        config.minNote = ofClamp(config.minNote, -12, 128);
         if(config.minNote > config.maxNote) config.maxNote = config.minNote;
         refreshAllOutputs(true);
     }
@@ -4093,7 +4533,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
     rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
     if(ImGui::InputInt("##MaxNote", &config.maxNote)) {
-        config.maxNote = ofClamp(config.maxNote, 0, 127);
+        config.maxNote = ofClamp(config.maxNote, -12, 128);
         if(config.maxNote < config.minNote) config.minNote = config.maxNote;
         refreshAllOutputs(true);
     }
@@ -4217,6 +4657,7 @@ ofJson chordSequence::serializeCurrentState() const {
     json["globalKey"] = globalKey;
     json["globalScaleIndex"] = globalScaleIndex;
     json["globalScaleName"] = globalScaleName;
+    json["useExternalScale"] = useExternalScale;
     json["globalTranspose"] = globalTranspose;
     json["globalInvert"] = globalInvert;
     json["transposeRandomRange"] = transposeRandomRange;
@@ -4247,6 +4688,7 @@ void chordSequence::deserializeState(const ofJson &json, bool forceInstant) {
     globalKey = ofClamp(json.value("globalKey", 0), 0, 11);
     globalScaleIndex = std::max(0, json.value("globalScaleIndex", defaultScaleIndex));
     globalScaleName = json.value("globalScaleName", std::string());
+    useExternalScale = json.value("useExternalScale", false);
     globalTranspose = json.value("globalTranspose", 0);
     globalInvert = json.value("globalInvert", 0);
     transposeRandomRange = std::max(0, json.value("transposeRandomRange", 0));
@@ -4327,6 +4769,7 @@ void chordSequence::storeToSlot(int slot) {
     snapshot.globalKey = globalKey;
     snapshot.globalScaleIndex = globalScaleIndex;
     snapshot.globalScaleName = globalScaleName;
+    snapshot.useExternalScale = useExternalScale;
     snapshot.globalTranspose = globalTranspose;
     snapshot.globalInvert = globalInvert;
     snapshot.transposeRandomRange = transposeRandomRange;
