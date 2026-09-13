@@ -35,8 +35,8 @@ public:
 		addParameter(numCurves.set("Num Curves", 1, 1, 8));
 		addParameter(gridDivisions.set("Grid Div", 16, 1, 64));
 		
-		addParameter(minValue.set("Min Value", 0.0f, -10.0f, 10.0f));
-		addParameter(maxValue.set("Max Value", 1.0f, -10.0f, 10.0f));
+		addParameter(minValue.set("Min Value", {0.0f}, {-10.0f}, {10.0f}));
+		addParameter(maxValue.set("Max Value", {1.0f}, {-10.0f}, {10.0f}));
 		
 		addParameter(showEditor.set("Show Editor", false));
 		auto curveEditorRegionRef = addCustomRegion(curveEditorRegion.set("Curve Editor", [this](){
@@ -49,10 +49,10 @@ public:
 		addOutputParameter(curveOutput.set("Curve[]", {0}, {-10}, {10}));
 		
 		// Update output range when min/max change
-		listeners.push(minValue.newListener([this](float &val){
+		listeners.push(minValue.newListener([this](vector<float> &val){
 			updateOutputRange();
 		}));
-		listeners.push(maxValue.newListener([this](float &val){
+		listeners.push(maxValue.newListener([this](vector<float> &val){
 			updateOutputRange();
 		}));
 		listeners.push(numCurves.newListener([this](int &val){
@@ -93,8 +93,8 @@ private:
 	ofParameter<vector<float>> phasorInput;
 	ofParameter<int> numCurves;
 	ofParameter<int> gridDivisions;
-	ofParameter<float> minValue;
-	ofParameter<float> maxValue;
+	ofParameter<vector<float>> minValue;
+	ofParameter<vector<float>> maxValue;
 	ofParameter<bool> showEditor;
 	customGuiRegion curveEditorRegion;
 	ofParameter<vector<float>> curveOutput;
@@ -222,6 +222,8 @@ private:
 		}
 		
 		// Horizontal value grid lines
+		float activeCurveMin = getValueForPosition(minValue.get(), activeCurve);
+		float activeCurveMax = getValueForPosition(maxValue.get(), activeCurve);
 		for(int i = 0; i <= 4; i++) {
 			float val = i / 4.0f;
 			float yPos = valueToY(val);
@@ -234,7 +236,7 @@ private:
 			
 			// Value labels
 			char buf[16];
-			snprintf(buf, 16, "%.2f", minValue.get() + val * (maxValue.get() - minValue.get()));
+			snprintf(buf, 16, "%.2f", activeCurveMin + val * (activeCurveMax - activeCurveMin));
 			dl->AddText(ImVec2(p.x + 2, yPos - 8), IM_COL32(150, 150, 150, 200), buf);
 		}
 		
@@ -537,9 +539,11 @@ private:
 		
 		if(nCurves == 1) {
 			// One curve: each phasor is a different reader for the same curve
+			float curveMin = getValueForPosition(minValue.get(), 0);
+			float curveMax = getValueForPosition(maxValue.get(), 0);
 			for(int i = 0; i < numPhasors; i++) {
 				float value = evaluateCurveAt(phasors[i], 0);
-				float mappedValue = minValue.get() + value * (maxValue.get() - minValue.get());
+				float mappedValue = curveMin + value * (curveMax - curveMin);
 				outputs.push_back(mappedValue);
 			}
 		} else {
@@ -550,12 +554,21 @@ private:
 				float phasor = (numPhasors > 0) ? phasors[phasorIdx] : 0.0f;
 				
 				float value = evaluateCurveAt(phasor, curveIdx);
-				float mappedValue = minValue.get() + value * (maxValue.get() - minValue.get());
+				float curveMin = getValueForPosition(minValue.get(), curveIdx);
+				float curveMax = getValueForPosition(maxValue.get(), curveIdx);
+				float mappedValue = curveMin + value * (curveMax - curveMin);
 				outputs.push_back(mappedValue);
 			}
 		}
 		
 		curveOutput = outputs;
+	}
+	
+	float getValueForPosition(const vector<float>& param, int index) {
+		if(param.empty()) return 0.0f;
+		if(index < 0) index = 0;
+		if(index >= (int)param.size()) index = (int)param.size() - 1;
+		return param[index];
 	}
 	
 	float sigmoidFlex(float x, float p, float k) {
@@ -721,8 +734,13 @@ private:
 	}
 	
 	void updateOutputRange() {
-		vector<float> minVals(numCurves.get(), minValue.get());
-		vector<float> maxVals(numCurves.get(), maxValue.get());
+		int nCurves = numCurves.get();
+		vector<float> minVals(nCurves);
+		vector<float> maxVals(nCurves);
+		for(int i = 0; i < nCurves; i++){
+			minVals[i] = getValueForPosition(minValue.get(), i);
+			maxVals[i] = getValueForPosition(maxValue.get(), i);
+		}
 		curveOutput.setMin(minVals);
 		curveOutput.setMax(maxVals);
 	}
