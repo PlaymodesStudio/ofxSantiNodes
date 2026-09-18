@@ -18,30 +18,11 @@
 #include "resetPhasor.h"
 
 // ─────────────────────────────────────────────
-// TIMELINE (PPQ / DAW transport)
+// SHARED TRANSPORT STATUS
 // ─────────────────────────────────────────────
 #ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
 #include "beatTransport.h"
 #endif
-#include "curveTrack.h"
-#include "gateTrack.h"
-#ifdef OFXOCEANODE_USE_MIDI
-#include "midiClockTransport.h"
-#endif
-#include "midiNoteQuantizer.h"
-#include "pianoRollTrack.h"
-#include "stepValueTrack.h"
-#include "ppqBeats.h"
-#include "ppqGenerator.h"
-#include "ppqMeter.h"
-#include "ppqPhasor.h"
-#include "ppqTimeline.h"
-#include "trackScheduler.h"
-#ifdef OFXOCEANODE_USE_OSC
-#include "reaperOscTransport.h"
-#endif
-#include "transportQuantizer.h"
-#include "valueTrack.h"
 
 // ─────────────────────────────────────────────
 // SEQUENCERS
@@ -376,30 +357,11 @@ void registerModels(ofxOceanode *o)
     o->registerModel<resetPhasor>("Santi/Timing");
 
     // ─────────────────────────────────────────────
-    // TIMELINE (PPQ / DAW transport)
+    // SHARED TRANSPORT STATUS
     // ─────────────────────────────────────────────
 #ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
     o->registerModel<beatTransport>("Santi/Timeline");
 #endif
-    o->registerModel<curveTrack>("Santi/Timeline");
-    o->registerModel<gateTrack>("Santi/Timeline");
-#ifdef OFXOCEANODE_USE_MIDI
-    o->registerModel<midiClockTransport>("Santi/Timeline");
-#endif
-    o->registerModel<midiNoteQuantizer>("Santi/Timeline");
-    o->registerModel<pianoRollTrack>("Santi/Timeline");
-    o->registerModel<stepValueTrack>("Santi/Timeline");
-    o->registerModel<ppqBeats>("Santi/Timeline");
-    o->registerModel<ppqGenerator>("Santi/Timeline");
-    o->registerModel<ppqMeter>("Santi/Timeline");
-    o->registerModel<ppqPhasor>("Santi/Timeline");
-    o->registerModel<ppqTimeline>("Santi/Timeline");
-    o->registerModel<trackScheduler>("Santi/Timeline");
-#ifdef OFXOCEANODE_USE_OSC
-    o->registerModel<reaperOscTransport>("Santi/Timeline");
-#endif
-    o->registerModel<transportQuantizer>("Santi/Timeline");
-    o->registerModel<valueTrack>("Santi/Timeline");
 
     // ─────────────────────────────────────────────
     // SEQUENCERS
