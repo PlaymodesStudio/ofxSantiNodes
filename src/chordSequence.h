@@ -76,7 +76,12 @@ struct chordSequenceOutputConfig {
     enum VoiceLeadingMode {
         VOICE_LEADING_OFF = 0,
         VOICE_LEADING_CLASSIC = 1,
-        SMOOTH_GRAVITY_0 = 2   // "Smooth Gravity (0-Anchor)"
+        SMOOTH_GRAVITY_0 = 2,   // "Smooth Gravity (0-Anchor)"
+        SMOOTH_GRAVITY_FREE = 3 // "Smooth Gravity (Free)" -- same minimum-
+                                // movement shape as the 0-Anchor mode, but
+                                // with no pull toward any fixed pitch class;
+                                // the register is whatever minimizes total
+                                // movement between voices.
     };
 
     int octave = 0;
@@ -122,9 +127,15 @@ struct chordSequenceSnapshot {
     int transposeRandomRange = 0;
     int transposeRandomQuantization = 1;
     bool transposeRandomStep = false;
+    int transposeRandomCycles = 1;
     int inversionRandomRange = 0;
     int inversionRandomQuantization = 1;
     bool inversionRandomStep = false;
+    int inversionRandomCycles = 1;
+    int transposeSequencerCycles = 4;
+    std::vector<int> transposeSequencerSteps = {0};
+    int transposeSequencerMod = 12;
+    bool transposeSequencerStepMode = false;
     float globalPitchBend = 0.0f;
     int progressionOrder = 0;
     bool internalTimingEnabled = false;
@@ -218,9 +229,44 @@ private:
     int transposeRandomRange = 0;
     int transposeRandomQuantization = 1;
     bool transposeRandomStep = false;
+    // "every N [steps if transposeRandomStep, else laps]" -- generalizes
+    // the old implicit "every 1" behavior (default 1 preserves it exactly
+    // for existing presets/saves). transposeRandomCycleCounter is the
+    // runtime tally toward that N; not saved, reset on (re)load.
+    int transposeRandomCycles = 1;
+    int transposeRandomCycleCounter = 0;
     int inversionRandomRange = 0;
     int inversionRandomQuantization = 1;
     bool inversionRandomStep = false;
+    int inversionRandomCycles = 1;
+    int inversionRandomCycleCounter = 0;
+    // Transposition sequencer: every `transposeSequencerCycles` occurrences
+    // of the chosen trigger (a completed lap of the progression normally,
+    // or every step advance when transposeSequencerStepMode is on),
+    // transposeSequencerOffset advances by the next value pulled from
+    // `transposeSequencerSteps` (a list, e.g. "4,3,1" -- each trigger takes
+    // the next entry, wrapping back to the start), then wraps via
+    // `% transposeSequencerMod` (see advanceTransposeSequencer()). The
+    // offset, cycle counter, and list index are runtime state, not saved
+    // config -- like currentTransposeRandomOffset below, they reset
+    // whenever state is (re)loaded (see deserializeState()).
+    // transposeSequencerStepListBuffer is UI-only text-edit state (kept in
+    // sync with transposeSequencerSteps via syncTransposeSequencerStepListBuffer()),
+    // never persisted directly.
+    int transposeSequencerCycles = 4;
+    std::vector<int> transposeSequencerSteps = {0};
+    int transposeSequencerMod = 12;
+    bool transposeSequencerStepMode = false;
+    int transposeSequencerOffset = 0;
+    int transposeSequencerCycleCounter = 0;
+    int transposeSequencerStepListIndex = 0;
+    // Independent of lastRefreshedActiveIndex -- see refreshAllOutputs()
+    // for why this sequencer tracks its own last-seen index rather than
+    // sharing that one (kept immune to unrelated resets like Randomation
+    // edits, progression-order changes, or a manual index jump).
+    int transposeSequencerLastSeenIndex = -1;
+    std::array<char, 128> transposeSequencerStepListBuffer{};
+    bool pendingTransposeSequencerCycleComplete = false;
     int currentTransposeRandomOffset = 0;
     int currentInversionRandomOffset = 0;
     int effectiveGlobalTranspose = 0;
@@ -245,6 +291,7 @@ private:
     bool snapshotsSectionExpanded = true;
     bool globalSectionExpanded = true;
     bool randomationSectionExpanded = true;
+    bool transposeSequencerSectionExpanded = true;
     bool cypherSectionExpanded = true;
     bool stepsSectionExpanded = true;
     bool outputsSectionExpanded = true;
@@ -277,6 +324,7 @@ private:
     void reloadLibraries();
 
     void ensureOutputCount(int newCount);
+    void removeOutputAt(int index);
     std::string outputName(int index) const;
     std::string outputSizeParameterName(int index) const;
     void rebuildOutputSizeParameters();
@@ -341,6 +389,10 @@ private:
                                                  int minNote,
                                                  int maxNote,
                                                  float anchorWeight) const;
+    std::vector<float> applySmoothGravityFreeVoicing(const std::vector<float> &previousValues,
+                                                     const std::vector<float> &nextValues,
+                                                     int minNote,
+                                                     int maxNote) const;
     std::vector<float> applyRangeConstraints(const std::vector<float> &values,
                                              int minNote,
                                              int maxNote) const;
@@ -362,6 +414,10 @@ private:
     void advanceInternalSequence();
     int generateRandomizedModifier(int range, int quantization);
     void updateEffectiveGlobalModifiers(bool sequenceRestart, bool stepAdvance, bool forceReroll = false);
+    void advanceTransposeSequencer();
+    std::vector<int> parseTransposeSequencerStepList(const std::string &text) const;
+    std::string transposeSequencerStepListToString(const std::vector<int> &steps) const;
+    void syncTransposeSequencerStepListBuffer();
     void updatePhasorOutputs(double beatPosition);
 
     void refreshAllOutputs(bool forceInstant = false);
@@ -369,16 +425,19 @@ private:
     std::vector<float> getInterpolatedOutput(int outputIndex, float progress) const;
     float getGlideProgress(int outputIndex) const;
     std::vector<float> getDisplayedOutput(int outputIndex) const;
+    float getOutputDisplayRootPitchClass(int outputIndex) const;
+    std::string getOutputDisplayRootLabel(int outputIndex) const;
     float sampleVector(const std::vector<float> &values, size_t index) const;
 
     void drawEditor();
     void drawGlobalControls();
     void drawRandomationControls();
+    void drawTransposeSequencerControls();
     void drawImportTools();
     void drawEntries();
     void drawEntryEditor(int index, float width);
     void drawOutputs();
-    void drawOutputEditor(int index, float width);
+    bool drawOutputEditor(int index, float width);
     void drawSnapshotManager();
     bool isEditorParameterPublished(const std::string &key) const;
     const EditorPublishAction *findPublishableEditorParameter(const std::string &key) const;

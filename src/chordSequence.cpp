@@ -22,7 +22,7 @@ namespace {
     const char *functionalGroupKeys[] = {"tonic", "subdominant", "dominant"};
     const char *functionalGroupLabels[] = {"Tonic", "Subdominant", "Dominant"};
     const char *voicingLabels[] = {"None", "Close", "Open", "Drop 2", "Drop 3", "Shell"};
-    const char *voiceLeadingLabels[] = {"Off", "Classic", "Smooth Gravity (0-Anchor)"};
+    const char *voiceLeadingLabels[] = {"Off", "Classic", "Smooth Gravity (0-Anchor)", "Smooth Gravity (Free)"};
     const char *outputSourceLabels[] = {"Chord", "Scale", "Root", "Key", "Chord Sum"};
     const char *externalScaleLabel = "External";
     constexpr double transportResetBeatWindow = 0.05;
@@ -32,6 +32,9 @@ namespace {
     float scaledUi(float value) {
         return value * chordSequenceLayoutZoom;
     }
+
+    constexpr float stepCardWidthBase = 160.0f;
+    constexpr float outputCardWidthBase = 260.0f;
 
     void setNextLabeledItemWidth(const char *label) {
         float availableWidth = ImGui::GetContentRegionAvail().x;
@@ -72,12 +75,19 @@ namespace {
     const ImVec4 globalTitle = ImVec4(0.89f, 0.99f, 0.91f, 1.00f);
     const ImVec4 randomationBg = ImVec4(0.18f, 0.38f, 0.23f, 0.97f);
     const ImVec4 randomationTitle = ImVec4(0.85f, 0.98f, 0.88f, 1.00f);
+    const ImVec4 transposeSequencerBg = ImVec4(0.165f, 0.36f, 0.22f, 0.97f);
+    const ImVec4 transposeSequencerTitle = ImVec4(0.83f, 0.97f, 0.86f, 1.00f);
     const ImVec4 cypherBg = ImVec4(0.15f, 0.34f, 0.21f, 0.97f);
     const ImVec4 cypherTitle = ImVec4(0.82f, 0.96f, 0.85f, 1.00f);
     const ImVec4 stepsBg = ImVec4(0.12f, 0.30f, 0.18f, 0.97f);
     const ImVec4 stepsTitle = ImVec4(0.78f, 0.94f, 0.82f, 1.00f);
     const ImVec4 outputsBg = ImVec4(0.09f, 0.26f, 0.16f, 0.97f);
     const ImVec4 outputsTitle = ImVec4(0.75f, 0.93f, 0.79f, 1.00f);
+    // Dark green accent for "Current: ..." readouts (Randomation's transpose
+    // and inversion cards, the Transpose Sequencer's offset line) -- these
+    // report a live value rather than a static label, so they get a distinct
+    // color from plain Text()/TextDisabled() rather than blending in.
+    const ImVec4 currentValueTextColor = ImVec4(0.06f, 0.24f, 0.11f, 1.00f); // darker than the section card backgrounds it sits on
 
     struct ChordSequenceKeyGeometry {
         bool isBlack;
@@ -320,7 +330,8 @@ namespace {
                              const ImVec4 &titleColor,
                              bool &expanded,
                              float fontScale,
-                             ImGuiWindowFlags flags = 0) {
+                             ImGuiWindowFlags flags = 0,
+                             const std::function<void()> &headerContextMenu = std::function<void()>()) {
         ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
         ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(titleColor.x * 0.55f, titleColor.y * 0.55f, titleColor.z * 0.55f, 0.30f));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, scaledUi(9.0f));
@@ -355,6 +366,17 @@ namespace {
         }
         ImGui::SameLine();
         ImGui::TextColored(titleColor, "%s", title);
+        // Attached here (right after the title item, still inside this
+        // function) rather than by the caller after beginColoredSection()
+        // returns -- by then the trailing Separator below would already be
+        // the last item instead of the title.
+        if(headerContextMenu) {
+            std::string contextId = std::string("##") + id + "HeaderContext";
+            if(ImGui::BeginPopupContextItem(contextId.c_str())) {
+                headerContextMenu();
+                ImGui::EndPopup();
+            }
+        }
         if(expanded) {
             ImGui::Separator();
         }
@@ -368,6 +390,7 @@ namespace {
         float rowHeight = ImGui::GetFrameHeightWithSpacing();
         float textHeight = ImGui::GetTextLineHeightWithSpacing();
         float height = scaledUi(24.0f); // header
+        height += scaledUi(8.0f); // separator below the title row
         height += rowHeight; // type
 
         if(mode == chordSequenceEntry::Cypher) {
@@ -388,10 +411,10 @@ namespace {
             height += scaledUi(57.0f); // inline multislider area
             height += rowHeight; // helper buttons
         }
-        height += rowHeight * 2.0f; // transpose, inversion
+        height += rowHeight * 3.0f; // transpose, root readout, inversion
         height += scaledUi(62.0f); // keyboard
         height += std::max(scaledUi(18.0f), textHeight); // preview text
-        height += scaledUi(8.0f); // bottom padding
+        height += scaledUi(16.0f); // bottom padding (generous -- avoids clipping content below the keyboard)
 
         return height;
     }
@@ -399,26 +422,39 @@ namespace {
     float getOutputCardHeight(const chordSequenceOutputConfig &config) {
         float rowHeight = ImGui::GetFrameHeightWithSpacing();
         float textHeight = ImGui::GetTextLineHeightWithSpacing();
-        float height = scaledUi(24.0f); // header
-        float controlRows = 16.0f; // always-visible rows
+        float height = scaledUi(30.0f); // header (title + x button row)
+        height += scaledUi(16.0f); // separator below the title row
+        // Always-visible rows: Source, Oct/Trans (paired), Bend/Detune
+        // (paired), Oct Rand (paired), Chrom Dev (paired),
+        // Fold12/rootLess/[AddBass] toggle row, Output Size, Voice Lead,
+        // Min/Max Note (paired), Expand/Sort (paired), Root readout (paired).
+        float controlRows = 11.0f;
         if(!outputSourceUsesScaleLikeMaterial(config.sourceMode)) {
-            controlRows += 5.0f; // root/key, addBass, inversion, voicing, spread
+            controlRows += 3.0f; // inversion, voicing, spread+glide (paired)
             if(config.addBass) controlRows += 1.0f; // bass octave
+        } else {
+            controlRows += 1.0f; // glide (alone, no spread to pair with)
+        }
+        if(config.voiceLeadingMode == chordSequenceOutputConfig::SMOOTH_GRAVITY_0) {
+            controlRows += 1.0f; // gravity weight
         }
         height += rowHeight * controlRows;
         height += scaledUi(64.0f); // keyboard
         height += std::max(scaledUi(20.0f), textHeight * 1.1f); // value preview
-        height += scaledUi(10.0f); // bottom padding
+        height += scaledUi(20.0f); // bottom padding (generous -- avoids the card needing its own scrollbar)
         return height;
     }
 
     float getSnapshotsSectionHeight(float availableWidth, bool hasActiveSnapshot) {
-        float contentWidth = std::max(1.0f, availableWidth - scaledUi(18.0f));
+        (void)availableWidth;
         float textHeight = ImGui::GetTextLineHeightWithSpacing();
         float rowHeight = ImGui::GetFrameHeightWithSpacing();
         float slotSize = scaledUi(22.0f);
         float slotGap = scaledUi(4.0f);
-        int columns = std::max(1, static_cast<int>((contentWidth + slotGap) / (slotSize + slotGap)));
+        // Fixed at 8 buttons per row (rather than however many fit the
+        // card's width) so the preset grid reads as a stable 2x8 block
+        // instead of reflowing every time the card is resized.
+        int columns = 8;
         int rows = (16 + columns - 1) / columns;
 
         float height = getSectionHeaderHeight();
@@ -452,16 +488,27 @@ namespace {
         return height;
     }
 
+    float getTransposeSequencerSectionHeight() {
+        float rowHeight = ImGui::GetFrameHeightWithSpacing();
+        float textHeight = ImGui::GetTextLineHeightWithSpacing();
+        float height = getSectionHeaderHeight();
+        height += textHeight; // "Transpose every N cycles" caption
+        height += rowHeight * 2.0f; // Cycles+Per Step row, Steps+Mod row
+        height += textHeight * 3.0f; // Current Transpose, lap/step counter, Next step preview
+        height += scaledUi(8.0f);
+        return height;
+    }
+
     float getCypherSectionHeight(bool hasImportedProgressions, bool hasJazzStandards) {
         float rowHeight = ImGui::GetFrameHeightWithSpacing();
         float height = getSectionHeaderHeight();
         height += rowHeight; // chord list
         height += rowHeight * 2.0f; // apply + append buttons
         if(hasImportedProgressions) {
-            height += rowHeight; // progression combo + load button row
+            height += rowHeight * 2.0f; // progression combo row, load button row
         }
         if(hasJazzStandards) {
-            height += rowHeight; // jazz combo + load button row
+            height += rowHeight * 2.0f; // jazz standard combo row, load button row
         }
         height += scaledUi(8.0f);
         return height;
@@ -557,7 +604,7 @@ chordSequenceOutputConfig chordSequenceOutputConfig::fromJson(const ofJson &json
                                                                     : chordSequenceOutputConfig::VOICE_LEADING_OFF;
         config.voiceLeadingMode = ofClamp(json.value("voiceLeadingMode", legacyModeFromBool),
                                           chordSequenceOutputConfig::VOICE_LEADING_OFF,
-                                          chordSequenceOutputConfig::SMOOTH_GRAVITY_0);
+                                          chordSequenceOutputConfig::SMOOTH_GRAVITY_FREE);
     }
     config.gravityAnchorWeight = std::max(0.0f, json.value("gravityAnchorWeight", 1.5f));
     config.minNote = ofClamp(json.value("minNote", -12), -12, 128);
@@ -605,9 +652,15 @@ ofJson chordSequenceSnapshot::toJson() const {
     json["transposeRandomRange"] = transposeRandomRange;
     json["transposeRandomQuantization"] = transposeRandomQuantization;
     json["transposeRandomStep"] = transposeRandomStep;
+    json["transposeRandomCycles"] = transposeRandomCycles;
     json["inversionRandomRange"] = inversionRandomRange;
     json["inversionRandomQuantization"] = inversionRandomQuantization;
     json["inversionRandomStep"] = inversionRandomStep;
+    json["inversionRandomCycles"] = inversionRandomCycles;
+    json["transposeSequencerCycles"] = transposeSequencerCycles;
+    json["transposeSequencerSteps"] = transposeSequencerSteps;
+    json["transposeSequencerMod"] = transposeSequencerMod;
+    json["transposeSequencerStepMode"] = transposeSequencerStepMode;
     json["globalPitchBend"] = globalPitchBend;
     json["progressionOrder"] = progressionOrder;
     json["internalTimingEnabled"] = internalTimingEnabled;
@@ -641,9 +694,26 @@ chordSequenceSnapshot chordSequenceSnapshot::fromJson(const ofJson &json) {
     snapshot.transposeRandomRange = std::max(0, json.value("transposeRandomRange", 0));
     snapshot.transposeRandomQuantization = std::max(1, json.value("transposeRandomQuantization", 1));
     snapshot.transposeRandomStep = json.value("transposeRandomStep", false);
+    snapshot.transposeRandomCycles = std::max(1, json.value("transposeRandomCycles", 1));
     snapshot.inversionRandomRange = std::max(0, json.value("inversionRandomRange", 0));
     snapshot.inversionRandomQuantization = std::max(1, json.value("inversionRandomQuantization", 1));
     snapshot.inversionRandomStep = json.value("inversionRandomStep", false);
+    snapshot.inversionRandomCycles = std::max(1, json.value("inversionRandomCycles", 1));
+    snapshot.transposeSequencerCycles = std::max(1, json.value("transposeSequencerCycles", 4));
+    if(json.contains("transposeSequencerSteps") && json["transposeSequencerSteps"].is_array()) {
+        snapshot.transposeSequencerSteps.clear();
+        for(const auto &step : json["transposeSequencerSteps"]) {
+            snapshot.transposeSequencerSteps.push_back(step.get<int>());
+        }
+        if(snapshot.transposeSequencerSteps.empty()) snapshot.transposeSequencerSteps = {0};
+    } else {
+        // Legacy single-value field -- migrate to a one-element list so
+        // snapshots saved before the step list existed keep behaving
+        // exactly as before.
+        snapshot.transposeSequencerSteps = { json.value("transposeSequencerStep", 0) };
+    }
+    snapshot.transposeSequencerMod = std::max(0, json.value("transposeSequencerMod", 12));
+    snapshot.transposeSequencerStepMode = json.value("transposeSequencerStepMode", false);
     snapshot.globalPitchBend = json.value("globalPitchBend", json.value("pitchBend", 0.0f));
     if(json.contains("progressionOrder")) {
         snapshot.progressionOrder = ofClamp(json.value("progressionOrder", 0), 0, 4);
@@ -712,6 +782,7 @@ void chordSequence::setup() {
     initializeDefaultProgression();
     ensureOutputCount(numOutputs);
     initializePublishableEditorParameters();
+    syncTransposeSequencerStepListBuffer();
     syncNodeGuiParametersFromState();
     loadAllSnapshotsFromDisk();
     setProgressionOrder(progressionOrder, false);
@@ -1037,6 +1108,38 @@ void chordSequence::ensureOutputCount(int newCount) {
     syncNodeGuiParametersFromState();
 }
 
+void chordSequence::removeOutputAt(int index) {
+    int oldCount = static_cast<int>(outputs.size());
+    if(oldCount <= 1) return; // always keep at least one output
+    if(index < 0 || index >= oldCount) return;
+
+    outputConfigs.erase(outputConfigs.begin() + index);
+    currentOutputs.erase(currentOutputs.begin() + index);
+    targetOutputs.erase(targetOutputs.begin() + index);
+    glideStartOutputs.erase(glideStartOutputs.begin() + index);
+    outputIsGliding.erase(outputIsGliding.begin() + index);
+    outputGlideStartTimeMs.erase(outputGlideStartTimeMs.begin() + index);
+
+    // outputs[] are named node-output parameters ("Output1", "Output2", ...)
+    // whose identity is positional, so removing one from the middle means
+    // shifting the VALUES of every later output down into the freed slot
+    // (each ofParameter keeps its own name/registration -- only the data
+    // it carries moves) and then dropping the now-redundant last
+    // parameter, the same "drop from the end" ensureOutputCount() already
+    // does when shrinking.
+    for(int i = index; i < oldCount - 1; i++) {
+        outputs[i].set(outputs[i + 1].get());
+    }
+    removeParameter(outputName(oldCount - 1));
+    outputs.resize(oldCount - 1);
+
+    numOutputs = oldCount - 1;
+    rebuildOutputSizeParameters();
+    initializePublishableEditorParameters();
+    syncPublishedEditorParameters(publishedEditorParameterKeys);
+    syncNodeGuiParametersFromState();
+}
+
 std::string chordSequence::outputName(int index) const {
     return "Output" + ofToString(index + 1);
 }
@@ -1195,20 +1298,20 @@ void chordSequence::initializePublishableEditorParameters() {
     registerNative("inversion", inversionParameter);
     registerNative("resetSequence", resetSequenceParameter);
 
-    registerIntProxy("numOutputs", "OutputNum", 1, MaxOutputs,
+    registerIntProxy("numOutputs", "OutNum", 1, MaxOutputs,
                      [this]() { return numOutputs; },
                      [this](int value) {
                          ensureOutputCount(ofClamp(value, 1, MaxOutputs));
                          refreshAllOutputs(true);
                      });
 
-    registerIntProxy("progressionOrder", "Progression", InputIdx, Markov,
+    registerIntProxy("progressionOrder", "Prog", InputIdx, Markov,
                      [this]() { return progressionOrder; },
                      [this](int value) { setProgressionOrder(ofClamp(value, InputIdx, Markov), true); },
                      {"Input Idx", "Ascendent", "Descendent", "Random", "Markov"});
 
     std::vector<std::string> keyOptions(std::begin(keyNames), std::end(keyNames));
-    registerIntProxy("globalKey", "Key Root", 0, 11,
+    registerIntProxy("globalKey", "Root", 0, 11,
                      [this]() { return globalKey; },
                      [this](int value) {
                          globalKey = ofClamp(value, 0, 11);
@@ -1220,7 +1323,7 @@ void chordSequence::initializePublishableEditorParameters() {
     scaleOptions.reserve(scaleLibrary.size() + 1);
     scaleOptions.push_back(externalScaleLabel);
     for(const auto &item : scaleLibrary) scaleOptions.push_back(item.name);
-    registerIntProxy("globalScale", "Key Scale", 0, std::max(0, static_cast<int>(scaleOptions.size()) - 1),
+    registerIntProxy("globalScale", "Scale", 0, std::max(0, static_cast<int>(scaleOptions.size()) - 1),
                      [this]() { return getGlobalScaleOptionIndex(); },
                      [this](int value) {
                          int optionIndex = ofClamp(value, 0, static_cast<int>(scaleLibrary.size()));
@@ -1256,6 +1359,11 @@ void chordSequence::initializePublishableEditorParameters() {
                           updateEffectiveGlobalModifiers(false, false, true);
                           refreshAllOutputs(true);
                       });
+    registerIntProxy("transposeRandomCycles", "Transpose Random Cycles", 1, 256,
+                     [this]() { return transposeRandomCycles; },
+                     [this](int value) {
+                         transposeRandomCycles = std::max(1, value);
+                     });
     registerIntProxy("inversionRandomRange", "Inversion Random Range", 0, 24,
                      [this]() { return inversionRandomRange; },
                      [this](int value) {
@@ -1276,6 +1384,27 @@ void chordSequence::initializePublishableEditorParameters() {
                           inversionRandomStep = value;
                           updateEffectiveGlobalModifiers(false, false, true);
                           refreshAllOutputs(true);
+                      });
+    registerIntProxy("inversionRandomCycles", "Inversion Random Cycles", 1, 256,
+                     [this]() { return inversionRandomCycles; },
+                     [this](int value) {
+                         inversionRandomCycles = std::max(1, value);
+                     });
+    registerIntProxy("transposeSequencerCycles", "Transpose Seq Cycles", 1, 256,
+                     [this]() { return transposeSequencerCycles; },
+                     [this](int value) {
+                         transposeSequencerCycles = std::max(1, value);
+                     });
+    registerIntProxy("transposeSequencerMod", "Transpose Seq Mod", 0, 48,
+                     [this]() { return transposeSequencerMod; },
+                     [this](int value) {
+                         transposeSequencerMod = std::max(0, value);
+                         refreshAllOutputs(true);
+                     });
+    registerBoolProxy("transposeSequencerStepMode", "Transpose Seq Per Step",
+                      [this]() { return transposeSequencerStepMode; },
+                      [this](bool value) {
+                          transposeSequencerStepMode = value;
                       });
 
     for(int i = 0; i < static_cast<int>(progression.size()); i++) {
@@ -1522,16 +1651,16 @@ void chordSequence::initializePublishableEditorParameters() {
                                outputConfigs[i].glideMs = std::max(0.0f, value);
                            });
         registerIntProxy(prefix + "voiceLeading", labelPrefix + "Voice Lead",
-                         chordSequenceOutputConfig::VOICE_LEADING_OFF, chordSequenceOutputConfig::SMOOTH_GRAVITY_0,
+                         chordSequenceOutputConfig::VOICE_LEADING_OFF, chordSequenceOutputConfig::SMOOTH_GRAVITY_FREE,
                          [this, i]() { return outputConfigs[i].voiceLeadingMode; },
                          [this, i](int value) {
                              if(i >= static_cast<int>(outputConfigs.size())) return;
                              outputConfigs[i].voiceLeadingMode = ofClamp(value,
                                                                         chordSequenceOutputConfig::VOICE_LEADING_OFF,
-                                                                        chordSequenceOutputConfig::SMOOTH_GRAVITY_0);
+                                                                        chordSequenceOutputConfig::SMOOTH_GRAVITY_FREE);
                              refreshAllOutputs(true);
                          },
-                         {"Off", "Classic", "Smooth Gravity (0-Anchor)"});
+                         {"Off", "Classic", "Smooth Gravity (0-Anchor)", "Smooth Gravity (Free)"});
         registerFloatProxy(prefix + "gravityAnchorWeight", labelPrefix + "Gravity Wt", 0.0f, 8.0f,
                            [this, i]() { return outputConfigs[i].gravityAnchorWeight; },
                            [this, i](float value) {
@@ -2822,10 +2951,25 @@ std::vector<float> chordSequence::applySmoothGravityVoicing(const std::vector<fl
     std::sort(candidate.begin(), candidate.end());
 
     // Gravity is a bass/register effect: after the optimal assignment is
-    // found, check whether shifting *just* the resulting bass voice by one
-    // octave either way lowers Total Cost = Voice Leading Cost + Gravity
+    // found, check whether shifting the resulting bass voice by some
+    // number of octaves lowers Total Cost = Voice Leading Cost + Gravity
     // Cost * anchorWeight, where Gravity Cost pulls toward the nearest
     // pitch-class-0 (C) to wherever the previous bass voice was.
+    //
+    // The search here used to be capped at +-1 octave, which meant
+    // anchorWeight could never actually fix a large jump: applyVoiceLeading()
+    // above picks whichever octave-equivalent note minimizes the GROUP's
+    // total movement with no gravity influence at all, searching a full
+    // +-8 octaves to do it -- so it can (and does, e.g. right after a chord
+    // change that has nothing near the previous bass's pitch class) place
+    // the bass many octaves from where it just was. With only +-1 octave to
+    // work with afterward, gravity could never pull it back that far no
+    // matter how high anchorWeight was set, so "high weight" looked like it
+    // wasn't doing anything on exactly the jumps it's meant to prevent.
+    // Matching the search to the same +-8 range applyVoiceLeading() itself
+    // uses means a high enough anchorWeight can now always win and pull the
+    // bass back near the anchor, while a low weight still prefers to stay
+    // close to the raw assignment as before (voiceLeadingCost dominates).
     {
         float matchedPrev = sampleVector(effectivePrevious, 0);
         float bassNote = candidate[0];
@@ -2833,7 +2977,7 @@ std::vector<float> chordSequence::applySmoothGravityVoicing(const std::vector<fl
 
         float bestBassNote = bassNote;
         float bestTotal = std::numeric_limits<float>::max();
-        for(int octaveStep = -1; octaveStep <= 1; octaveStep++) {
+        for(int octaveStep = -8; octaveStep <= 8; octaveStep++) {
             float testNote = bassNote + static_cast<float>(octaveStep) * 12.0f;
             if(testNote < static_cast<float>(minNote) || testNote > static_cast<float>(maxNote)) continue;
             float voiceLeadingCost = std::abs(testNote - matchedPrev);
@@ -2851,6 +2995,39 @@ std::vector<float> chordSequence::applySmoothGravityVoicing(const std::vector<fl
     }
 
     return candidate;
+}
+
+// "Smooth Gravity (Free)" voice leading.
+//
+// Same idea as "Smooth Gravity (0-Anchor)" above -- reuse the exact
+// minimum-total-movement shape from applyVoiceLeading(), and give the very
+// first chord (or any forced/instant refresh, where previousValues arrives
+// empty) a sensible register to resolve toward instead of requiring a
+// manual Octave compensation. The difference is there is no anchor at all:
+// this mode never pulls the bass (or anything else) toward pitch-class 0 or
+// any other fixed point. Whatever octave placement minimizes total movement
+// between voices is simply left as-is.
+std::vector<float> chordSequence::applySmoothGravityFreeVoicing(const std::vector<float> &previousValues,
+                                                                 const std::vector<float> &nextValues,
+                                                                 int minNote,
+                                                                 int maxNote) const {
+    if(nextValues.empty()) return nextValues;
+
+    minNote = ofClamp(minNote, -12, 128);
+    maxNote = ofClamp(maxNote, -12, 128);
+    if(minNote > maxNote) std::swap(minNote, maxNote);
+
+    // Same empty-previousValues fallback as Smooth Gravity (0-Anchor): treat
+    // a missing previous chord as an all-zero "previous chord" so the first
+    // resolution still lands somewhere reasonable, rather than skipping
+    // voice leading entirely (which is what Classic mode does and why it
+    // needs a manual Octave nudge on the very first chord).
+    std::vector<float> effectivePrevious = previousValues;
+    if(effectivePrevious.empty()) {
+        effectivePrevious.assign(nextValues.size(), 0.0f);
+    }
+
+    return applyVoiceLeading(effectivePrevious, nextValues, minNote, maxNote);
 }
 
 std::vector<float> chordSequence::applyRangeConstraints(const std::vector<float> &values,
@@ -2988,9 +3165,49 @@ std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &en
         values = applyVoicingSpread(values, config.voicingSpread);
     }
 
+    // rootLess must also run BEFORE adaptOutputSize()/expand, not just
+    // before voice leading. expandOutput fills up to outputSize by cycling
+    // back through these same chord tones one octave higher each pass, so
+    // if the root is still present here, every octave-doubled copy of it
+    // gets created too -- and the later rootLess pass then strips all of
+    // them, leaving fewer notes than outputSize actually requested (e.g. a
+    // 4-note chord expanded to 8 loses both root copies, landing at 6).
+    // Stripping the root first means expand only ever cycles through notes
+    // that will actually survive, so the requested count is really met.
+    if(config.rootLess) {
+        auto earlyPitchClass = [](float value) {
+            float result = std::fmod(value, 12.0f);
+            if(result < 0.0f) result += 12.0f;
+            return result;
+        };
+        float earlyRootPitchClass = earlyPitchClass(outputRoot);
+        values.erase(std::remove_if(values.begin(), values.end(), [&](float value) {
+            float distance = std::abs(earlyPitchClass(value) - earlyRootPitchClass);
+            return distance <= 0.0001f || std::abs(distance - 12.0f) <= 0.0001f;
+        }), values.end());
+    }
+
     int requestedBodySize = std::max(0, config.outputSize - ((!outputSourceUsesScaleLikeMaterial(config.sourceMode) && config.addBass) ? 1 : 0));
+    int coreBodySize = static_cast<int>(values.size());
+    // When Expand is on AND voice leading is active, growing the chord here
+    // (stacking octave-doubled copies of the raw chord tones right now) gets
+    // undone a few steps down: applyVoiceLeading()/applySmoothGravityVoicing()
+    // independently re-derive whichever octave of each note sits closest to
+    // the matched previous voice, with no notion that some of these notes
+    // started life as "the same tone, one octave up" from Expand -- so
+    // Expand's stacked copies routinely collapse back onto the same
+    // register, i.e. "expand doesn't grow upward, notes just repeat".
+    // Fix: skip growth here in that case, let voice leading settle the CORE
+    // chord tones into their smooth register first, and only then grow to
+    // requestedBodySize -- see the deferred-growth block right before
+    // applyRangeConstraints, after the voice-leading switch below.
+    bool deferGrowthForVoiceLeading = config.expandOutput &&
+                                      config.voiceLeadingMode != chordSequenceOutputConfig::VOICE_LEADING_OFF &&
+                                      requestedBodySize > coreBodySize;
     values = requestedBodySize == 0
                  ? std::vector<float>{}
+             : deferGrowthForVoiceLeading
+                 ? values
                  : adaptOutputSize(values, requestedBodySize, config.expandOutput, false);
 
     if(config.octaveRandomProbability > 0.0f && config.octaveRandomRange > 0) {
@@ -3038,7 +3255,19 @@ std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &en
             return result;
         };
         float rootPitchClass = pitchClass(outputRoot + noteOffset + pitchOffset);
+        // addBass's dedicated bass note (inserted at values[0] earlier in
+        // this function) is deliberately at the root's pitch class -- that
+        // is the whole point of addBass -- so it must survive rootLess
+        // rather than be stripped as if it were an incidental root
+        // appearing in the upper voicing. This is the standard "rootless
+        // upper structure over a separate bass note" arrangement. The same
+        // guard (!scale-like && addBass) as the addBass insertion above
+        // decides whether values[0] actually is that note.
+        bool preserveBassVoice = !outputSourceUsesScaleLikeMaterial(config.sourceMode) && config.addBass && !values.empty();
+        size_t index = 0;
         values.erase(std::remove_if(values.begin(), values.end(), [&](float value) {
+            size_t currentIndex = index++;
+            if(preserveBassVoice && currentIndex == 0) return false;
             float distance = std::abs(pitchClass(value) - rootPitchClass);
             return distance <= 0.0001f || std::abs(distance - 12.0f) <= 0.0001f;
         }), values.end());
@@ -3052,10 +3281,72 @@ std::vector<float> chordSequence::buildOutputValues(const chordSequenceEntry &en
             values = applySmoothGravityVoicing(previousValues, values, config.minNote, config.maxNote,
                                                config.gravityAnchorWeight);
             break;
+        case chordSequenceOutputConfig::SMOOTH_GRAVITY_FREE:
+            values = applySmoothGravityFreeVoicing(previousValues, values, config.minNote, config.maxNote);
+            break;
         case chordSequenceOutputConfig::VOICE_LEADING_OFF:
         default:
             break;
     }
+    // Deferred Expand growth (see deferGrowthForVoiceLeading above): the
+    // CORE chord has now been voice-led into its smooth register, so it's
+    // safe to stack octave-doubled copies on top without voice leading
+    // undoing them afterward (there is no "afterward" left -- this runs
+    // after the switch above). If addBass is on, its inserted note must
+    // still never be one of the duplicated copies (confirmed behavior:
+    // addBass is always a single, unexpanded note) -- voice leading only
+    // ever shifts a note by whole octaves, never changes its pitch class,
+    // so the bass note is found post-voice-leading by matching pitch class
+    // against the pitch class it was inserted with (picking, among any
+    // matches, whichever is closest to the octave it was inserted at).
+    if(deferGrowthForVoiceLeading) {
+        bool preserveBassVoice = !outputSourceUsesScaleLikeMaterial(config.sourceMode) && config.addBass && !values.empty();
+        std::vector<float> body = values;
+        float bassValue = 0.0f;
+
+        if(preserveBassVoice) {
+            float insertedRootPitchClass = std::fmod(outputRoot, 12.0f);
+            if(insertedRootPitchClass < 0.0f) insertedRootPitchClass += 12.0f;
+            float expectedBassValue = insertedRootPitchClass + static_cast<float>(config.bassOct * 12) + noteOffset + pitchOffset;
+            float expectedBassPitchClass = std::fmod(expectedBassValue, 12.0f);
+            if(expectedBassPitchClass < 0.0f) expectedBassPitchClass += 12.0f;
+
+            size_t bassIndex = 0;
+            float bestDistance = std::numeric_limits<float>::max();
+            bool foundBass = false;
+            for(size_t i = 0; i < values.size(); i++) {
+                float pitchClass = std::fmod(values[i], 12.0f);
+                if(pitchClass < 0.0f) pitchClass += 12.0f;
+                float classDistance = std::abs(pitchClass - expectedBassPitchClass);
+                classDistance = std::min(classDistance, 12.0f - classDistance);
+                if(classDistance > 0.01f) continue;
+
+                float distance = std::abs(values[i] - expectedBassValue);
+                if(distance < bestDistance) {
+                    bestDistance = distance;
+                    bassIndex = i;
+                    foundBass = true;
+                }
+            }
+
+            if(foundBass) {
+                bassValue = values[bassIndex];
+                body.clear();
+                for(size_t i = 0; i < values.size(); i++) {
+                    if(i != bassIndex) body.push_back(values[i]);
+                }
+            } else {
+                preserveBassVoice = false;
+            }
+        }
+
+        std::vector<float> grownBody = adaptOutputSize(body, requestedBodySize, true, false);
+
+        values.clear();
+        if(preserveBassVoice) values.push_back(bassValue);
+        values.insert(values.end(), grownBody.begin(), grownBody.end());
+    }
+
     values = applyRangeConstraints(values, config.minNote, config.maxNote);
 
     if(config.perNoteDetune > 0.0f) {
@@ -3277,9 +3568,21 @@ void chordSequence::advanceInternalSequence() {
     internalActiveStep = chooseNextInternalStep(internalActiveStep);
     currentInternalStepStartBeat = currentBoundaryBeat;
     pendingRandomationStepAdvance = true;
-    pendingRandomationSequenceRestart = (progressionOrder == Ascendent) &&
-                                        (progression.size() == 1 ||
-                                         (previousStep == static_cast<int>(progression.size()) - 1 && internalActiveStep == 0));
+    int sequenceSizeForWrap = static_cast<int>(progression.size());
+    bool wrappedForward = (progressionOrder == Ascendent) &&
+                          (sequenceSizeForWrap == 1 ||
+                           (previousStep == sequenceSizeForWrap - 1 && internalActiveStep == 0));
+    bool wrappedBackward = (progressionOrder == Descendent) &&
+                           (sequenceSizeForWrap == 1 ||
+                            (previousStep == 0 && internalActiveStep == sequenceSizeForWrap - 1));
+    pendingRandomationSequenceRestart = wrappedForward;
+    // The transpose sequencer's "a cycle ended" is a genuine lap of the
+    // progression completing during normal playback -- unlike
+    // pendingRandomationSequenceRestart above (kept Ascendent-only so its
+    // existing reroll behavior doesn't change), this also covers Descendent
+    // order. Random/Markov have no well-defined lap, so neither flag covers
+    // them.
+    pendingTransposeSequencerCycleComplete = wrappedForward || wrappedBackward;
     outputBuildDirty = true;
     refreshAllOutputs(false);
     nextInternalStepBeat = currentBoundaryBeat + std::max(0.001f, progression[internalActiveStep].beatDuration);
@@ -3297,8 +3600,29 @@ int chordSequence::generateRandomizedModifier(int range, int quantization) {
 }
 
 void chordSequence::updateEffectiveGlobalModifiers(bool sequenceRestart, bool stepAdvance, bool forceReroll) {
-    bool rerollTranspose = forceReroll || (transposeRandomStep ? stepAdvance : sequenceRestart);
-    bool rerollInvert = forceReroll || (inversionRandomStep ? stepAdvance : sequenceRestart);
+    // forceReroll (used by the UI when a range/quantization/step control is
+    // being tweaked live) always rerolls immediately -- it's a preview
+    // action, not a natural trigger event, so it never touches the
+    // "every N" counters below.
+    bool rerollTranspose = forceReroll;
+    if(!forceReroll && (transposeRandomStep ? stepAdvance : sequenceRestart)) {
+        int cyclesTarget = std::max(1, transposeRandomCycles);
+        transposeRandomCycleCounter++;
+        if(transposeRandomCycleCounter >= cyclesTarget) {
+            transposeRandomCycleCounter = 0;
+            rerollTranspose = true;
+        }
+    }
+
+    bool rerollInvert = forceReroll;
+    if(!forceReroll && (inversionRandomStep ? stepAdvance : sequenceRestart)) {
+        int cyclesTarget = std::max(1, inversionRandomCycles);
+        inversionRandomCycleCounter++;
+        if(inversionRandomCycleCounter >= cyclesTarget) {
+            inversionRandomCycleCounter = 0;
+            rerollInvert = true;
+        }
+    }
 
     if(rerollTranspose) {
         currentTransposeRandomOffset = generateRandomizedModifier(transposeRandomRange, transposeRandomQuantization);
@@ -3307,8 +3631,81 @@ void chordSequence::updateEffectiveGlobalModifiers(bool sequenceRestart, bool st
         currentInversionRandomOffset = generateRandomizedModifier(inversionRandomRange, inversionRandomQuantization);
     }
 
-    effectiveGlobalTranspose = globalTranspose + currentTransposeRandomOffset;
+    // Defensive re-wrap, not just a leftover from advanceTransposeSequencer().
+    // That function only wraps transposeSequencerOffset into 0..mod-1 right
+    // after adding a step -- but Mod can be edited live (its InputInt above
+    // never forces a refresh), and this function runs on every refresh in
+    // between actual sequencer steps. If the offset was ever built up under
+    // a different (or zero/unbounded) Mod, changing Mod back down does NOT
+    // retroactively fix it -- the stale, out-of-range value keeps feeding
+    // effectiveGlobalTranspose (adding a full extra multiple of Mod to every
+    // voice's pitch, sometimes several octaves) until the next real step
+    // happens to advance and re-wrap it, which especially with a high
+    // Cycles/lap-mode setting may not be for a while. Re-wrapping here,
+    // every time effectiveGlobalTranspose is (re)computed, keeps the
+    // invariant "offset is always within 0..mod-1" true regardless of how
+    // it or Mod got out of sync.
+    if(transposeSequencerMod > 0) {
+        transposeSequencerOffset = ((transposeSequencerOffset % transposeSequencerMod) + transposeSequencerMod) % transposeSequencerMod;
+    }
+
+    effectiveGlobalTranspose = globalTranspose + currentTransposeRandomOffset + transposeSequencerOffset;
     effectiveGlobalInvert = globalInvert + currentInversionRandomOffset;
+}
+
+void chordSequence::advanceTransposeSequencer() {
+    int cyclesTarget = std::max(1, transposeSequencerCycles);
+    transposeSequencerCycleCounter++;
+    if(transposeSequencerCycleCounter < cyclesTarget) return;
+
+    transposeSequencerCycleCounter = 0;
+
+    // Pull the next value from the step list (e.g. "4,3,1" -- each trigger
+    // takes the next entry, wrapping back to the start), rather than always
+    // applying the same fixed amount.
+    int stepValue = 0;
+    if(!transposeSequencerSteps.empty()) {
+        int listSize = static_cast<int>(transposeSequencerSteps.size());
+        transposeSequencerStepListIndex = ((transposeSequencerStepListIndex % listSize) + listSize) % listSize;
+        stepValue = transposeSequencerSteps[transposeSequencerStepListIndex];
+        transposeSequencerStepListIndex = (transposeSequencerStepListIndex + 1) % listSize;
+    }
+    transposeSequencerOffset += stepValue;
+
+    int mod = transposeSequencerMod;
+    if(mod > 0) {
+        transposeSequencerOffset = ((transposeSequencerOffset % mod) + mod) % mod;
+    }
+}
+
+std::vector<int> chordSequence::parseTransposeSequencerStepList(const std::string &text) const {
+    std::vector<int> result;
+    auto tokens = ofSplitString(text, ",", true, true);
+    for(const auto &token : tokens) {
+        std::string trimmed = ofTrim(token);
+        if(trimmed.empty()) continue;
+        try {
+            result.push_back(std::stoi(trimmed));
+        } catch(...) {
+            // Ignore malformed tokens rather than rejecting the whole list.
+        }
+    }
+    if(result.empty()) result.push_back(0);
+    return result;
+}
+
+std::string chordSequence::transposeSequencerStepListToString(const std::vector<int> &steps) const {
+    std::string result;
+    for(size_t i = 0; i < steps.size(); i++) {
+        if(i > 0) result += ", ";
+        result += ofToString(steps[i]);
+    }
+    return result;
+}
+
+void chordSequence::syncTransposeSequencerStepListBuffer() {
+    std::string text = transposeSequencerStepListToString(transposeSequencerSteps);
+    std::snprintf(transposeSequencerStepListBuffer.data(), transposeSequencerStepListBuffer.size(), "%s", text.c_str());
 }
 
 void chordSequence::updatePhasorOutputs(double beatPosition) {
@@ -3344,6 +3741,40 @@ void chordSequence::refreshAllOutputs(bool forceInstant) {
     bool sequenceRestart = pendingRandomationSequenceRestart ||
                            lastRefreshedActiveIndex < 0 ||
                            (activeIndex == 0 && activeIndex != lastRefreshedActiveIndex);
+    // Same "step vs. lap" toggle idea as the Randomation card's random
+    // modifiers: transposeSequencerStepMode swaps the trigger from "a lap
+    // just completed" to "any step just advanced", so Cycles then reads as
+    // "every N steps" instead of "every N laps" -- e.g. Cycles=4 with Per
+    // Step on should transpose on step 4, 8, 12, ..., never on every step.
+    //
+    // This deliberately does NOT reuse stepAdvance/sequenceRestart above:
+    // those are shared with the Randomation reroll feature and read
+    // lastRefreshedActiveIndex, which gets reset to -1 (forcing both true)
+    // by several things that are not a real step of the progression --
+    // tweaking a Randomation field (rerollAndRefresh()), changing
+    // progression order, a manual "jump to index", loading a preset. Any
+    // of those would otherwise get miscounted as a step/lap here, making
+    // Cycles seem ignored (transposing far more often than every Cycles
+    // steps -- in the worst case, on every one of those unrelated edits).
+    // Tracking this sequencer's own last-seen index instead makes it
+    // immune to that: it only advances on genuine changes to the resolved
+    // active index, however that index is driven.
+    bool transposeSequencerIndexChanged = transposeSequencerLastSeenIndex >= 0 &&
+                                          activeIndex != transposeSequencerLastSeenIndex;
+    // "A lap just completed" has to mean more than just landing back on
+    // index 0 (pendingTransposeSequencerCycleComplete, set from
+    // advanceInternalSequence()'s own wrap detection, also covers
+    // Descendent order wrapping at the *last* index instead of 0).
+    bool transposeSequencerLapComplete = (transposeSequencerIndexChanged && activeIndex == 0) ||
+                                         pendingTransposeSequencerCycleComplete;
+    bool transposeSequencerTriggerEvent = transposeSequencerStepMode
+                                              ? transposeSequencerIndexChanged
+                                              : transposeSequencerLapComplete;
+    transposeSequencerLastSeenIndex = activeIndex;
+    if(transposeSequencerTriggerEvent) {
+        advanceTransposeSequencer();
+    }
+    pendingTransposeSequencerCycleComplete = false;
     updateEffectiveGlobalModifiers(sequenceRestart, stepAdvance, false);
     pendingRandomationStepAdvance = false;
     pendingRandomationSequenceRestart = false;
@@ -3426,6 +3857,27 @@ std::vector<float> chordSequence::getDisplayedOutput(int outputIndex) const {
                                         : targetOutputs[outputIndex];
 }
 
+float chordSequence::getOutputDisplayRootPitchClass(int outputIndex) const {
+    if(outputIndex < 0 || outputIndex >= static_cast<int>(outputConfigs.size())) return 0.0f;
+    if(lastRefreshedActiveIndex < 0 || lastRefreshedActiveIndex >= static_cast<int>(progression.size())) return 0.0f;
+
+    // Mirrors the same additive transpose chain buildOutputValues() applies
+    // to actual note values (effectiveGlobalTranspose, then this output's
+    // own config.transpose) -- pitch class only, since octave-only shifts
+    // (config.octave, addBass's bassOct) never change *which* note is the
+    // root, only which register it lands in.
+    float basePitchClass = getEntryDisplayRootPitchClass(progression[lastRefreshedActiveIndex]);
+    float shifted = basePitchClass + static_cast<float>(effectiveGlobalTranspose + outputConfigs[outputIndex].transpose);
+    float result = std::fmod(shifted, 12.0f);
+    if(result < 0.0f) result += 12.0f;
+    return result;
+}
+
+std::string chordSequence::getOutputDisplayRootLabel(int outputIndex) const {
+    int pitchClass = ofClamp(static_cast<int>(std::round(getOutputDisplayRootPitchClass(outputIndex))), 0, 11);
+    return keyNames[pitchClass];
+}
+
 float chordSequence::sampleVector(const std::vector<float> &values, size_t index) const {
     if(values.empty()) return 0.0f;
     if(index < values.size()) return values[index];
@@ -3451,7 +3903,7 @@ void chordSequence::drawEditor() {
     ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.055f, 0.075f, 0.090f, 0.96f));
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.095f, 0.135f, 0.155f, 1.00f));
     ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.120f, 0.175f, 0.200f, 1.00f));
-    ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.68f, 0.75f, 0.72f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_TextDisabled, currentValueTextColor);
 
     float toolbarRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
     float buttonWidth = scaledUi(28.0f);
@@ -3473,17 +3925,44 @@ void chordSequence::drawEditor() {
 
     float gap = scaledUi(6.0f);
     float availableWidth = ImGui::GetContentRegionAvail().x;
-    float snapshotsWidth = std::max(scaledUi(280.0f), availableWidth * 0.20f);
-    float globalWidth = std::max(scaledUi(320.0f), availableWidth * 0.23f);
-    float randomationWidth = std::max(scaledUi(280.0f), availableWidth * 0.22f);
-    float cypherWidth = std::max(scaledUi(240.0f), availableWidth - snapshotsWidth - globalWidth - randomationWidth - gap * 3.0f);
+
+    // Every section now gets a natural, content-driven width instead of a
+    // fixed share of the window (Snapshots/Global/Randomation/Transpose
+    // Sequencer/Cypher used to be hard-coded to fill exactly one row
+    // between them, and Step Chords/Outputs each always claimed a full row
+    // of their own even when their actual cards only needed a fraction of
+    // it). Below, all seven flow left-to-right and wrap onto a new row only
+    // when the next one wouldn't fit -- so e.g. Outputs can sit right next
+    // to Step Chords on the same row when there's room, instead of always
+    // starting its own row underneath a lot of unused space.
+    float snapshotsWidth = scaledUi(240.0f);
+    float globalWidth = scaledUi(300.0f);
+    float randomationWidth = scaledUi(200.0f);
+    float transposeSequencerWidth = scaledUi(200.0f);
+    float cypherWidth = scaledUi(260.0f);
     bool hasActiveSnapshot = activeSnapshotSlot >= 0 &&
                              activeSnapshotSlot < SnapshotSlots &&
                              snapshotSlots[activeSnapshotSlot].hasData;
     float snapshotsHeight = getSnapshotsSectionHeight(snapshotsWidth, hasActiveSnapshot);
     float globalHeight = getGlobalSectionHeight();
     float randomationHeight = getRandomationSectionHeight();
+    float transposeSequencerHeight = getTransposeSequencerSectionHeight();
     float cypherHeight = getCypherSectionHeight(!importedProgressionNames.empty(), !jazzStandardNames.empty());
+
+    // Snapshots/Global/Randomation/Transpose Sequencer/Cypher line up as a
+    // visual group even though they no longer share one hard-coded row --
+    // matching them all to the tallest of the five (currently Randomation,
+    // but computed rather than hard-coded so it stays correct if that ever
+    // changes) keeps their tops AND bottoms aligned wherever the flow
+    // layout below places them, instead of a ragged bottom edge. This only
+    // affects their EXPANDED height -- a collapsed card still uses its own
+    // short collapsed height regardless, which is the point of collapsing.
+    float topRowHeight = std::max({snapshotsHeight, globalHeight, randomationHeight, transposeSequencerHeight, cypherHeight});
+    snapshotsHeight = topRowHeight;
+    globalHeight = topRowHeight;
+    randomationHeight = topRowHeight;
+    transposeSequencerHeight = topRowHeight;
+    cypherHeight = topRowHeight;
 
     float maxStepCardHeight = 0.0f;
     for(const auto &entry : progression) {
@@ -3500,77 +3979,91 @@ void chordSequence::drawEditor() {
     }
     float outputsSectionHeight = getSectionHeaderHeight() + maxOutputCardHeight + scaledUi(10.0f);
 
-    beginColoredSection("SnapshotsSection",
-                        "Snapshots",
-                        ImVec2(snapshotsWidth, snapshotsHeight),
-                        snapshotsBg,
-                        snapshotsTitle,
-                        snapshotsSectionExpanded,
-                        editorFontZoom,
-                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    if(snapshotsSectionExpanded) drawSnapshotManager();
-    ImGui::EndChild();
+    // Content-driven widths: fit exactly as many cards as exist (fixed
+    // per-card width, same value drawEntries()/drawOutputs() use), rather
+    // than always spanning the full window -- but never past the window,
+    // since drawEntries()/drawOutputs() fall back to horizontal scrolling
+    // past that point anyway.
+    float sectionChromePadding = ImGui::GetStyle().WindowPadding.x * 2.0f;
+    int stepCardCount = std::max(1, static_cast<int>(progression.size()));
+    float stepsContentWidth = static_cast<float>(stepCardCount) * scaledUi(stepCardWidthBase) +
+                              gap * static_cast<float>(stepCardCount - 1) +
+                              sectionChromePadding;
+    float stepsSectionWidth = std::min(availableWidth, stepsContentWidth);
 
-    ImGui::SameLine(0.0f, gap);
+    int outputCardCount = std::max(1, static_cast<int>(outputs.size()));
+    float outputGap = scaledUi(8.0f);
+    float outputsContentWidth = static_cast<float>(outputCardCount) * scaledUi(outputCardWidthBase) +
+                                outputGap * static_cast<float>(outputCardCount - 1) +
+                                sectionChromePadding;
+    float outputsSectionWidth = std::min(availableWidth, outputsContentWidth);
 
-    beginColoredSection("GlobalSection",
-                        "Global",
-                        ImVec2(globalWidth, globalHeight),
-                        globalBg,
-                        globalTitle,
-                        globalSectionExpanded,
-                        editorFontZoom,
-                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    if(globalSectionExpanded) drawGlobalControls();
-    ImGui::EndChild();
+    struct FlowSection {
+        const char *id;
+        const char *title;
+        float width;
+        float height;
+        ImVec4 bg;
+        ImVec4 titleColor;
+        bool *expanded;
+        std::function<void()> body;
+        std::function<void()> headerContextMenu;
+    };
 
-    ImGui::SameLine(0.0f, gap);
+    std::vector<FlowSection> flowSections = {
+        { "SnapshotsSection", "Snapshots", snapshotsWidth, snapshotsHeight, snapshotsBg, snapshotsTitle,
+          &snapshotsSectionExpanded, [this]() { drawSnapshotManager(); } },
+        { "GlobalSection", "Global", globalWidth, globalHeight, globalBg, globalTitle,
+          &globalSectionExpanded, [this]() { drawGlobalControls(); } },
+        { "RandomationSection", "Randomation", randomationWidth, randomationHeight, randomationBg, randomationTitle,
+          &randomationSectionExpanded, [this]() { drawRandomationControls(); } },
+        { "TransposeSequencerSection", "Transpose Sequencer", transposeSequencerWidth, transposeSequencerHeight,
+          transposeSequencerBg, transposeSequencerTitle,
+          &transposeSequencerSectionExpanded, [this]() { drawTransposeSequencerControls(); } },
+        { "CypherSection", "Cyphered Progressions", cypherWidth, cypherHeight, cypherBg, cypherTitle,
+          &cypherSectionExpanded, [this]() { drawImportTools(); } },
+        { "StepsSection", "Step Chords", stepsSectionWidth, stepsSectionHeight, stepsBg, stepsTitle,
+          &stepsSectionExpanded, [this]() { drawEntries(); } },
+        { "OutputsSection", "Outputs", outputsSectionWidth, outputsSectionHeight, outputsBg, outputsTitle,
+          &outputsSectionExpanded, [this]() { drawOutputs(); },
+          [this]() {
+              if(ImGui::MenuItem("Add Output")) {
+                  ensureOutputCount(numOutputs + 1);
+                  outputBuildDirty = true;
+                  refreshAllOutputs(true);
+              }
+          } },
+    };
 
-    beginColoredSection("RandomationSection",
-                        "Randomation",
-                        ImVec2(randomationWidth, randomationHeight),
-                        randomationBg,
-                        randomationTitle,
-                        randomationSectionExpanded,
-                        editorFontZoom,
-                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    if(randomationSectionExpanded) drawRandomationControls();
-    ImGui::EndChild();
+    ImGuiWindowFlags sectionFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    float rowUsedWidth = 0.0f;
+    bool firstInRow = true;
+    for(const auto &section : flowSections) {
+        bool wouldOverflowRow = !firstInRow && (rowUsedWidth + gap + section.width > availableWidth + 0.5f);
+        if(wouldOverflowRow) {
+            firstInRow = true;
+            rowUsedWidth = 0.0f;
+        }
+        if(!firstInRow) {
+            ImGui::SameLine(0.0f, gap);
+            rowUsedWidth += gap;
+        }
 
-    ImGui::SameLine(0.0f, gap);
+        beginColoredSection(section.id,
+                            section.title,
+                            ImVec2(section.width, section.height),
+                            section.bg,
+                            section.titleColor,
+                            *section.expanded,
+                            editorFontZoom,
+                            sectionFlags,
+                            section.headerContextMenu);
+        if(*section.expanded) section.body();
+        ImGui::EndChild();
 
-    beginColoredSection("CypherSection",
-                        "Cyphered Progressions",
-                        ImVec2(cypherWidth, cypherHeight),
-                        cypherBg,
-                        cypherTitle,
-                        cypherSectionExpanded,
-                        editorFontZoom,
-                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    if(cypherSectionExpanded) drawImportTools();
-    ImGui::EndChild();
-
-    beginColoredSection("StepsSection",
-                        "Step Chords",
-                        ImVec2(0, stepsSectionHeight),
-                        stepsBg,
-                        stepsTitle,
-                        stepsSectionExpanded,
-                        editorFontZoom,
-                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    if(stepsSectionExpanded) drawEntries();
-    ImGui::EndChild();
-
-    beginColoredSection("OutputsSection",
-                        "Outputs",
-                        ImVec2(0, outputsSectionHeight),
-                        outputsBg,
-                        outputsTitle,
-                        outputsSectionExpanded,
-                        editorFontZoom,
-                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    if(outputsSectionExpanded) drawOutputs();
-    ImGui::EndChild();
+        rowUsedWidth += section.width;
+        firstInRow = false;
+    }
 
     ImGui::PopStyleColor(4);
     ImGui::PopStyleVar(4);
@@ -3619,8 +4112,8 @@ void chordSequence::drawGlobalControls() {
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
-        setNextLabeledItemWidth("OutputNum");
-        if(ImGui::InputInt("OutputNum", &requestedOutputs)) {
+        setNextLabeledItemWidth("OutNum");
+        if(ImGui::InputInt("OutNum", &requestedOutputs)) {
             ensureOutputCount(requestedOutputs);
             refreshAllOutputs(true);
         }
@@ -3631,8 +4124,8 @@ void chordSequence::drawGlobalControls() {
         int orderValue = progressionOrder;
         int safeOrderValue = std::max(static_cast<int>(InputIdx), std::min(orderValue, static_cast<int>(Markov)));
         const char *orderLabel = progressionOrderLabels[safeOrderValue];
-        setNextLabeledItemWidth("Progression");
-        if(ImGui::BeginCombo("Progression", orderLabel)) {
+        setNextLabeledItemWidth("Prog");
+        if(ImGui::BeginCombo("Prog", orderLabel)) {
             for(int i = InputIdx; i <= Markov; i++) {
                 bool selected = orderValue == i;
                 if(ImGui::Selectable(progressionOrderLabels[i], selected)) {
@@ -3648,9 +4141,9 @@ void chordSequence::drawGlobalControls() {
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
-        setNextLabeledItemWidth("Key Root");
+        setNextLabeledItemWidth("Root");
         int clampedGlobalKey = std::max(0, std::min(globalKey, 11));
-        if(ImGui::BeginCombo("Key Root", keyNames[clampedGlobalKey])) {
+        if(ImGui::BeginCombo("Root", keyNames[clampedGlobalKey])) {
             for(int i = 0; i < 12; i++) {
                 bool selected = i == globalKey;
                 if(ImGui::Selectable(keyNames[i], selected)) {
@@ -3669,8 +4162,8 @@ void chordSequence::drawGlobalControls() {
         std::string scalePreview = useExternalScale
                                  ? externalScaleLabel
                                  : (scaleLibrary.empty() ? "---" : scaleLibrary[getGlobalScaleSafeIndex()].name);
-        setNextLabeledItemWidth("Key Scale");
-        if(ImGui::BeginCombo("Key Scale", scalePreview.c_str())) {
+        setNextLabeledItemWidth("Scale");
+        if(ImGui::BeginCombo("Scale", scalePreview.c_str())) {
             if(ImGui::Selectable(externalScaleLabel, useExternalScale)) {
                 useExternalScale = true;
                 sanitizeProgression();
@@ -3696,8 +4189,8 @@ void chordSequence::drawGlobalControls() {
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
-        setNextLabeledItemWidth("Pitch Bend");
-        if(drawDraggableFloatWithPopup("Pitch Bend", globalPitchBend, 0.05f, -24.0f, 24.0f, "%.3f",
+        setNextLabeledItemWidth("Bend");
+        if(drawDraggableFloatWithPopup("Bend", globalPitchBend, 0.05f, -24.0f, 24.0f, "%.3f",
                                        [this]() { drawNodePublishMenuItems("pitchBend"); })) {
             pitchBendParameter = globalPitchBend;
         }
@@ -3751,14 +4244,27 @@ void chordSequence::drawRandomationControls() {
         refreshAllOutputs(true);
     };
 
+    // Numeric fields only need to hold a couple of digits -- a quarter of
+    // the card's width is plenty and keeps them from stretching edge to
+    // edge like they used to.
+    // A fixed absolute width rather than a fraction of the (already
+    // narrow) card's available region -- a computed fraction here was
+    // still coming out too small to actually show the digits (rendered as
+    // just a sliver/line). Buttons are dropped too (step/step_fast = 0),
+    // since a fixed compact width has no room for them either.
+    float quarterWidth = scaledUi(56.0f);
+
     ImGui::TextDisabled("Transpose");
-    if(ImGui::InputInt("randomRange##TransposeRandomRange", &transposeRandomRange)) {
+    ImGui::SetNextItemWidth(quarterWidth);
+    if(ImGui::InputInt("Range##TransposeRandomRange", &transposeRandomRange, 0, 0)) {
         transposeRandomRange = std::max(0, transposeRandomRange);
         rerollAndRefresh();
     }
     drawNodePublishContextMenu("transposeRandomRange");
     drawPublishedCurrentItemUnderline("transposeRandomRange");
-    if(ImGui::InputInt("Q##TransposeRandomQ", &transposeRandomQuantization)) {
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(quarterWidth);
+    if(ImGui::InputInt("Q##TransposeRandomQ", &transposeRandomQuantization, 0, 0)) {
         transposeRandomQuantization = std::max(1, transposeRandomQuantization);
         rerollAndRefresh();
     }
@@ -3769,16 +4275,28 @@ void chordSequence::drawRandomationControls() {
     }
     drawNodePublishContextMenu("transposeRandomStep");
     drawPublishedCurrentItemUnderline("transposeRandomStep");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(quarterWidth);
+    if(ImGui::InputInt("Cycles##TransposeRandomCycles", &transposeRandomCycles, 0, 0)) {
+        transposeRandomCycles = std::max(1, transposeRandomCycles);
+        rerollAndRefresh();
+    }
+    drawNodePublishContextMenu("transposeRandomCycles");
+    drawPublishedCurrentItemUnderline("transposeRandomCycles");
+    ImGui::TextColored(currentValueTextColor, "Current: %+d st", currentTransposeRandomOffset);
 
     ImGui::Separator();
     ImGui::TextDisabled("Inversion");
-    if(ImGui::InputInt("randomRange##InversionRandomRange", &inversionRandomRange)) {
+    ImGui::SetNextItemWidth(quarterWidth);
+    if(ImGui::InputInt("Range##InversionRandomRange", &inversionRandomRange, 0, 0)) {
         inversionRandomRange = std::max(0, inversionRandomRange);
         rerollAndRefresh();
     }
     drawNodePublishContextMenu("inversionRandomRange");
     drawPublishedCurrentItemUnderline("inversionRandomRange");
-    if(ImGui::InputInt("Q##InversionRandomQ", &inversionRandomQuantization)) {
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(quarterWidth);
+    if(ImGui::InputInt("Q##InversionRandomQ", &inversionRandomQuantization, 0, 0)) {
         inversionRandomQuantization = std::max(1, inversionRandomQuantization);
         rerollAndRefresh();
     }
@@ -3789,10 +4307,97 @@ void chordSequence::drawRandomationControls() {
     }
     drawNodePublishContextMenu("inversionRandomStep");
     drawPublishedCurrentItemUnderline("inversionRandomStep");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(quarterWidth);
+    if(ImGui::InputInt("Cycles##InversionRandomCycles", &inversionRandomCycles, 0, 0)) {
+        inversionRandomCycles = std::max(1, inversionRandomCycles);
+        rerollAndRefresh();
+    }
+    drawNodePublishContextMenu("inversionRandomCycles");
+    drawPublishedCurrentItemUnderline("inversionRandomCycles");
+    ImGui::TextColored(currentValueTextColor, "Current: %+d inv", currentInversionRandomOffset);
+}
+
+void chordSequence::drawTransposeSequencerControls() {
+    ImGui::TextDisabled("Transpose every N cycles");
+
+    // Same fix as the Randomation card -- a fixed absolute width instead
+    // of a fraction of the card's available region, which was still coming
+    // out too small to show the digits. No +/- buttons either
+    // (step/step_fast = 0), since there's no room budgeted for them.
+    float quarterWidth = scaledUi(56.0f);
+
+    // step toggle to the left of Cycles, matching the Randomation card's
+    // transpose/inversion step-mode rows.
+    ImGui::Checkbox("step##TransposeSeqStepMode", &transposeSequencerStepMode);
+    drawNodePublishContextMenu("transposeSequencerStepMode");
+    drawPublishedCurrentItemUnderline("transposeSequencerStepMode");
+    // Reads as "every N laps" normally, or "every N steps" once Per Step
+    // is on -- same step/lap toggle idea as the Randomation card, so it
+    // sits right beside the count it changes the meaning of.
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(quarterWidth);
+    if(ImGui::InputInt("Cycles##TransposeSeqCycles", &transposeSequencerCycles, 0, 0)) {
+        transposeSequencerCycles = std::max(1, transposeSequencerCycles);
+    }
+    drawNodePublishContextMenu("transposeSequencerCycles");
+    drawPublishedCurrentItemUnderline("transposeSequencerCycles");
+
+    // A list instead of a single fixed amount -- e.g. "4,3,1" takes 4
+    // semitones on the first trigger, 3 on the next, 1 on the one after,
+    // then wraps back to 4. A single value like "5" behaves exactly as the
+    // old fixed Step field did. Sized as a fixed fraction of the row's
+    // available width (rather than reserving Mod's exact footprint) since
+    // that earlier approach missed that the Steps field also draws its OWN
+    // trailing "Steps" label right after its box, before the SameLine gap
+    // even starts -- so the row was always wider than accounted for.
+    float stepGap = scaledUi(10.0f);
+    // A third of the available width (a third larger than the previous
+    // quarter) -- comfortable room to actually type out something like
+    // "4,3,1,-2" without the field scrolling out from under you.
+    float stepListWidth = std::max(scaledUi(40.0f), ImGui::GetContentRegionAvail().x / 3.0f);
+    ImGui::SetNextItemWidth(stepListWidth);
+    if(ImGui::InputText("Steps##TransposeSeqStepList", transposeSequencerStepListBuffer.data(),
+                        transposeSequencerStepListBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue)) {
+        transposeSequencerSteps = parseTransposeSequencerStepList(transposeSequencerStepListBuffer.data());
+        syncTransposeSequencerStepListBuffer();
+    }
+
+    // Half of Cycles'/quarterWidth's width -- Mod rarely needs more than two
+    // digits, and the extra room it gives up goes toward the wider Steps
+    // field above without the row overflowing the card.
+    float modWidth = quarterWidth * 0.5f;
+    ImGui::SameLine(0.0f, stepGap);
+    ImGui::SetNextItemWidth(modWidth);
+    if(ImGui::InputInt("Mod##TransposeSeqMod", &transposeSequencerMod, 0, 0)) {
+        transposeSequencerMod = std::max(0, transposeSequencerMod);
+        // Re-wrapping happens defensively inside updateEffectiveGlobalModifiers()
+        // regardless, but forcing a refresh here means a stale out-of-range
+        // offset (e.g. built up while Mod was 0/unbounded) gets corrected the
+        // moment Mod changes, instead of silently staying wrong until the
+        // sequencer's next real step.
+        refreshAllOutputs(true);
+    }
+    drawNodePublishContextMenu("transposeSequencerMod");
+    drawPublishedCurrentItemUnderline("transposeSequencerMod");
+
+    ImGui::Separator();
+    int cyclesTarget = std::max(1, transposeSequencerCycles);
+    const char *unitLabel = transposeSequencerStepMode ? "step" : "lap";
+    ImGui::TextColored(currentValueTextColor, "Current Transpose: %+d st", transposeSequencerOffset);
+    ImGui::TextDisabled("(%s %d/%d)",
+                        unitLabel,
+                        std::min(transposeSequencerCycleCounter + 1, cyclesTarget),
+                        cyclesTarget);
+    if(!transposeSequencerSteps.empty()) {
+        int listSize = static_cast<int>(transposeSequencerSteps.size());
+        int nextIdx = ((transposeSequencerStepListIndex % listSize) + listSize) % listSize;
+        ImGui::TextDisabled("Next step: %+d (%d/%d)", transposeSequencerSteps[nextIdx], nextIdx + 1, listSize);
+    }
 }
 
 void chordSequence::drawImportTools() {
-    ImGui::SetNextItemWidth(std::min(scaledUi(220.0f), ImGui::GetContentRegionAvail().x));
+    ImGui::SetNextItemWidth(std::min(scaledUi(110.0f), ImGui::GetContentRegionAvail().x));
     if(ImGui::InputText("Chord List", importChordBuffer.data(), importChordBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue)) {
         applyImportedChordList(parseChordSequenceString(importChordBuffer.data()));
     }
@@ -3829,7 +4434,7 @@ void chordSequence::drawImportTools() {
 
     if(!importedProgressionNames.empty()) {
         std::string preview = importedProgressionNames[ofClamp(selectedImportedProgression, 0, static_cast<int>(importedProgressionNames.size()) - 1)];
-        ImGui::SetNextItemWidth(std::max(scaledUi(120.0f), std::min(scaledUi(260.0f), ImGui::GetContentRegionAvail().x - scaledUi(110.0f))));
+        ImGui::SetNextItemWidth(std::max(scaledUi(60.0f), ImGui::GetContentRegionAvail().x));
         if(ImGui::BeginCombo("Progression", preview.c_str())) {
             for(int i = 0; i < static_cast<int>(importedProgressionNames.size()); i++) {
                 bool selected = i == selectedImportedProgression;
@@ -3840,8 +4445,7 @@ void chordSequence::drawImportTools() {
             }
             ImGui::EndCombo();
         }
-        ImGui::SameLine();
-        if(ImGui::Button("Load Progression")) {
+        if(ImGui::Button("Load Progression", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f))) {
             int currentIndex = 0;
             if(importedProgressionDatabase.contains("progressions")) {
                 for(auto &[key, value] : importedProgressionDatabase["progressions"].items()) {
@@ -3857,7 +4461,7 @@ void chordSequence::drawImportTools() {
 
     if(!jazzStandardNames.empty()) {
         std::string preview = jazzStandardNames[ofClamp(selectedJazzStandard, 0, static_cast<int>(jazzStandardNames.size()) - 1)];
-        ImGui::SetNextItemWidth(scaledUi(260.0f));
+        ImGui::SetNextItemWidth(std::max(scaledUi(60.0f), ImGui::GetContentRegionAvail().x));
         if(ImGui::BeginCombo("Jazz Standard", preview.c_str())) {
             for(int i = 0; i < static_cast<int>(jazzStandardNames.size()); i++) {
                 bool selected = i == selectedJazzStandard;
@@ -3868,24 +4472,22 @@ void chordSequence::drawImportTools() {
             }
             ImGui::EndCombo();
         }
-        ImGui::SameLine();
-        if(ImGui::Button("Load Standard")) {
+        if(ImGui::Button("Load Standard", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f))) {
             applyImportedChordList(extractJazzStandardChords(selectedJazzStandard));
         }
     }
 }
 
 void chordSequence::drawEntries() {
-    float availableWidth = ImGui::GetContentRegionAvail().x;
-    const int visibleColumns = 8;
     float gap = scaledUi(6.0f);
-    float slotWidth = std::max(1.0f, (availableWidth - gap * (visibleColumns - 1)) / static_cast<float>(visibleColumns));
+    float slotWidth = scaledUi(stepCardWidthBase);
     float slotHeight = 0.0f;
     for(const auto &entry : progression) {
         slotHeight = std::max(slotHeight, getChordSequenceEntryCardHeight(entry.mode, markovEnabled));
     }
 
-    ImGui::BeginChild("ChordSequenceEntriesScroller", ImVec2(0, slotHeight + scaledUi(4.0f)), false, ImGuiWindowFlags_HorizontalScrollbar);
+    float entriesScrollerPadding = ImGui::GetStyle().WindowPadding.y * 2.0f + ImGui::GetStyle().ScrollbarSize;
+    ImGui::BeginChild("ChordSequenceEntriesScroller", ImVec2(0, slotHeight + entriesScrollerPadding), false, ImGuiWindowFlags_HorizontalScrollbar);
     for(int i = 0; i < static_cast<int>(progression.size()); i++) {
         if(i > 0) ImGui::SameLine(0.0f, gap);
         drawEntryEditor(i, slotWidth);
@@ -3906,15 +4508,13 @@ void chordSequence::drawEntryEditor(int index, float width) {
     ImGui::PopStyleColor();
 
     ImGui::Text("Step %d", index);
-    ImGui::SameLine();
-    ImGui::TextColored(isActive ? ImVec4(0.92f, 1.00f, 0.94f, 1.0f) : ImVec4(0.70f, 0.88f, 0.74f, 1.0f), isActive ? "ACTIVE" : "idle");
+    ImGui::Separator();
 
     float rowWidth = std::max(scaledUi(140.0f), ImGui::GetContentRegionAvail().x * 0.94f);
     float labelGap = scaledUi(10.0f);
     float maxLabelWidth = std::max({
         ImGui::CalcTextSize("Type").x,
-        ImGui::CalcTextSize("Selection").x,
-        ImGui::CalcTextSize("Chord Text").x,
+        ImGui::CalcTextSize("Chord").x,
         ImGui::CalcTextSize("Function").x,
         ImGui::CalcTextSize("Variant").x,
         ImGui::CalcTextSize("Degree").x,
@@ -3924,8 +4524,8 @@ void chordSequence::drawEntryEditor(int index, float width) {
         ImGui::CalcTextSize("Diat Dev Range").x,
         ImGui::CalcTextSize("Beats").x,
         ImGui::CalcTextSize("Transitions").x,
-        ImGui::CalcTextSize("Transpose").x,
-        ImGui::CalcTextSize("Inversion").x
+        ImGui::CalcTextSize("Trans").x,
+        ImGui::CalcTextSize("Inv").x
     });
     float controlWidth = std::max(scaledUi(80.0f), rowWidth - maxLabelWidth - labelGap);
 
@@ -3970,7 +4570,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
             entry.itemName = cypherBuf;
             refreshAllOutputs(true);
         }
-        drawRowLabel(rowStartX, "Chord Text");
+        drawRowLabel(rowStartX, "Chord");
     } else if(entry.mode != chordSequenceEntry::Degree && entry.mode != chordSequenceEntry::Functional) {
         const auto &library = getLibraryForMode(entry.mode);
         std::string previewLabel = getItemLabel(entry);
@@ -3988,7 +4588,7 @@ void chordSequence::drawEntryEditor(int index, float width) {
             }
             ImGui::EndCombo();
         }
-        drawRowLabel(rowStartX, "Selection");
+        drawRowLabel(rowStartX, "Chord");
     }
 
     if(entry.mode == chordSequenceEntry::Functional) {
@@ -4188,8 +4788,8 @@ void chordSequence::drawEntryEditor(int index, float width) {
     if(ImGui::InputInt("##Transpose", &entry.transpose)) {
         refreshAllOutputs(true);
     }
-    drawNodePublishContextMenu(publishPrefix + "transpose", "Transpose", controlWidth);
-    drawRowLabel(rowStartX, "Transpose");
+    drawNodePublishContextMenu(publishPrefix + "transpose", "Trans", controlWidth);
+    drawRowLabel(rowStartX, "Trans");
 
     rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
@@ -4206,8 +4806,8 @@ void chordSequence::drawEntryEditor(int index, float width) {
     if(ImGui::InputInt("##Inversion", &entry.inversion)) {
         refreshAllOutputs(true);
     }
-    drawNodePublishContextMenu(publishPrefix + "inversion", "Inversion", controlWidth);
-    drawRowLabel(rowStartX, "Inversion");
+    drawNodePublishContextMenu(publishPrefix + "inversion", "Inv", controlWidth);
+    drawRowLabel(rowStartX, "Inv");
 
     std::vector<float> preview = buildEntryPreviewOutput(entry);
     drawKeyboardDisplay("StepKeyboard", preview, rowWidth, scaledUi(62.0f), isActive, true);
@@ -4226,10 +4826,8 @@ void chordSequence::drawEntryEditor(int index, float width) {
 }
 
 void chordSequence::drawOutputs() {
-    float availableWidth = ImGui::GetContentRegionAvail().x;
-    int visibleColumns = std::min(std::max(1, static_cast<int>(outputs.size())), 4);
     float gap = scaledUi(8.0f);
-    float slotWidth = std::max(scaledUi(230.0f), std::min(scaledUi(320.0f), (availableWidth - gap * (visibleColumns - 1)) / static_cast<float>(visibleColumns)));
+    float slotWidth = scaledUi(outputCardWidthBase);
     float slotHeight = 0.0f;
     for(const auto &config : outputConfigs) {
         slotHeight = std::max(slotHeight, getOutputCardHeight(config));
@@ -4239,15 +4837,27 @@ void chordSequence::drawOutputs() {
         slotHeight = getOutputCardHeight(defaultConfig);
     }
 
-    ImGui::BeginChild("ChordSequenceOutputsScroller", ImVec2(0, slotHeight + scaledUi(4.0f)), false, ImGuiWindowFlags_HorizontalScrollbar);
+    int removeIndex = -1;
+    float outputsScrollerPadding = ImGui::GetStyle().WindowPadding.y * 2.0f + ImGui::GetStyle().ScrollbarSize;
+    ImGui::BeginChild("ChordSequenceOutputsScroller", ImVec2(0, slotHeight + outputsScrollerPadding), false, ImGuiWindowFlags_HorizontalScrollbar);
     for(int i = 0; i < static_cast<int>(outputs.size()); i++) {
         if(i > 0) ImGui::SameLine(0.0f, gap);
-        drawOutputEditor(i, slotWidth);
+        // Deferred: mutating outputs mid-loop (resizing/erasing) would
+        // invalidate the indices/widths of cards not yet drawn this frame.
+        if(drawOutputEditor(i, slotWidth)) {
+            removeIndex = i;
+        }
     }
     ImGui::EndChild();
+
+    if(removeIndex >= 0) {
+        removeOutputAt(removeIndex);
+        outputBuildDirty = true;
+        refreshAllOutputs(true);
+    }
 }
 
-void chordSequence::drawOutputEditor(int index, float width) {
+bool chordSequence::drawOutputEditor(int index, float width) {
     chordSequenceOutputConfig &config = outputConfigs[index];
     std::vector<float> displayedOutput = getDisplayedOutput(index);
     float cardHeight = getOutputCardHeight(config);
@@ -4258,32 +4868,28 @@ void chordSequence::drawOutputEditor(int index, float width) {
     ImGui::BeginChild("OutputCard", ImVec2(width, cardHeight), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::PopStyleColor();
 
+    bool removeRequested = false;
+    float cardContentWidth = ImGui::GetContentRegionAvail().x;
     ImGui::Text("%s", outputName(index).c_str());
+    if(outputs.size() > 1) {
+        float closeButtonSize = scaledUi(20.0f);
+        ImGui::SameLine(cardContentWidth - closeButtonSize);
+        if(ImGui::SmallButton("x##RemoveOutput")) {
+            removeRequested = true;
+        }
+    }
+    ImGui::Separator();
 
     float rowWidth = std::max(scaledUi(180.0f), ImGui::GetContentRegionAvail().x * 0.94f);
     float labelGap = scaledUi(10.0f);
     float maxLabelWidth = std::max({
-        ImGui::CalcTextSize("Octave").x,
-        ImGui::CalcTextSize("Transpose").x,
-        ImGui::CalcTextSize("Pitch Bend").x,
-        ImGui::CalcTextSize("Detune").x,
-        ImGui::CalcTextSize("Oct Rand %").x,
-        ImGui::CalcTextSize("Oct Rand Range").x,
-        ImGui::CalcTextSize("Chrom Dev %").x,
-        ImGui::CalcTextSize("Chrom Dev Range").x,
         ImGui::CalcTextSize("Voice Lead").x,
-        ImGui::CalcTextSize("Min Note").x,
-        ImGui::CalcTextSize("Max Note").x,
         ImGui::CalcTextSize("Chord Sum").x,
         ImGui::CalcTextSize("Source").x,
-        ImGui::CalcTextSize("AddBass").x,
         ImGui::CalcTextSize("BassOct").x,
         ImGui::CalcTextSize("Inversion").x,
         ImGui::CalcTextSize("Voicing").x,
-        ImGui::CalcTextSize("Spread").x,
-        ImGui::CalcTextSize("Fold12").x,
-        ImGui::CalcTextSize("rootLess").x,
-        ImGui::CalcTextSize("Glide").x,
+        ImGui::CalcTextSize("Gravity Wt").x,
         ImGui::CalcTextSize("Output Size").x,
         ImGui::CalcTextSize("Expand").x,
         ImGui::CalcTextSize("Sort").x
@@ -4294,15 +4900,6 @@ void chordSequence::drawOutputEditor(int index, float width) {
         ImGui::SameLine();
         ImGui::SetCursorPosX(rowStartX + controlWidth + labelGap);
         ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(label);
-    };
-
-    auto drawSingleToggleRow = [&](const char *id, bool &value, const char *label, const std::string &key = std::string()) {
-        if(ImGui::Checkbox(id, &value)) {
-            refreshAllOutputs(true);
-        }
-        if(!key.empty()) drawNodePublishContextMenu(key, label, 0.0f, true);
-        ImGui::SameLine();
         ImGui::TextUnformatted(label);
     };
 
@@ -4335,82 +4932,67 @@ void chordSequence::drawOutputEditor(int index, float width) {
         ImGui::TextUnformatted(rightLabel);
     };
 
+    // Generalized toggle row: lays out 2-3 checkboxes evenly across
+    // rowWidth. Used for Fold12/rootLess/AddBass -- AddBass only joins the
+    // row when this output's source isn't scale-like material, since that
+    // is the same condition that decides whether AddBass exists at all.
+    auto drawToggleGroupRow = [&](const std::vector<std::tuple<const char *, bool *, const char *, std::string>> &items) {
+        float rowStartX = ImGui::GetCursorPosX();
+        float gap = scaledUi(10.0f);
+        int n = static_cast<int>(items.size());
+        if(n == 0) return;
+        float itemWidth = std::max(scaledUi(56.0f), (rowWidth - gap * (n - 1)) / static_cast<float>(n));
+        for(int i = 0; i < n; i++) {
+            const char *id = std::get<0>(items[i]);
+            bool *value = std::get<1>(items[i]);
+            const char *label = std::get<2>(items[i]);
+            const std::string &key = std::get<3>(items[i]);
+            if(i == 0) {
+                ImGui::SetCursorPosX(rowStartX);
+            } else {
+                ImGui::SameLine(rowStartX + i * (itemWidth + gap));
+            }
+            if(ImGui::Checkbox(id, value)) {
+                refreshAllOutputs(true);
+            }
+            if(!key.empty()) drawNodePublishContextMenu(key, label, 0.0f, true);
+            ImGui::SameLine();
+            ImGui::TextUnformatted(label);
+        }
+    };
+
+    // Generalized two-control row: splits rowWidth into two equal halves,
+    // each sized to fit its own control plus its own (deliberately short --
+    // the row's other label already gives the shared context, so no need
+    // to repeat words like "Oct Rand" or "Note" on both sides) trailing
+    // label. Used to pack Oct/Trans, Bend/Detune, Oct Rand %/Range,
+    // Chrom Dev %/Range, Spread/Glide, Min/Max Note, and the root readout
+    // onto shared rows instead of one control taking a full row each.
+    float pairGap = scaledUi(12.0f);
+    float pairWidth = std::max(scaledUi(70.0f), (rowWidth - pairGap) * 0.5f);
+    auto drawPairedControlRow = [&](const char *leftLabel, const std::function<void(float)> &drawLeftControl,
+                                    const char *rightLabel, const std::function<void(float)> &drawRightControl) {
+        float rowStartX = ImGui::GetCursorPosX();
+        float labelW = std::max(ImGui::CalcTextSize(leftLabel).x, ImGui::CalcTextSize(rightLabel).x);
+        float pcw = std::max(scaledUi(44.0f), pairWidth - labelW - labelGap);
+
+        ImGui::SetCursorPosX(rowStartX);
+        drawLeftControl(pcw);
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(rowStartX + pcw + labelGap);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(leftLabel);
+
+        float rightStartX = rowStartX + pairWidth + pairGap;
+        ImGui::SameLine(rightStartX);
+        drawRightControl(pcw);
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(rightStartX + pcw + labelGap);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(rightLabel);
+    };
+
     float rowStartX = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(controlWidth);
-    if(ImGui::InputInt("##Octave", &config.octave)) {
-        refreshAllOutputs(true);
-    }
-    drawNodePublishContextMenu(publishPrefix + "octave", "Octave", controlWidth);
-    drawRowLabel(rowStartX, "Octave");
-
-    rowStartX = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(controlWidth);
-    if(ImGui::InputInt("##Transpose", &config.transpose)) {
-        refreshAllOutputs(true);
-    }
-    drawNodePublishContextMenu(publishPrefix + "transpose", "Transpose", controlWidth);
-    drawRowLabel(rowStartX, "Transpose");
-
-    rowStartX = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(controlWidth);
-    if(drawDraggableFloatWithPopup("##PitchBend", config.pitchBend, 0.05f, -24.0f, 24.0f, "%.3f",
-                                   [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "pitchBend"); })) {
-        refreshAllOutputs(true);
-    }
-    drawPublishedLabelUnderline(publishPrefix + "pitchBend", "Pitch Bend", controlWidth);
-    drawRowLabel(rowStartX, "Pitch Bend");
-
-    rowStartX = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(controlWidth);
-    if(drawDraggableFloatWithPopup("##Detune", config.perNoteDetune, 0.01f, 0.0f, 2.0f, "%.3f",
-                                   [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "detune"); })) {
-        refreshAllOutputs(true);
-    }
-    drawPublishedLabelUnderline(publishPrefix + "detune", "Detune", controlWidth);
-    drawRowLabel(rowStartX, "Detune");
-
-    rowStartX = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(controlWidth);
-    if(drawDraggableFloatWithPopup("##OctRandProbability", config.octaveRandomProbability, 0.5f, 0.0f, 100.0f, "%.1f",
-                                   [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "octRandProbability"); })) {
-        refreshAllOutputs(true);
-    }
-    drawPublishedLabelUnderline(publishPrefix + "octRandProbability", "Oct Rand %", controlWidth);
-    drawRowLabel(rowStartX, "Oct Rand %");
-
-    rowStartX = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(controlWidth);
-    if(ImGui::InputInt("##OctRandRange", &config.octaveRandomRange)) {
-        config.octaveRandomRange = std::max(0, config.octaveRandomRange);
-        refreshAllOutputs(true);
-    }
-    drawNodePublishContextMenu(publishPrefix + "octRandRange", "Oct Rand Range", controlWidth);
-    drawRowLabel(rowStartX, "Oct Rand Range");
-
-    rowStartX = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(controlWidth);
-    if(drawDraggableFloatWithPopup("##ChromaticDeviationProbability",
-                                   config.chromaticDeviationProbability,
-                                   0.5f,
-                                   0.0f,
-                                   100.0f,
-                                   "%.1f",
-                                   [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "chromDevProbability"); })) {
-        refreshAllOutputs(true);
-    }
-    drawPublishedLabelUnderline(publishPrefix + "chromDevProbability", "Chrom Dev %", controlWidth);
-    drawRowLabel(rowStartX, "Chrom Dev %");
-
-    rowStartX = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(controlWidth);
-    if(ImGui::InputInt("##ChromaticDeviationRange", &config.chromaticDeviationRange)) {
-        config.chromaticDeviationRange = std::max(0, config.chromaticDeviationRange);
-        refreshAllOutputs(true);
-    }
-    drawNodePublishContextMenu(publishPrefix + "chromDevRange", "Chrom Dev Range", controlWidth);
-    drawRowLabel(rowStartX, "Chrom Dev Range");
-
-    rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
     int safeSourceMode = ofClamp(config.sourceMode,
                                  chordSequenceOutputConfig::Chord,
@@ -4429,12 +5011,27 @@ void chordSequence::drawOutputEditor(int index, float width) {
     drawNodePublishContextMenu(publishPrefix + "source", "Source", controlWidth);
     drawRowLabel(rowStartX, "Source");
 
-    drawSingleToggleRow("##Fold12", config.fold12, "Fold12", publishPrefix + "fold12");
-    drawSingleToggleRow("##RootLess", config.rootLess, "rootLess", publishPrefix + "rootLess");
+    drawPairedControlRow(
+        "Oct",
+        [&](float w) {
+            ImGui::SetNextItemWidth(w);
+            if(ImGui::InputInt("##Octave", &config.octave)) {
+                refreshAllOutputs(true);
+            }
+            drawNodePublishContextMenu(publishPrefix + "octave", "Octave", w);
+        },
+        "Trans",
+        [&](float w) {
+            ImGui::SetNextItemWidth(w);
+            if(ImGui::InputInt("##Transpose", &config.transpose)) {
+                refreshAllOutputs(true);
+            }
+            drawNodePublishContextMenu(publishPrefix + "transpose", "Transpose", w);
+        });
 
-    if(!outputSourceUsesScaleLikeMaterial(config.sourceMode)) {
-        drawSingleToggleRow("##AddBass", config.addBass, "AddBass", publishPrefix + "addBass");
+    bool scaleLikeSource = outputSourceUsesScaleLikeMaterial(config.sourceMode);
 
+    if(!scaleLikeSource) {
         rowStartX = ImGui::GetCursorPosX();
         ImGui::SetNextItemWidth(controlWidth);
         if(ImGui::InputInt("##Inversion", &config.inversion)) {
@@ -4442,7 +5039,85 @@ void chordSequence::drawOutputEditor(int index, float width) {
         }
         drawNodePublishContextMenu(publishPrefix + "inversion", "Inversion", controlWidth);
         drawRowLabel(rowStartX, "Inversion");
+    }
 
+    drawPairedControlRow(
+        "Bend",
+        [&](float w) {
+            ImGui::SetNextItemWidth(w);
+            if(drawDraggableFloatWithPopup("##PitchBend", config.pitchBend, 0.05f, -24.0f, 24.0f, "%.3f",
+                                           [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "pitchBend"); })) {
+                refreshAllOutputs(true);
+            }
+            drawPublishedLabelUnderline(publishPrefix + "pitchBend", "Pitch Bend", w);
+        },
+        "Detune",
+        [&](float w) {
+            ImGui::SetNextItemWidth(w);
+            if(drawDraggableFloatWithPopup("##Detune", config.perNoteDetune, 0.01f, 0.0f, 2.0f, "%.3f",
+                                           [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "detune"); })) {
+                refreshAllOutputs(true);
+            }
+            drawPublishedLabelUnderline(publishPrefix + "detune", "Detune", w);
+        });
+
+    drawPairedControlRow(
+        "Oct Rand %",
+        [&](float w) {
+            ImGui::SetNextItemWidth(w);
+            if(drawDraggableFloatWithPopup("##OctRandProbability", config.octaveRandomProbability, 0.5f, 0.0f, 100.0f, "%.1f",
+                                           [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "octRandProbability"); })) {
+                refreshAllOutputs(true);
+            }
+            drawPublishedLabelUnderline(publishPrefix + "octRandProbability", "Oct Rand %", w);
+        },
+        "Range",
+        [&](float w) {
+            ImGui::SetNextItemWidth(w);
+            if(ImGui::InputInt("##OctRandRange", &config.octaveRandomRange, 0, 0)) {
+                config.octaveRandomRange = std::max(0, config.octaveRandomRange);
+                refreshAllOutputs(true);
+            }
+            drawNodePublishContextMenu(publishPrefix + "octRandRange", "Oct Rand Range", w);
+        });
+
+    drawPairedControlRow(
+        "Chrom Dev %",
+        [&](float w) {
+            ImGui::SetNextItemWidth(w);
+            if(drawDraggableFloatWithPopup("##ChromaticDeviationProbability",
+                                           config.chromaticDeviationProbability,
+                                           0.5f,
+                                           0.0f,
+                                           100.0f,
+                                           "%.1f",
+                                           [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "chromDevProbability"); })) {
+                refreshAllOutputs(true);
+            }
+            drawPublishedLabelUnderline(publishPrefix + "chromDevProbability", "Chrom Dev %", w);
+        },
+        "Range",
+        [&](float w) {
+            ImGui::SetNextItemWidth(w);
+            if(ImGui::InputInt("##ChromaticDeviationRange", &config.chromaticDeviationRange, 0, 0)) {
+                config.chromaticDeviationRange = std::max(0, config.chromaticDeviationRange);
+                refreshAllOutputs(true);
+            }
+            drawNodePublishContextMenu(publishPrefix + "chromDevRange", "Chrom Dev Range", w);
+        });
+
+    {
+        std::vector<std::tuple<const char *, bool *, const char *, std::string>> toggleItems = {
+            { "##Fold12", &config.fold12, "Fold12", publishPrefix + "fold12" },
+            { "##RootLess", &config.rootLess, "rootLess", publishPrefix + "rootLess" }
+        };
+        if(!scaleLikeSource) {
+            toggleItems.push_back({ "##AddBass", &config.addBass, "AddBass", publishPrefix + "addBass" });
+        }
+        drawToggleGroupRow(toggleItems);
+    }
+
+    if(!scaleLikeSource) {
         rowStartX = ImGui::GetCursorPosX();
         ImGui::SetNextItemWidth(controlWidth);
         int safeVoicingMode = ofClamp(config.voicingMode,
@@ -4462,14 +5137,23 @@ void chordSequence::drawOutputEditor(int index, float width) {
         drawNodePublishContextMenu(publishPrefix + "voicing", "Voicing", controlWidth);
         drawRowLabel(rowStartX, "Voicing");
 
-        rowStartX = ImGui::GetCursorPosX();
-        ImGui::SetNextItemWidth(controlWidth);
-        if(drawDraggableFloatWithPopup("##Spread", config.voicingSpread, 0.1f, 0.0f, 24.0f, "%.2f",
-                                       [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "spread"); })) {
-            refreshAllOutputs(true);
-        }
-        drawPublishedLabelUnderline(publishPrefix + "spread", "Spread", controlWidth);
-        drawRowLabel(rowStartX, "Spread");
+        drawPairedControlRow(
+            "Spread",
+            [&](float w) {
+                ImGui::SetNextItemWidth(w);
+                if(drawDraggableFloatWithPopup("##Spread", config.voicingSpread, 0.1f, 0.0f, 24.0f, "%.2f",
+                                               [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "spread"); })) {
+                    refreshAllOutputs(true);
+                }
+                drawPublishedLabelUnderline(publishPrefix + "spread", "Spread", w);
+            },
+            "Glide",
+            [&](float w) {
+                ImGui::SetNextItemWidth(w);
+                drawDraggableFloatWithPopup("##Glide", config.glideMs, 2.0f, 0.0f, 10000.0f, "%.1f",
+                                            [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "glide"); });
+                drawPublishedLabelUnderline(publishPrefix + "glide", "Glide", w);
+            });
 
         if(config.addBass) {
             rowStartX = ImGui::GetCursorPosX();
@@ -4480,14 +5164,14 @@ void chordSequence::drawOutputEditor(int index, float width) {
             drawNodePublishContextMenu(publishPrefix + "bassOct", "BassOct", controlWidth);
             drawRowLabel(rowStartX, "BassOct");
         }
+    } else {
+        rowStartX = ImGui::GetCursorPosX();
+        ImGui::SetNextItemWidth(controlWidth);
+        drawDraggableFloatWithPopup("##Glide", config.glideMs, 2.0f, 0.0f, 10000.0f, "%.1f",
+                                    [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "glide"); });
+        drawPublishedLabelUnderline(publishPrefix + "glide", "Glide", controlWidth);
+        drawRowLabel(rowStartX, "Glide");
     }
-
-    rowStartX = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(controlWidth);
-    drawDraggableFloatWithPopup("##Glide", config.glideMs, 2.0f, 0.0f, 10000.0f, "%.1f",
-                                [this, publishPrefix]() { drawNodePublishMenuItems(publishPrefix + "glide"); });
-    drawPublishedLabelUnderline(publishPrefix + "glide", "Glide", controlWidth);
-    drawRowLabel(rowStartX, "Glide");
 
     rowStartX = ImGui::GetCursorPosX();
     ImGui::SetNextItemWidth(controlWidth);
@@ -4505,9 +5189,9 @@ void chordSequence::drawOutputEditor(int index, float width) {
     ImGui::SetNextItemWidth(controlWidth);
     int safeVoiceLeadingMode = ofClamp(config.voiceLeadingMode,
                                        chordSequenceOutputConfig::VOICE_LEADING_OFF,
-                                       chordSequenceOutputConfig::SMOOTH_GRAVITY_0);
+                                       chordSequenceOutputConfig::SMOOTH_GRAVITY_FREE);
     if(ImGui::BeginCombo("##VoiceLeading", voiceLeadingLabels[safeVoiceLeadingMode])) {
-        for(int i = chordSequenceOutputConfig::VOICE_LEADING_OFF; i <= chordSequenceOutputConfig::SMOOTH_GRAVITY_0; i++) {
+        for(int i = chordSequenceOutputConfig::VOICE_LEADING_OFF; i <= chordSequenceOutputConfig::SMOOTH_GRAVITY_FREE; i++) {
             bool selected = safeVoiceLeadingMode == i;
             if(ImGui::Selectable(voiceLeadingLabels[i], selected)) {
                 config.voiceLeadingMode = i;
@@ -4531,29 +5215,68 @@ void chordSequence::drawOutputEditor(int index, float width) {
         drawRowLabel(rowStartX, "Gravity Wt");
     }
 
-    rowStartX = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(controlWidth);
-    if(ImGui::InputInt("##MinNote", &config.minNote)) {
-        config.minNote = ofClamp(config.minNote, -12, 128);
-        if(config.minNote > config.maxNote) config.maxNote = config.minNote;
-        refreshAllOutputs(true);
-    }
-    drawNodePublishContextMenu(publishPrefix + "minNote", "Min Note", controlWidth);
-    drawRowLabel(rowStartX, "Min Note");
-
-    rowStartX = ImGui::GetCursorPosX();
-    ImGui::SetNextItemWidth(controlWidth);
-    if(ImGui::InputInt("##MaxNote", &config.maxNote)) {
-        config.maxNote = ofClamp(config.maxNote, -12, 128);
-        if(config.maxNote < config.minNote) config.minNote = config.maxNote;
-        refreshAllOutputs(true);
-    }
-    drawNodePublishContextMenu(publishPrefix + "maxNote", "Max Note", controlWidth);
-    drawRowLabel(rowStartX, "Max Note");
+    drawPairedControlRow(
+        "Min",
+        [&](float w) {
+            ImGui::SetNextItemWidth(w);
+            if(ImGui::InputInt("##MinNote", &config.minNote, 0, 0)) {
+                config.minNote = ofClamp(config.minNote, -12, 128);
+                if(config.minNote > config.maxNote) config.maxNote = config.minNote;
+                refreshAllOutputs(true);
+            }
+            drawNodePublishContextMenu(publishPrefix + "minNote", "Min Note", w);
+        },
+        "Max",
+        [&](float w) {
+            ImGui::SetNextItemWidth(w);
+            if(ImGui::InputInt("##MaxNote", &config.maxNote, 0, 0)) {
+                config.maxNote = ofClamp(config.maxNote, -12, 128);
+                if(config.maxNote < config.minNote) config.minNote = config.maxNote;
+                refreshAllOutputs(true);
+            }
+            drawNodePublishContextMenu(publishPrefix + "maxNote", "Max Note", w);
+        });
 
     drawBoolPairRow("##Expand", config.expandOutput, "Expand",
                     "##Sort", config.sortOutput, "Sort",
                     publishPrefix + "expand", publishPrefix + "sort");
+
+    // Root-note readout for this specific output: numeric pitch class (0-11)
+    // plus its note name, read-only, so it's easy to see at a glance what
+    // root this output is actually centered on right now -- especially
+    // useful once the Transpose Sequencer or Randomation start shifting it.
+    {
+        rowStartX = ImGui::GetCursorPosX();
+        float rootFieldWidth = std::max(scaledUi(44.0f), pairWidth - ImGui::CalcTextSize("Root #").x - labelGap);
+        int rootPitchClass = ofClamp(static_cast<int>(std::round(getOutputDisplayRootPitchClass(index))), 0, 11);
+        std::string rootLabelStr = getOutputDisplayRootLabel(index);
+
+        char rootNumBuf[8];
+        std::snprintf(rootNumBuf, sizeof(rootNumBuf), "%d", rootPitchClass);
+        char rootNameBuf[8];
+        std::snprintf(rootNameBuf, sizeof(rootNameBuf), "%s", rootLabelStr.c_str());
+
+        ImGui::SetCursorPosX(rowStartX);
+        ImGui::SetNextItemWidth(rootFieldWidth);
+        ImGui::BeginDisabled();
+        ImGui::InputText("##RootPitchClass", rootNumBuf, sizeof(rootNumBuf), ImGuiInputTextFlags_ReadOnly);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(rowStartX + rootFieldWidth + labelGap);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Root #");
+
+        float rightStartX = rowStartX + pairWidth + pairGap;
+        ImGui::SameLine(rightStartX);
+        ImGui::SetNextItemWidth(rootFieldWidth);
+        ImGui::BeginDisabled();
+        ImGui::InputText("##RootLabel", rootNameBuf, sizeof(rootNameBuf), ImGuiInputTextFlags_ReadOnly);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(rightStartX + rootFieldWidth + labelGap);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Name");
+    }
 
     drawKeyboardDisplay("OutputKeyboard", displayedOutput, rowWidth, scaledUi(64.0f), true, false);
 
@@ -4568,6 +5291,7 @@ void chordSequence::drawOutputEditor(int index, float width) {
 
     ImGui::EndChild();
     ImGui::PopID();
+    return removeRequested;
 }
 
 void chordSequence::drawSnapshotManager() {
@@ -4586,7 +5310,8 @@ void chordSequence::drawSnapshotManager() {
 
     float slotSize = 22.0f;
     float slotGap = 4.0f;
-    int columns = std::max(1, static_cast<int>((ImGui::GetContentRegionAvail().x + slotGap) / (slotSize + slotGap)));
+    // Fixed at 8 per row -- see getSnapshotsSectionHeight() for why.
+    int columns = 8;
     for(int i = 0; i < SnapshotSlots; i++) {
         if(i > 0 && (i % columns) != 0) ImGui::SameLine(0.0f, slotGap);
 
@@ -4637,7 +5362,10 @@ void chordSequence::drawSnapshotManager() {
     }
 
     std::string dropdownPreview = dropdownSlot >= 0 ? getSnapshotDropdownLabel(dropdownSlot) : std::string("Select snapshot");
-    ImGui::SetNextItemWidth(std::min(scaledUi(260.0f), ImGui::GetContentRegionAvail().x));
+    // Leave room for the trailing "Recall" label instead of letting the
+    // combo claim the whole card width (which pushed the label outside the
+    // card's bounds).
+    ImGui::SetNextItemWidth(std::max(scaledUi(70.0f), ImGui::GetContentRegionAvail().x * 0.55f));
     if(ImGui::BeginCombo("Recall", dropdownPreview.c_str())) {
         for(int i = 0; i < SnapshotSlots; i++) {
             if(!snapshotSlots[i].hasData) continue;
@@ -4654,7 +5382,9 @@ void chordSequence::drawSnapshotManager() {
     if(activeSnapshotSlot >= 0 && activeSnapshotSlot < SnapshotSlots && snapshotSlots[activeSnapshotSlot].hasData) {
         char nameBuf[128];
         std::snprintf(nameBuf, sizeof(nameBuf), "%s", snapshotSlots[activeSnapshotSlot].name.c_str());
-        ImGui::SetNextItemWidth(std::min(scaledUi(260.0f), ImGui::GetContentRegionAvail().x));
+        // Same reasoning as the Recall combo above: leave room for the
+        // trailing "Name" label.
+        ImGui::SetNextItemWidth(std::max(scaledUi(70.0f), ImGui::GetContentRegionAvail().x * 0.55f));
         if(ImGui::InputText("Name", nameBuf, sizeof(nameBuf))) {
             snapshotSlots[activeSnapshotSlot].name = nameBuf;
             saveSnapshotToDisk(activeSnapshotSlot);
@@ -4674,9 +5404,15 @@ ofJson chordSequence::serializeCurrentState() const {
     json["transposeRandomRange"] = transposeRandomRange;
     json["transposeRandomQuantization"] = transposeRandomQuantization;
     json["transposeRandomStep"] = transposeRandomStep;
+    json["transposeRandomCycles"] = transposeRandomCycles;
     json["inversionRandomRange"] = inversionRandomRange;
     json["inversionRandomQuantization"] = inversionRandomQuantization;
     json["inversionRandomStep"] = inversionRandomStep;
+    json["inversionRandomCycles"] = inversionRandomCycles;
+    json["transposeSequencerCycles"] = transposeSequencerCycles;
+    json["transposeSequencerSteps"] = transposeSequencerSteps;
+    json["transposeSequencerMod"] = transposeSequencerMod;
+    json["transposeSequencerStepMode"] = transposeSequencerStepMode;
     json["globalPitchBend"] = globalPitchBend;
     json["progressionOrder"] = progressionOrder;
     json["internalTimingEnabled"] = internalTimingEnabled;
@@ -4705,9 +5441,34 @@ void chordSequence::deserializeState(const ofJson &json, bool forceInstant) {
     transposeRandomRange = std::max(0, json.value("transposeRandomRange", 0));
     transposeRandomQuantization = std::max(1, json.value("transposeRandomQuantization", 1));
     transposeRandomStep = json.value("transposeRandomStep", false);
+    transposeRandomCycles = std::max(1, json.value("transposeRandomCycles", 1));
+    transposeRandomCycleCounter = 0;
     inversionRandomRange = std::max(0, json.value("inversionRandomRange", 0));
     inversionRandomQuantization = std::max(1, json.value("inversionRandomQuantization", 1));
     inversionRandomStep = json.value("inversionRandomStep", false);
+    inversionRandomCycles = std::max(1, json.value("inversionRandomCycles", 1));
+    inversionRandomCycleCounter = 0;
+    transposeSequencerCycles = std::max(1, json.value("transposeSequencerCycles", 4));
+    if(json.contains("transposeSequencerSteps") && json["transposeSequencerSteps"].is_array()) {
+        transposeSequencerSteps.clear();
+        for(const auto &step : json["transposeSequencerSteps"]) {
+            transposeSequencerSteps.push_back(step.get<int>());
+        }
+        if(transposeSequencerSteps.empty()) transposeSequencerSteps = {0};
+    } else {
+        // Legacy single-value field -- migrate to a one-element list so
+        // presets/snapshots saved before the step list existed keep
+        // behaving exactly as before.
+        transposeSequencerSteps = { json.value("transposeSequencerStep", 0) };
+    }
+    transposeSequencerStepListIndex = 0;
+    syncTransposeSequencerStepListBuffer();
+    transposeSequencerMod = std::max(0, json.value("transposeSequencerMod", 12));
+    transposeSequencerStepMode = json.value("transposeSequencerStepMode", false);
+    transposeSequencerOffset = 0;
+    transposeSequencerCycleCounter = 0;
+    transposeSequencerLastSeenIndex = -1;
+    pendingTransposeSequencerCycleComplete = false;
     currentTransposeRandomOffset = 0;
     currentInversionRandomOffset = 0;
     effectiveGlobalTranspose = globalTranspose;
@@ -4786,9 +5547,15 @@ void chordSequence::storeToSlot(int slot) {
     snapshot.transposeRandomRange = transposeRandomRange;
     snapshot.transposeRandomQuantization = transposeRandomQuantization;
     snapshot.transposeRandomStep = transposeRandomStep;
+    snapshot.transposeRandomCycles = transposeRandomCycles;
     snapshot.inversionRandomRange = inversionRandomRange;
     snapshot.inversionRandomQuantization = inversionRandomQuantization;
     snapshot.inversionRandomStep = inversionRandomStep;
+    snapshot.inversionRandomCycles = inversionRandomCycles;
+    snapshot.transposeSequencerCycles = transposeSequencerCycles;
+    snapshot.transposeSequencerSteps = transposeSequencerSteps;
+    snapshot.transposeSequencerMod = transposeSequencerMod;
+    snapshot.transposeSequencerStepMode = transposeSequencerStepMode;
     snapshot.globalPitchBend = globalPitchBend;
     snapshot.progressionOrder = progressionOrder;
     snapshot.internalTimingEnabled = internalTimingEnabled;
