@@ -16,6 +16,8 @@
 struct polyphonicArpeggiatorGUISnapshot {
     int sourceMode = 0;
     bool internalClockMode = false;
+    bool freeRunClock = false;
+    float internalClockBpm = 120.0f;
     bool oneShotMode = false;
     float beatDiv = 1.0f;
     int pulseMode = 0;
@@ -265,6 +267,8 @@ private:
     ofParameter<std::vector<int>> idxPattern;
     ofParameter<int> modulo;
     ofParameter<bool> internalClockMode;
+    ofParameter<bool> freeRunClock;
+    ofParameter<float> internalClockBpm;
     ofParameter<bool> oneShotMode;
     ofParameter<float> beatDiv;
     ofParameter<int> pulseMode;
@@ -414,6 +418,12 @@ private:
     float currentBpm = 120.0f;
     double currentTransportBeatPosition = 0.0;
     bool internalClockNeedsSync = true;
+    // Free-running internal clock state (used only when freeRunClock is enabled) --
+    // lets the arpeggiator keep stepping off its own BPM instead of the shared
+    // global transport, e.g. when that transport is stopped.
+    double freeRunClockBeatPosition = 0.0;
+    uint64_t freeRunClockLastUpdateMs = 0;
+    bool freeRunClockInitialized = false;
     bool oneShotCycleActive = false;
     bool sourceChangePending = false;
     bool currentSequenceCycleShouldPlay = true;
@@ -543,6 +553,7 @@ private:
     void randomizePatternSeedsForNewCycle();
     void randomizeCycleStepShift();
     double getRunGateBeatPosition() const;
+    ofxOceanodeFrameTransportState advanceFreeRunClock(uint64_t nowMs);
     float getRunGatePhaseNormalized() const;
     void updateRunGateWindowState();
     void recordOutputHistoryEvent(float pitch, float velocity, int durationMs, uint64_t startTimeMs);

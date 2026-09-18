@@ -381,6 +381,8 @@ void polyphonicArpeggiatorGUI::setup() {
     addParameter(reset.set("Reset"));
     addParameter(resetNext.set("ResetNext"));
     addParameter(internalClockMode.set("Transport Clock", false));
+    addParameter(freeRunClock.set("Internal Clock", false));
+    addParameter(internalClockBpm.set("Clock BPM", 120.0f, 20.0f, 300.0f));
     addParameter(oneShotMode.set("One Shot", false));
     addParameter(beatDiv.set("BeatDiv", 1.0f, 0.125f, 32.0f));
     pulseMode.set("PulseMode", PeriodicPulse, PeriodicPulse, BouncingBallPulse);
@@ -585,6 +587,8 @@ void polyphonicArpeggiatorGUI::initializePublishableEditorParameters() {
     registerParam("snapshotRecall", snapshotRecall);
     registerParam("modulo", modulo);
     registerParam("internalClockMode", internalClockMode);
+    registerParam("freeRunClock", freeRunClock);
+    registerParam("internalClockBpm", internalClockBpm);
     registerParam("oneShotMode", oneShotMode);
     registerParam("trigger", trigger);
     registerParam("reset", reset);
@@ -847,6 +851,10 @@ void polyphonicArpeggiatorGUI::setupListeners() {
     listeners.push(resetNext.newListener([this](void){ onResetNext(); }));
     listeners.push(internalClockMode.newListener([this](bool &){
         internalClockNeedsSync = true;
+    }));
+    listeners.push(freeRunClock.newListener([this](bool &){
+        internalClockNeedsSync = true;
+        freeRunClockInitialized = false;
     }));
     listeners.push(oneShotMode.newListener([this](bool &enabled) {
         oneShotCycleActive = false;
@@ -1441,17 +1449,59 @@ void polyphonicArpeggiatorGUI::setBpm(float bpm) {
     currentBpm = std::max(1.0f, bpm);
 }
 
+ofxOceanodeFrameTransportState polyphonicArpeggiatorGUI::advanceFreeRunClock(uint64_t nowMs) {
+    // Synthesizes a transport-shaped previous/current pair (matching
+    // ofxOceanodeFrameTransportState) so all of the existing beat-boundary /
+    // step-crossing logic below can consume it exactly like the real shared
+    // transport, without knowing the difference. isPlaying is always true here --
+    // the whole point is to keep running while the real transport is stopped.
+    const float bpm = std::max(1.0f, internalClockBpm.get());
+
+    if(!freeRunClockInitialized) {
+        freeRunClockInitialized = true;
+        freeRunClockLastUpdateMs = nowMs;
+        freeRunClockBeatPosition = 0.0;
+    }
+
+    ofxOceanodeTransportState previousState;
+    previousState.isPlaying = true;
+    previousState.bpm = bpm;
+    previousState.beatPosition = freeRunClockBeatPosition;
+    previousState.generation = 0;
+    previousState.driverMode = TransportDriverMode::RealTime;
+
+    // Clamp the elapsed time so a long stall (app backgrounded, breakpoint, etc.)
+    // can't be misread as a huge beat jump/discontinuity on the next update.
+    double elapsedMs = static_cast<double>(nowMs - freeRunClockLastUpdateMs);
+    elapsedMs = ofClamp(elapsedMs, 0.0, 250.0);
+    freeRunClockLastUpdateMs = nowMs;
+    freeRunClockBeatPosition += (elapsedMs / 60000.0) * static_cast<double>(bpm);
+
+    ofxOceanodeTransportState currentState = previousState;
+    currentState.beatPosition = freeRunClockBeatPosition;
+
+    ofxOceanodeFrameTransportState result;
+    result.previous = previousState;
+    result.current = currentState;
+    return result;
+}
+
 void polyphonicArpeggiatorGUI::update(ofEventArgs &) {
     refreshSnapshotsFromSharedStorage();
 
-    const auto frameState = getFrameTransportState();
+    uint64_t now = ofGetElapsedTimeMillis();
+    // "Internal Clock" lets this node keep stepping off its own free-running BPM
+    // instead of the shared global transport -- useful when that transport is
+    // stopped but the arp should still play. It only applies while in clocked
+    // ("Transport") mode; external-trigger mode is unaffected.
+    const bool useFreeRunClock = internalClockMode.get() && freeRunClock.get();
+    const auto frameState = useFreeRunClock ? advanceFreeRunClock(now) : getFrameTransportState();
     const auto &previousTransport = frameState.previous;
     const auto &currentTransport = frameState.current;
     currentBpm = std::max(1.0f, currentTransport.bpm);
     currentTransportBeatPosition = currentTransport.beatPosition;
     updateRunGateWindowState();
 
-    uint64_t now = ofGetElapsedTimeMillis();
     bool needsUpdate = false;
     pruneOutputHistory(now);
 
@@ -1710,6 +1760,27 @@ void polyphonicArpeggiatorGUI::drawTopBarSection() {
     drawNodePublishContextMenu("internalClockMode", "Transport", 0.0f, true);
     ImGui::SameLine();
 
+    // Only meaningful while in Transport (clocked) mode -- lets the arp free-run on
+    // its own BPM instead of the shared global transport, e.g. when that transport
+    // is stopped.
+    bool disableFreeRunClock = !internalClockMode.get();
+    if(disableFreeRunClock) ImGui::BeginDisabled();
+    bool freeRun = freeRunClock.get();
+    if(ImGui::Checkbox("Internal Clock", &freeRun)) freeRunClock = freeRun;
+    drawNodePublishContextMenu("freeRunClock", "Internal Clock", 0.0f, true);
+    if(internalClockMode.get() && freeRunClock.get()) {
+        ImGui::SameLine();
+        float clockBpmValue = internalClockBpm.get();
+        ImGui::SetNextItemWidth(compactWidth);
+        if(drawDraggableFloatWithPopup("Clock BPM", clockBpmValue, 0.5f, internalClockBpm.getMin(), internalClockBpm.getMax(), "%.1f",
+                                       [this]() { drawNodePublishMenuItems("internalClockBpm"); })) {
+            internalClockBpm = clockBpmValue;
+        }
+        drawPublishedLabelUnderline("internalClockBpm", "Clock BPM", compactWidth);
+    }
+    if(disableFreeRunClock) ImGui::EndDisabled();
+    ImGui::SameLine();
+
     bool oneShot = oneShotMode.get();
     if(ImGui::Checkbox("One Shot", &oneShot)) oneShotMode = oneShot;
     drawNodePublishContextMenu("oneShotMode", "One Shot", 0.0f, true);
@@ -1749,9 +1820,11 @@ void polyphonicArpeggiatorGUI::drawTopBarSection() {
     if(ImGui::Button("Reset N")) onResetNext();
     drawNodePublishContextMenu("resetNext", "Reset N");
 
-    std::string clockLabel = internalClockMode.get()
-        ? "Transport " + describeBeatDiv(beatDiv.get())
-        : "External trig";
+    std::string clockLabel = !internalClockMode.get()
+        ? "External trig"
+        : (freeRunClock.get()
+               ? "Internal Clock " + describeBeatDiv(beatDiv.get())
+               : "Transport " + describeBeatDiv(beatDiv.get()));
     ImGui::TextDisabled("%s | BPM %.2f | Pulse %s", clockLabel.c_str(), currentBpm, getPulseModeLabel());
     if(oneShotMode.get()) {
         ImGui::TextDisabled("%s %d", oneShotCycleActive ? "One shot running:" : "One shot idle:", std::max(0, oneShotStepsRemaining));
@@ -3486,6 +3559,10 @@ void polyphonicArpeggiatorGUI::onTrigger() {
 }
 
 void polyphonicArpeggiatorGUI::onReset() {
+    if(freeRunClock.get()) {
+        freeRunClockInitialized = false;
+        internalClockNeedsSync = true;
+    }
     clearActiveVoices(true);
     sequenceCycleDecisionPending = true;
     mutedSequenceStepsRemaining = 0;
@@ -4815,6 +4892,8 @@ void polyphonicArpeggiatorGUI::saveSnapshotToDisk(int slot) const {
     json["name"] = snap.name;
     json["sourceMode"] = snap.sourceMode;
     json["internalClockMode"] = snap.internalClockMode;
+    json["freeRunClock"] = snap.freeRunClock;
+    json["internalClockBpm"] = snap.internalClockBpm;
     json["oneShotMode"] = snap.oneShotMode;
     json["beatDiv"] = snap.beatDiv;
     json["pulseMode"] = snap.pulseMode;
@@ -4960,6 +5039,8 @@ void polyphonicArpeggiatorGUI::loadSnapshotFromDisk(int slot) {
     snap.name = json.value("name", "Snapshot " + ofToString(slot + 1));
     snap.sourceMode = json.value("sourceMode", Scale);
     snap.internalClockMode = json.value("internalClockMode", false);
+    snap.freeRunClock = json.value("freeRunClock", false);
+    snap.internalClockBpm = json.value("internalClockBpm", 120.0f);
     snap.oneShotMode = json.value("oneShotMode", false);
     snap.beatDiv = json.value("beatDiv", 1.0f);
     snap.pulseMode = json.contains("pulseMode") ? json.value("pulseMode", PeriodicPulse) : EuclideanPulse;
@@ -5181,6 +5262,8 @@ void polyphonicArpeggiatorGUI::storeToSlot(int slot) {
     snap.name = existingName.empty() ? "Snapshot " + ofToString(slot + 1) : existingName;
     snap.sourceMode = sourceMode.get();
     snap.internalClockMode = internalClockMode.get();
+    snap.freeRunClock = freeRunClock.get();
+    snap.internalClockBpm = internalClockBpm.get();
     snap.oneShotMode = oneShotMode.get();
     snap.beatDiv = beatDiv.get();
     snap.pulseMode = pulseMode.get();
@@ -5325,6 +5408,8 @@ void polyphonicArpeggiatorGUI::recallSlot(int slot) {
     const auto &snap = it->second;
     sourceMode = snap.sourceMode;
     internalClockMode = snap.internalClockMode;
+    freeRunClock = snap.freeRunClock;
+    internalClockBpm = snap.internalClockBpm;
     oneShotMode = snap.oneShotMode;
     beatDiv = snap.beatDiv;
     pulseMode = snap.pulseMode;
@@ -5558,6 +5643,8 @@ void polyphonicArpeggiatorGUI::updateMorph() {
     if(progress >= 1.0f) {
         sourceMode = targetSnapshot.sourceMode;
         internalClockMode = targetSnapshot.internalClockMode;
+        freeRunClock = targetSnapshot.freeRunClock;
+        internalClockBpm = targetSnapshot.internalClockBpm;
         oneShotMode = targetSnapshot.oneShotMode;
         pulseMode = targetSnapshot.pulseMode;
         pulseStepPattern = targetSnapshot.pulseStepPattern;
