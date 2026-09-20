@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <utility>
 #include <numeric>
+#include <fstream>
 
 class formula : public ofxOceanodeNodeModel {
 public:
@@ -25,6 +26,7 @@ public:
 	void setup() override {
 		description =
 			"Math formula evaluator with vector support. Edit the formula on the node. "
+			"Formula files can be loaded from or saved to the data/formulas library. "
 			"Use $1, $2, $3... for inputs. Supports +,-,*,/,%,^,( ), sin/cos/tan, atan2, "
 			"sqrt, abs, pow, exp, log, min/max, clamp, step, smoothstep, floor/ceil/round. "
 			"Vector functions: len(v), indices(v), at(v,i), sum(v), mean(v), min(v), max(v), "
@@ -47,6 +49,17 @@ public:
 
 		// Formula (moved to inspector only)
 		addInspectorParameter(formulaString.set("Formula", "($1 + $2) / 2"));
+
+		// Formula library controls
+		addInspectorParameter(formulaName.set("Formula Name", "formula"));
+		addInspectorParameter(loadFormulaButton.set("Load Formula"));
+		addInspectorParameter(saveFormulaButton.set("Save Formula"));
+		loadFormulaListener = loadFormulaButton.newListener([this]() {
+			loadFormulaFile();
+		});
+		saveFormulaListener = saveFormulaButton.newListener([this]() {
+			saveFormulaFile();
+		});
 
 		// Output
 		addOutputParameter(output.set("Output", {0}, {-FLT_MAX}, {FLT_MAX}));
@@ -150,6 +163,9 @@ private:
 	// ===== Parameters & UI =====
 	ofParameter<int> numInputs;
 	ofParameter<std::string> formulaString;
+	ofParameter<std::string> formulaName;
+	ofParameter<void> loadFormulaButton;
+	ofParameter<void> saveFormulaButton;
 	ofParameter<std::vector<float>> output;
 
 	customGuiRegion formulaEditorRegion;
@@ -158,6 +174,8 @@ private:
 	ofParameter<int>   editorLines;
 	ofParameter<float> editorFontSize;
 	ofEventListener    numInputsListener;
+	ofEventListener    loadFormulaListener;
+	ofEventListener    saveFormulaListener;
 
 	// Change tracking
 	int    previousNumInputs = -1;
@@ -167,6 +185,107 @@ private:
 	std::map<int, std::shared_ptr<ofxOceanodeParameter<std::vector<float>>>> inputParameters;
 	std::map<int, std::shared_ptr<ofParameter<std::vector<float>>>>          inputParamRefs;
 	std::map<int, ofEventListener>                                           inputListeners;
+
+	// ===== Formula library =====
+	static std::string sanitizeFormulaName(const std::string& value) {
+		std::string name = trimStr(value);
+		if(ofToLower(ofFilePath::getFileExt(name)) == "json") {
+			name = ofFilePath::getBaseName(name);
+		}
+
+		std::string sanitized;
+		sanitized.reserve(name.size());
+		for(char c : name) {
+			if(std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_') {
+				sanitized.push_back(c);
+			} else if(std::isspace(static_cast<unsigned char>(c))) {
+				sanitized.push_back('_');
+			}
+		}
+		return sanitized.empty() ? "formula" : sanitized;
+	}
+
+	static std::string getFormulaDirectory() {
+		return ofToDataPath("formulas", true);
+	}
+
+	static void ensureFormulaDirectoryExists() {
+		const std::string directory = getFormulaDirectory();
+		if(!ofDirectory::doesDirectoryExist(directory, false)) {
+			ofDirectory::createDirectory(directory, false, true);
+		}
+	}
+
+	void saveFormulaFile() {
+		ensureFormulaDirectoryExists();
+
+		const std::string name = sanitizeFormulaName(formulaName.get());
+		const std::string path = ofFilePath::join(getFormulaDirectory(), name + ".json");
+		ofJson json = {
+			{"name", name},
+			{"description", "User formula"},
+			{"numInputs", numInputs.get()},
+			{"formula", formulaString.get()}
+		};
+
+		if(ofSavePrettyJson(path, json)) {
+			formulaName.setWithoutEventNotifications(name);
+			ofLogNotice("Formula") << "Saved formula: " << path;
+		} else {
+			ofLogError("Formula") << "Could not save formula: " << path;
+		}
+	}
+
+	void loadFormulaFile() {
+		ensureFormulaDirectoryExists();
+		ofFileDialogResult result = ofSystemLoadDialog(
+			"Load Formula",
+			false,
+			getFormulaDirectory());
+		if(!result.bSuccess) return;
+
+		const std::string path = result.getPath();
+		if(ofDirectory::doesDirectoryExist(path, false)) {
+			ofLogWarning("Formula") << "Please select a formula file, not a folder";
+			return;
+		}
+
+		try {
+			std::string loadedFormula;
+			int loadedNumInputs = numInputs.get();
+			std::string loadedName = ofFilePath::getBaseName(path);
+
+			if(ofToLower(ofFilePath::getFileExt(path)) == "json") {
+				ofJson json = ofLoadJson(path);
+				if(!json.contains("formula") || !json["formula"].is_string()) {
+					throw std::runtime_error("JSON file has no string 'formula' field");
+				}
+				loadedFormula = json["formula"].get<std::string>();
+				if(json.contains("numInputs") && json["numInputs"].is_number_integer()) {
+					loadedNumInputs = json["numInputs"].get<int>();
+				}
+				if(json.contains("name") && json["name"].is_string()) {
+					loadedName = json["name"].get<std::string>();
+				}
+			} else {
+				ofBuffer buffer = ofBufferFromFile(path);
+				if(buffer.size() == 0) throw std::runtime_error("File is empty or unreadable");
+				loadedFormula = buffer.getText();
+			}
+
+			loadedNumInputs = std::max(1, std::min(16, loadedNumInputs));
+			numInputs.set(loadedNumInputs);
+			formulaName.setWithoutEventNotifications(sanitizeFormulaName(loadedName));
+			formulaString.set(loadedFormula);
+			formulaBuf = loadedFormula;
+			previousFormula = loadedFormula;
+			rebuildEvaluator();
+			calculate();
+			ofLogNotice("Formula") << "Loaded formula: " << path;
+		} catch(const std::exception& e) {
+			ofLogError("Formula") << "Could not load formula '" << path << "': " << e.what();
+		}
+	}
 
 	static inline bool isConstantVector(const std::vector<float>& v, float eps = 1e-6f){
 		if(v.empty()) return true;
