@@ -29,7 +29,9 @@ public:
 			"sqrt, abs, pow, exp, log, min/max, clamp, step, smoothstep, floor/ceil/round. "
 			"Vector functions: len(v), indices(v), at(v,i), sum(v), mean(v), min(v), max(v), "
 			"median(v), rms(v), std(v), var(v), idxmin(v), idxmax(v), vec(...), repeat(x,n), concat(...), sort(v). "
-			"Vector literals: [1,2,3]. Scalars broadcast over vectors. Conditional: if(cond,a,b).";
+			"Vector literals: [1,2,3]. Scalars broadcast over vectors. Conditional: if(cond,a,b). "
+			"Variables: separate statements with ';' and assign with '=', e.g. \"x = $1 + $2; x * 100\". "
+			"The last statement must be a bare expression and is the output.";
 
 		// Inspector-only params
 		addInspectorParameter(numInputs.set("Num Inputs", 2, 1, 16));
@@ -186,7 +188,14 @@ private:
 	};
 	using RPN = std::vector<Token>;
 
-	RPN rpn;
+	// A compiled statement: either an assignment (target non-empty) or, for the
+	// final statement only, a bare expression whose value becomes the output.
+	struct Statement {
+		std::string target;   // empty => output expression
+		RPN code;
+	};
+
+	std::vector<Statement> program;
 	bool formulaValid = false;
 	std::string lastError;
 
@@ -302,7 +311,16 @@ private:
 		env["N"]  = Value::scalar(float(N));    // optional helper
 
 		try{
-			Value res = evalRPN(rpn, env);
+			Value res;
+			bool haveResult = false;
+
+			for(const auto& stmt : program){
+				Value r = evalRPN(stmt.code, env);
+				if(stmt.target.empty()){ res = r; haveResult = true; }
+				else                    { env[stmt.target] = r; }
+			}
+
+			if(!haveResult){ output = {0.0f}; return; }
 
 			if(res.isVec){
 				// Return the vector result as-is (if empty, emit [0])
@@ -323,23 +341,104 @@ private:
 	void rebuildEvaluator() {
 		lastError.clear();
 		formulaValid = false;
-		rpn.clear();
+		program.clear();
 
 		std::string src = formulaString.get();
-		if(src.empty()) {
+		if(trimStr(src).empty()) {
 			lastError = "Empty formula";
 			ofLogError("Formula") << lastError;
 			return;
 		}
 
 		try {
-			auto tokens = tokenize(src);
-			rpn = shuntingYard(tokens);
+			// Split the source into ';'-separated statements. The language has no
+			// string or comment literals, so a plain split is unambiguous.
+			std::vector<std::string> segments;
+			{
+				std::string cur;
+				for(char c : src){
+					if(c == ';'){ segments.push_back(cur); cur.clear(); }
+					else          cur.push_back(c);
+				}
+				segments.push_back(cur);
+			}
+
+			std::vector<Statement> prog;
+			for(const auto& rawSeg : segments){
+				std::string seg = trimStr(rawSeg);
+				if(seg.empty()) continue;   // tolerates a trailing ';' and blank statements
+
+				std::string name, expr;
+				Statement st;
+				if(splitAssignment(seg, name, expr)){
+					if(isFunction(name))
+						throw std::runtime_error("'" + name + "' is a built-in function and cannot be used as a variable");
+					if(isReservedName(name))
+						throw std::runtime_error("'" + name + "' is a reserved name and cannot be used as a variable");
+					if(trimStr(expr).empty())
+						throw std::runtime_error("Assignment to '" + name + "' has no expression");
+					st.target = name;
+					st.code   = shuntingYard(tokenize(expr));
+				}else{
+					st.target.clear();
+					st.code = shuntingYard(tokenize(seg));
+				}
+				prog.push_back(std::move(st));
+			}
+
+			if(prog.empty()) throw std::runtime_error("Empty formula");
+
+			for(size_t k = 0; k + 1 < prog.size(); ++k){
+				if(prog[k].target.empty())
+					throw std::runtime_error("Statement " + ofToString((int)k + 1) +
+											 " has no effect: only the last statement may be a bare expression");
+			}
+			if(!prog.back().target.empty())
+				throw std::runtime_error("Formula must end with an expression, but the last statement assigns to '" +
+										 prog.back().target + "'");
+
+			program = std::move(prog);
 			formulaValid = true;
 		} catch(const std::exception& e) {
 			lastError = e.what();
 			ofLogError("Formula") << "Parse error: " << lastError;
 		}
+	}
+
+	// ===== Statement helpers =====
+	static std::string trimStr(const std::string& s){
+		size_t a = 0, b = s.size();
+		while(a < b && std::isspace((unsigned char)s[a]))   a++;
+		while(b > a && std::isspace((unsigned char)s[b-1])) b--;
+		return s.substr(a, b - a);
+	}
+
+	static bool isReservedName(const std::string& n){
+		static const std::set<std::string> reserved = { "pi", "PI", "e", "E", "N", "__veclit" };
+		return reserved.count(n) > 0;
+	}
+
+	// Recognises "name = expr". Returns false for anything else, including
+	// comparisons such as "a == b", which stay ordinary expressions.
+	static bool splitAssignment(const std::string& seg, std::string& name, std::string& expr){
+		size_t i = 0;
+		while(i < seg.size() && std::isspace((unsigned char)seg[i])) i++;
+		if(i >= seg.size() || !isIdentStart(seg[i])) return false;
+
+		size_t start = i++;
+		while(i < seg.size() && isIdentChar(seg[i])) i++;
+		std::string id = seg.substr(start, i - start);
+
+		size_t j = i;
+		while(j < seg.size() && std::isspace((unsigned char)seg[j])) j++;
+		if(j >= seg.size() || seg[j] != '=')        return false;   // not an assignment
+		if(j + 1 < seg.size() && seg[j + 1] == '=') return false;   // "==" comparison
+
+		if(id[0] == '$') throw std::runtime_error("Cannot assign to input '" + id + "'");
+
+		name = id;
+		expr = seg.substr(j + 1);
+		return true;
 	}
 
 	// ===== Tokenizer =====
