@@ -1,0 +1,6 @@
+{
+  "name": "quantize",
+  "description": "Quantizes $1 to the step size supplied by $2.",
+  "numInputs": 2,
+  "formula": "round($1 / max(abs($2), 0.000001)) * max(abs($2), 0.000001)"
+}

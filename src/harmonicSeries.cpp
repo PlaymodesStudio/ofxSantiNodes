@@ -1,9 +1,10 @@
 #include "harmonicSeries.h"
 #include <algorithm> // For std::sort
+#include <cmath>
 #include <tuple>
 
 void harmonicSeries::setup() {
-    description = "Generates the harmonic series of given pitches. "
+    description = "Generates a selectable range of harmonic or subharmonic series for given pitches. "
                   "Offers different shapes for amplitude distributions across the harmonic series, as well a simulation of LP and HP filtering.";
     
     previousDetuneAmounts.clear();
@@ -11,6 +12,9 @@ void harmonicSeries::setup() {
 
     addParameter(pitch.set("Pitch", {0}, {-FLT_MAX}, {FLT_MAX}));
     addParameter(partialsNum.set("Partials", 1, 1, INT_MAX));
+    addParameter(partialStart.set("Partial Start", 1, 1, INT_MAX));
+    addParameter(partialJump.set("Partial Jump", 1.0f, 0.0f, FLT_MAX));
+    addParameter(subharmonic.set("Subharmonic", false));
     addParameterDropdown(harmonicShape, "Shape", 0, {"None", "Square", "Saw", "Triangle"});
     addParameter(ampIn.set("Amp In", {1}, {0}, {1}));
     addParameter(lpCutoff.set("LP Cut", {1}, {0}, {1}));
@@ -37,6 +41,18 @@ void harmonicSeries::setup() {
 
     listeners.push_back(std::make_unique<ofEventListener>(partialsNum.newListener([this](int& i) {
         calculateDetuneFactors();
+        calculate();
+    })));
+
+    listeners.push_back(std::make_unique<ofEventListener>(partialStart.newListener([this](int& i) {
+        calculate();
+    })));
+
+    listeners.push_back(std::make_unique<ofEventListener>(partialJump.newListener([this](float& value) {
+        calculate();
+    })));
+
+    listeners.push_back(std::make_unique<ofEventListener>(subharmonic.newListener([this](bool& enabled) {
         calculate();
     })));
 
@@ -126,10 +142,16 @@ void harmonicSeries::calculate() {
     vector<float> outPitch;
     vector<float> outAmplitudes;
     int numPartials = partialsNum.get();
+    int firstPartial = partialStart.get();
+    float partialStep = partialJump.get();
+    bool useSubharmonics = subharmonic.get();
     int shapeIndex = harmonicShape.get();
     vector<float> inputAmplitudes = ampIn.get();
     vector<float> detuneAmounts = detuneAmount.get();
     float stretchFactor = harmonicStretch.get();
+    float stretchedStart = (firstPartial == 1)
+                           ? 1.0f
+                           : pow(static_cast<float>(firstPartial), stretchFactor);
 
     for (int idx = 0; idx < pitch.get().size(); idx++) {
         const auto& p = pitch.get()[idx];
@@ -141,10 +163,17 @@ void harmonicSeries::calculate() {
         float oddAmp = oddHarmonicAmp.get();
         float evenAmp = evenHarmonicAmp.get();
 
-        for (int i = 1; i <= numPartials; i++) {
-            float stretchedHarmonic = (i == 1) ? i : pow(i, stretchFactor);
-            float detuneFactor = (i == 1) ? 1.0 : detuneFactors[i - 1];
-            float partialFreq = freq * stretchedHarmonic * detuneFactor;
+        for (int partialOffset = 0; partialOffset < numPartials; partialOffset++) {
+            float partialValue = static_cast<float>(firstPartial) + partialOffset * partialStep;
+            bool isEvenPartial = std::abs(std::fmod(partialValue, 2.0f)) < 0.0001f;
+            float stretchedPartial = (partialValue == 1.0f)
+                                     ? 1.0f
+                                     : pow(partialValue, stretchFactor);
+            float partialRatio = stretchedPartial / stretchedStart;
+            float detuneFactor = (partialOffset == 0) ? 1.0f : detuneFactors[partialOffset];
+            float partialFreq = (useSubharmonics
+                                 ? freq / partialRatio
+                                 : freq * partialRatio) * detuneFactor;
                        
 
             out.push_back(partialFreq);
@@ -154,11 +183,11 @@ void harmonicSeries::calculate() {
             if (shapeIndex == 0) { // None
                 amp = 1.0f;
             } else if (shapeIndex == 1) { // Square
-                amp = (i % 2 == 0) ? 0 : 1.0f / i;
+                amp = isEvenPartial ? 0 : 1.0f / partialValue;
             } else if (shapeIndex == 2) { // Saw
-                amp = 1.0f / i;
+                amp = 1.0f / partialValue;
             } else { // Triangle
-                amp = (i % 2 == 0) ? 0 : 1.0f / (i * i);
+                amp = isEvenPartial ? 0 : 1.0f / (partialValue * partialValue);
             }
 
             // Apply the HP and LP filters
@@ -170,7 +199,7 @@ void harmonicSeries::calculate() {
             }
 
             // Factor in the odd/even amplitude control
-            float currentAmp = (i % 2 == 0) ? evenAmp : oddAmp;
+            float currentAmp = isEvenPartial ? evenAmp : oddAmp;
             outAmplitudes.push_back(amp * currentAmp * inputAmp);
         }
     }
@@ -204,5 +233,3 @@ void harmonicSeries::calculate() {
     sortedPitch = sortedPitches;
     sortedAmp = sortedAmplitudes;
 }
-
-

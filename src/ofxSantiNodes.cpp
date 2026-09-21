@@ -130,6 +130,7 @@
 #include "vectorExtract.h"
 #include "vectorFeedback.h"
 #include "vectorFile.h"
+#include "vectorInsert.h"
 #include "vectorInverter.h"
 #include "vectorMorphology.h"
 #include "vectorMorphologyVV.h"
@@ -472,6 +473,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<vectorExtract>("Santi/Vectors");
     o->registerModel<vectorFeedback>("Santi/Vectors");
     o->registerModel<vectorFile>("Santi/Vectors");
+    o->registerModel<vectorInsert>("Santi/Vectors");
     o->registerModel<vectorInverter>("Santi/Vectors");
     o->registerModel<vectorMorphology>("Santi/Vectors");
     o->registerModel<vectorMorphologyVV>("Santi/Vectors");

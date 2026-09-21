@@ -16,6 +16,9 @@ private:
     ofParameter<vector<float>> pitch;
     ofParameter<vector<float>> ampIn;
     ofParameter<int> partialsNum;
+    ofParameter<int> partialStart;
+    ofParameter<float> partialJump;
+    ofParameter<bool> subharmonic;
     ofParameter<int> harmonicShape;
     ofParameter<vector<float>> output;
     ofParameter<vector<float>> outputPitch;

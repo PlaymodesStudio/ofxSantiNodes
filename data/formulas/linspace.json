@@ -1,0 +1,6 @@
+{
+  "name": "linspace",
+  "description": "Creates $3 evenly spaced values from start $1 to end $2.",
+  "numInputs": 3,
+  "formula": "n = max(floor($3), 1); $1 + indices(repeat(0, n)) * ($2 - $1) / max(n - 1, 1)"
+}

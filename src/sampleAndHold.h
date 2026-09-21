@@ -10,10 +10,15 @@ public:
 	}
 
 	void setup() override {
-		description = "Samples input values when corresponding gate is 1. In non-edge mode, continuously samples while gate is 1. In edge mode, only samples on rising edge (gate transition from 0 to 1).";
+		description = "Samples input values when corresponding gate is 1. In non-edge mode, "
+			"continuously samples while the gate is high. In edge mode, values are sampled on "
+			"the rising edge; Edge High and Edge Low choose which gate transitions send the held "
+			"values through the outputs.";
 
 		addParameter(gatesInput.set("Gates", {0}, {0}, {1}));
 		addParameter(strict.set("Edge", false));
+		addParameter(edgeHigh.set("Edge High", true));
+		addParameter(edgeLow.set("Edge Low", true));
 
 		int n = numValues.get();
 		valuesInputs.resize(n);
@@ -108,18 +113,24 @@ private:
 			size_t outputSize = values.size();
 			auto& held = previousOutputs[vi];
 			if(held.size() != outputSize) held.resize(outputSize, 0.0f);
+			bool shouldSend = !strict;
 
 			for(size_t i = 0; i < outputSize; i++) {
 				size_t gateIndex = std::min(i, gates.size() - 1);
 				int currentGate = gates[gateIndex];
 				int prevGate = (gateIndex < previousGates.size()) ? previousGates[gateIndex] : 0;
 
-				bool shouldSample = strict ? (currentGate == 1 && prevGate == 0)
-				                           : (currentGate == 1);
+				const bool rising = currentGate == 1 && prevGate == 0;
+				const bool falling = currentGate == 0 && prevGate == 1;
+				bool shouldSample = strict ? rising : (currentGate == 1);
 				if(shouldSample) held[i] = values[i];
+
+				if(strict && ((edgeHigh && rising) || (edgeLow && falling))) {
+					shouldSend = true;
+				}
 			}
 
-			outputs[vi] = held;
+			if(shouldSend) outputs[vi] = held;
 		}
 
 		// Output pitch first so downstream MIDI receives it before the gate fires
@@ -132,6 +143,8 @@ private:
 	ofParameter<int> numValues;
 	ofParameter<vector<int>> gatesInput;
 	ofParameter<bool> strict;
+	ofParameter<bool> edgeHigh;
+	ofParameter<bool> edgeLow;
 	ofParameter<vector<int>> gateOutput;
 
 	vector<ofParameter<vector<float>>> valuesInputs;

@@ -1,0 +1,6 @@
+{
+  "name": "concatenate",
+  "description": "Joins two vectors end to end.",
+  "numInputs": 2,
+  "formula": "concat($1, $2)"
+}

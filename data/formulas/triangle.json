@@ -1,0 +1,6 @@
+{
+  "name": "triangle",
+  "description": "Creates a centered 0-1 triangle: 0 maps to 0, 0.5 maps to 1, and 1 maps to 0.",
+  "numInputs": 1,
+  "formula": "1 - abs(($1 * 2) - 1)"
+}

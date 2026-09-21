@@ -1,0 +1,6 @@
+{
+  "name": "average",
+  "description": "Element-wise average of two inputs.",
+  "numInputs": 2,
+  "formula": "($1 + $2) / 2"
+}

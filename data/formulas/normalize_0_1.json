@@ -1,0 +1,6 @@
+{
+  "name": "normalize_0_1",
+  "description": "Normalizes a vector to the 0-1 range; constant vectors become zero.",
+  "numInputs": 1,
+  "formula": "range = max($1) - min($1); if(range == 0, repeat(0, len($1)), ($1 - min($1)) / range)"
+}

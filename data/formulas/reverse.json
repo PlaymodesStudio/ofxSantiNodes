@@ -1,0 +1,6 @@
+{
+  "name": "reverse",
+  "description": "Reverses the order of a vector.",
+  "numInputs": 1,
+  "formula": "at($1, len($1) - 1 - indices($1))"
+}

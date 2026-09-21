@@ -1,0 +1,6 @@
+{
+  "name": "difference",
+  "description": "Difference between each value and the following value; a one-value input returns zero.",
+  "numInputs": 1,
+  "formula": "i = indices(repeat(0, max(len($1) - 1, 1))); at($1, i + 1) - at($1, i)"
+}

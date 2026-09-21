@@ -1,0 +1,6 @@
+{
+  "name": "rotate",
+  "description": "Rotates a vector by the integer offset supplied by $2.",
+  "numInputs": 2,
+  "formula": "at($1, ((indices($1) - $2) % len($1) + len($1)) % len($1))"
+}

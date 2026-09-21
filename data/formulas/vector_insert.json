@@ -1,0 +1,6 @@
+{
+  "name": "vector_insert",
+  "description": "Inserts vector $2 into vector $1 at the zero-based index $3.",
+  "numInputs": 3,
+  "formula": "p = floor(clamp($3, 0, len($1))); tail = repeat(p, len($1) - p); concat(at($1, indices(repeat(0, p))), $2, at($1, indices(tail) + tail))"
+}
