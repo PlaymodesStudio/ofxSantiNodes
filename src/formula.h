@@ -18,34 +18,51 @@
 #include <utility>
 #include <numeric>
 #include <fstream>
+#include <future>
+#include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <climits>
 
 class formula : public ofxOceanodeNodeModel {
 public:
-	formula() : ofxOceanodeNodeModel("Formula") {}
+	formula() : ofxOceanodeNodeModel("Formula") {
+		// Use the same API-key locations as scDynGen's assistant.
+		auto tryReadKey = [this](const std::string& path) {
+			std::ifstream file(path);
+			if(!file) return false;
+			std::getline(file, llmApiKey);
+			return !llmApiKey.empty();
+		};
+
+		const char* envKey = std::getenv("ANTHROPIC_API_KEY");
+		if(envKey && *envKey) {
+			llmApiKey = envKey;
+		} else if(!tryReadKey(ofToDataPath("anthropic_api_key.txt"))) {
+			tryReadKey(ofFilePath::getUserHomeDir() + "/.anthropic_api_key");
+		}
+
+		while(!llmApiKey.empty() && std::isspace(static_cast<unsigned char>(llmApiKey.back()))) {
+			llmApiKey.pop_back();
+		}
+	}
 
 	void setup() override {
 		description =
 			"Math formula evaluator with vector support. Edit the formula on the node. "
+			"The built-in AI assistant can generate a new formula or repair the current one. "
 			"Formula files can be loaded from or saved to the data/formulas library. "
-			"Use $1, $2, $3... for inputs. Supports +,-,*,/,%,^,( ), sin/cos/tan, atan2, "
+			"Use $i1, $i2... for automatically-created inputs and assign $o1, $o2... for outputs. "
+			"Legacy $1, $2... input names and a final bare-expression output remain supported. "
+			"Rename ports with identifier labels such as $i1.label=frequency; labels can then be used as port aliases. "
+			"Supports +,-,*,/,%,^,( ), sin/cos/tan, atan2, "
 			"sqrt, abs, pow, exp, log, min/max, clamp, step, smoothstep, floor/ceil/round. "
 			"Vector functions: len(v), indices(v), at(v,i), sum(v), mean(v), min(v), max(v), "
 			"median(v), rms(v), std(v), var(v), idxmin(v), idxmax(v), vec(...), repeat(x,n), concat(...), sort(v). "
 			"Vector literals: [1,2,3]. Scalars broadcast over vectors. Conditional: if(cond,a,b). "
-			"Variables: separate statements with ';' and assign with '=', e.g. \"x = $1 + $2; x * 100\". "
-			"The last statement must be a bare expression and is the output.";
-
-		// Inspector-only params
-		addInspectorParameter(numInputs.set("Num Inputs", 2, 1, 16));
-		numInputsListener = numInputs.newListener([this](int &i){
-			int current = (int)inputParameters.size();
-			if(i > current){
-				for(int k = current; k < i; ++k) addInputParameter(k);
-			}else if(i < current){
-				for(int k = current - 1; k >= i; --k) removeInputParameter(k);
-			}
-			previousNumInputs = i;
-		});
+			"Variables: separate statements with ';' and assign with '=', e.g. \"x = $i1 + $i2; $o1 = x * 100\".";
 
 		// Formula (moved to inspector only)
 		addInspectorParameter(formulaString.set("Formula", "($1 + $2) / 2"));
@@ -61,57 +78,90 @@ public:
 			saveFormulaFile();
 		});
 
-		// Output
-		addOutputParameter(output.set("Output", {0}, {-FLT_MAX}, {FLT_MAX}));
-
 		// Multiline editor controls (inspector)
-		addInspectorParameter(editorLines.set("Editor Lines", 3, 1, 40));
-		addInspectorParameter(editorFontSize.set("Editor Font Size", 28.0f, 14.0f, 28.0f));
+		addInspectorParameter(editorLines.set("Editor Lines", 6, 1, 40));
+		addInspectorParameter(editorWidth.set("Editor Width", 240.0f, 160.0f, 800.0f));
+		addInspectorParameter(editorFontSize.set("Editor Font Size", 14.0f, 8.0f, 48.0f));
+		addInspectorParameter(editorWordWrap.set("Auto Line Wrap", true));
 
 		// Preload editable buffer & listener
 		formulaBuf = formulaString.get();
 		formulaStrListener = formulaString.newListener([this](std::string &s){
 			if(s != formulaBuf) formulaBuf = s;
 		});
+		formulaString.addListener(this, &formula::onFormulaParamChanged);
 
-		// In-node custom editor (fixed width; height via Editor Lines)
+		// In-node custom editor (dimensions and text behavior are inspector-controlled)
 		formulaEditorRegion.set("Formula Editor", [this](){
 			float zoom = ofxOceanodeShared::getZoomLevel();
 			const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 			const float PADDING = 6.0f * zoom;
+			const float parentFontPx = ImGui::GetFontSize();
+			const float editorFontPx = parentFontPx * (editorFontSize.get() / 14.0f);
+			const float toolbarH = parentFontPx + 8.0f * zoom;
+			const float requestedEditorH = editorLines.get() *
+				(editorFontPx + ImGui::GetStyle().ItemSpacing.y);
 
-			// Height in pixels by line count unless a Custom GUI region provides explicit space
-			const float baseLineHeight = ImGui::GetTextLineHeightWithSpacing();
-			const int   lines          = editorLines.get();
-			const float boxH           = customRegionContext.active ? std::max(1.0f, customRegionContext.height - 2.0f * PADDING) : lines * baseLineHeight;
-
-			// Fixed content width in node GUI, region width in Custom GUI
-			const float boxW = customRegionContext.active ? std::max(1.0f, customRegionContext.width) : 240.0f * zoom;
+			const float boxW = customRegionContext.active
+				? std::max(1.0f, customRegionContext.width)
+				: editorWidth.get() * zoom;
+			const float totalH = customRegionContext.active
+				? std::max(1.0f, customRegionContext.height)
+				: toolbarH + requestedEditorH + 3.0f * PADDING;
+			const float editorH = customRegionContext.active
+				? std::max(1.0f, totalH - toolbarH - 3.0f * PADDING)
+				: requestedEditorH;
 
 			ImGui::BeginChild("FormulaEditor",
-							  ImVec2(boxW, boxH + 2.0f*PADDING),
+							  ImVec2(boxW, totalH),
 							  true,
 							  ImGuiWindowFlags_None);
 
-			// Font scale (relative to ~14 px default)
-			const float basePx = 14.0f;
-			const float scale  = editorFontSize.get() / basePx;
-			ImGui::SetWindowFontScale(scale);
+			// Child windows do not retain the canvas window's font scale. Restore the
+			// actual inherited size before drawing the toolbar.
+			const float childFontBase = std::max(1.0f, ImGui::GetFont()->LegacySize);
+			ImGui::SetWindowFontScale(std::max(0.05f, parentFontPx / childFontBase));
 
 			ImGui::SetCursorPos(ImVec2(PADDING, PADDING));
+			bool busy = llmPending.load();
+			ImGui::PushStyleColor(ImGuiCol_Button,
+				busy ? IM_COL32(40, 20, 65, 255) : IM_COL32(60, 38, 90, 255));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(90, 58, 130, 255));
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(115, 78, 165, 255));
+			if(ImGui::Button(busy ? "..." : "AI", ImVec2(38.0f * zoom, 0)) && !busy) {
+				ImGui::OpenPopup("##formula_ai_popup");
+			}
+			ImGui::PopStyleColor(3);
+			ImGui::SameLine(0, 6.0f * zoom);
+			if(!formulaValid && !lastError.empty()) {
+				ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", lastError.c_str());
+			} else if(!llmStatusMsg.empty()) {
+				ImGui::TextDisabled("%s", llmStatusMsg.c_str());
+			} else {
+				ImGui::TextDisabled("%d input%s / %d output%s",
+					static_cast<int>(inputParameters.size()), inputParameters.size() == 1 ? "" : "s",
+					static_cast<int>(outputParameters.size()), outputParameters.size() == 1 ? "" : "s");
+			}
 
 			static std::vector<char> buf;
 			buf.assign(formulaBuf.begin(), formulaBuf.end());
 			buf.push_back('\0');
 
-			ImVec2 inputSize(boxW - 2.0f*PADDING, boxH);
+			ImGui::SetCursorPos(ImVec2(PADDING, PADDING + toolbarH));
+			ImVec2 inputSize(std::max(1.0f, boxW - 2.0f * PADDING), editorH);
+			ImGuiInputTextFlags inputFlags = ImGuiInputTextFlags_AllowTabInput |
+				ImGuiInputTextFlags_CallbackResize;
+			if(editorWordWrap.get()) inputFlags |= ImGuiInputTextFlags_WordWrap;
+
+			// Scale relative to Oceanode's actual active font rather than assuming
+			// that the child window is using a 14 px font.
+			ImGui::PushFont(nullptr, childFontBase * (editorFontSize.get() / 14.0f));
 
 			bool changed = ImGui::InputTextMultiline(
 				"##formulaML",
 				buf.data(), buf.size(),
 				inputSize,
-				ImGuiInputTextFlags_AllowTabInput |
-				ImGuiInputTextFlags_CallbackResize,
+				inputFlags,
 				[](ImGuiInputTextCallbackData* data)->int {
 					if(data->EventFlag == ImGuiInputTextFlags_CallbackResize){
 						auto* v = reinterpret_cast<std::vector<char>*>(data->UserData);
@@ -122,36 +172,40 @@ public:
 				},
 				(void*)&buf
 			);
+			ImGui::PopFont();
 
 			if(changed){
+				llmStatusMsg.clear();
 				formulaBuf.assign(buf.data(), std::strlen(buf.data()));
 				if(formulaBuf != formulaString.get()){
 					formulaString.set(formulaBuf);
-					rebuildEvaluator();
-					calculate();
 				}
 			}
 
-			ImGui::SetWindowFontScale(1.0f);
+			drawAIPopup();
 			ImGui::EndChild();
 		});
 		addCustomRegion(formulaEditorRegion, formulaEditorRegion.get());
 
-		formulaBuf = formulaString.get();
-		formulaString.addListener(this, &formula::onFormulaParamChanged);
-
-		// Initialize
-		updateInputs();
+		// Register the editor before creating any ports. ofParameterGroup preserves
+		// insertion order, so both initial and later dynamic ports stay together
+		// below the editor instead of being split around it.
 		rebuildEvaluator();
+
+		// Initialize output values.
+		calculate();
 	}
 
 	// Ensure inputs exist before connections load
 	void loadBeforeConnections(ofJson &json) override {
-		deserializeParameter(json, numInputs);
-		updateInputs();
+		deserializeParameter(json, formulaString);
+		formulaBuf = formulaString.get();
+		previousFormula = formulaString.get();
+		rebuildEvaluator();
 	}
 
 	void update(ofEventArgs &args) override {
+		pollLLMResult();
 		if(formulaString.get() != previousFormula) {
 			previousFormula = formulaString.get();
 			rebuildEvaluator();
@@ -161,30 +215,314 @@ public:
 
 private:
 	// ===== Parameters & UI =====
-	ofParameter<int> numInputs;
 	ofParameter<std::string> formulaString;
 	ofParameter<std::string> formulaName;
 	ofParameter<void> loadFormulaButton;
 	ofParameter<void> saveFormulaButton;
-	ofParameter<std::vector<float>> output;
 
 	customGuiRegion formulaEditorRegion;
 	mutable std::string formulaBuf;
 	ofEventListener formulaStrListener;
 	ofParameter<int>   editorLines;
+	ofParameter<float> editorWidth;
 	ofParameter<float> editorFontSize;
-	ofEventListener    numInputsListener;
+	ofParameter<bool>  editorWordWrap;
 	ofEventListener    loadFormulaListener;
 	ofEventListener    saveFormulaListener;
 
+	// ===== AI formula assistant =====
+	std::string              llmApiKey;
+	std::future<std::string> llmFuture;
+	std::atomic<bool>        llmPending { false };
+	std::atomic<bool>        llmDone { false };
+	bool                     llmHasError = false;
+	bool                     llmFixMode = false;
+	std::string              llmStatusMsg;
+	char                     llmPromptBuf[2048] = {};
+
 	// Change tracking
-	int    previousNumInputs = -1;
 	std::string previousFormula = "";
 
 	// Dynamic inputs
 	std::map<int, std::shared_ptr<ofxOceanodeParameter<std::vector<float>>>> inputParameters;
 	std::map<int, std::shared_ptr<ofParameter<std::vector<float>>>>          inputParamRefs;
 	std::map<int, ofEventListener>                                           inputListeners;
+
+	// Dynamic outputs. Key 0 is the legacy "Output" port; positive keys are
+	// explicit $o1, $o2... ports.
+	std::map<int, std::shared_ptr<ofxOceanodeParameter<std::vector<float>>>> outputParameters;
+	std::map<int, std::shared_ptr<ofParameter<std::vector<float>>>>          outputParamRefs;
+
+	// ===== AI assistant =====
+	static std::string buildFormulaSystemPrompt() {
+		return R"FORMULA_PROMPT(You generate expressions for the Formula node in Oceanode, a modular visual environment.
+
+Return ONLY valid Formula-node source. Do not use Markdown, code fences, comments, section headings, or explanatory prose.
+
+LANGUAGE RULES
+- Inputs are $i1, $i2, $i3, etc. Referencing one automatically creates that input port.
+- Legacy $1, $2, $3 input aliases are also supported and refer to the same numbered inputs.
+- Outputs are assignments to $o1, $o2, $o3, etc. Assigning them automatically creates those output ports.
+- Optional port labels are metadata statements: $i1.label=frequency; $o1.label=result. Labels must be identifiers without spaces, must be unique, and become aliases for their ports in expressions and assignments.
+- Scalars automatically broadcast over vectors. When vectors differ in length, shorter values clamp to their last element.
+- Constants: pi, PI, e, E, and N (the longest connected input-vector length).
+- Operators: + - * / % ^, < > <= >= == !=, && ||, unary - and !.
+- Math functions: sin, cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, exp, log, log10, sqrt, abs, floor, ceil, round, pow, min, max, clamp, step, smoothstep.
+- Conditional: if(condition, value_when_true, value_when_false). Conditions may be vectors.
+- Vector functions: len(v), indices(v), at(v,i), sum(v), mean(v), median(v), rms(v), std(v), var(v), idxmin(v), idxmax(v), vec(...), repeat(x,n), concat(...), sort(v), pairdist(x,y).
+- Vector literals use brackets, for example [1, 2, 3].
+- Intermediate variables are allowed. Separate statements with semicolons and assign with '='.
+- Preferred output form: centered = $i1 - mean($i1); $o1 = centered * 2
+- Multiple outputs: $o1 = $i1 + $i2; $o2 = $i1 - $i2
+- Legacy formulas may omit $oN and use one final bare expression, which creates the old Output port.
+- Do not mix explicit $oN outputs with a bare output expression.
+- Identifiers contain letters, digits, underscores, or $. Do not assign to inputs or to pi, PI, e, E, or N.
+- Numeric literals must be ordinary decimal notation; scientific notation is not supported.
+- There are no comments, strings, loops, indexing brackets, ternary operators, or user-defined functions.
+
+EXAMPLES
+Average two inputs using label aliases:
+$i1.label=left; $i2.label=right; $o1.label=average; average = (left + right) / 2
+
+Normalize a vector safely:
+lo = min($i1); hi = max($i1); $o1 = if(hi == lo, repeat(0, len($i1)), ($i1 - lo) / (hi - lo))
+
+Select positive values:
+$o1 = if($i1 > 0, $i1, 0)
+)FORMULA_PROMPT";
+	}
+
+	static std::string shellQuote(const std::string& value) {
+		std::string quoted = "'";
+		for(char c : value) {
+			if(c == '\'') quoted += "'\\''";
+			else quoted.push_back(c);
+		}
+		quoted.push_back('\'');
+		return quoted;
+	}
+
+	static std::string stripCodeFences(std::string result) {
+		result = trimStr(result);
+		if(result.rfind("```", 0) != 0) return result;
+
+		size_t firstLineEnd = result.find('\n');
+		if(firstLineEnd == std::string::npos) return result;
+		result.erase(0, firstLineEnd + 1);
+		size_t closingFence = result.rfind("```");
+		if(closingFence != std::string::npos) result.erase(closingFence);
+		return trimStr(result);
+	}
+
+	static std::string callAnthropicAPI(const std::string& fullPrompt,
+										const std::string& systemPrompt,
+										const std::string& apiKey) {
+		try {
+			ofJson requestBody = {
+				{"model", "claude-sonnet-4-5"},
+				{"max_tokens", 1024},
+				{"system", systemPrompt},
+				{"messages", ofJson::array({{{"role", "user"}, {"content", fullPrompt}}})}
+			};
+
+			static std::atomic<unsigned long long> requestCounter { 0 };
+			const auto ticks = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+			const auto sequence = requestCounter.fetch_add(1);
+			std::string tmpDir = std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp";
+			if(!tmpDir.empty() && tmpDir.back() != '/') tmpDir.push_back('/');
+			const std::string tmpPath = tmpDir + "formula_api_req_" +
+				std::to_string(ticks) + "_" + std::to_string(sequence) + ".json";
+
+			{
+				std::ofstream file(tmpPath);
+				if(!file) return "Error: cannot create the temporary API request";
+				file << requestBody.dump();
+			}
+
+			const std::string command =
+				"curl -sS --connect-timeout 10 --max-time 90"
+				" -X POST https://api.anthropic.com/v1/messages"
+				" -H " + shellQuote("content-type: application/json") +
+				" -H " + shellQuote("x-api-key: " + apiKey) +
+				" -H " + shellQuote("anthropic-version: 2023-06-01") +
+				" -d @" + shellQuote(tmpPath) + " 2>&1";
+
+			FILE* pipe = popen(command.c_str(), "r");
+			if(!pipe) {
+				std::remove(tmpPath.c_str());
+				return "Error: could not start curl";
+			}
+
+			std::string response;
+			char chunk[4096];
+			while(fgets(chunk, sizeof(chunk), pipe)) response += chunk;
+			const int curlStatus = pclose(pipe);
+			std::remove(tmpPath.c_str());
+
+			if(response.empty()) {
+				return curlStatus == 0 ? "Error: empty API response" : "Error: API request failed";
+			}
+
+			ofJson object = ofJson::parse(response);
+			if(object.contains("error")) {
+				return "API error: " + object["error"].value("message", "unknown error");
+			}
+			if(!object.contains("content") || !object["content"].is_array() || object["content"].empty()) {
+				return "Error: unexpected API response";
+			}
+			return object["content"][0].value("text", "");
+		} catch(const std::exception& e) {
+			return std::string("Error: ") + e.what();
+		}
+	}
+
+	void requestLLMFormula(const std::string& userPrompt) {
+		if(llmPending.load()) return;
+		if(llmApiKey.empty()) {
+			llmStatusMsg = "No API key";
+			llmHasError = true;
+			llmDone.store(true);
+			return;
+		}
+
+		llmPending.store(true);
+		llmDone.store(false);
+		llmHasError = false;
+		llmStatusMsg = "Generating...";
+
+		const std::string currentFormula = formulaString.get();
+		const std::string systemPrompt = buildFormulaSystemPrompt();
+		const std::string apiKey = llmApiKey;
+		std::string fullPrompt;
+
+		if(llmFixMode) {
+			const std::string issue = userPrompt.empty()
+				? "Fix any syntax or logic problems while preserving the apparent intent."
+				: "Requested change or issue: " + userPrompt;
+			fullPrompt = "Fix this Formula-node expression. Preserve its current port numbers and labels unless the request requires changing them.\n\nCurrent formula:\n" +
+				currentFormula + "\n\n" + issue;
+		} else {
+			fullPrompt = "Create a Formula-node expression. Choose as many $iN inputs and $oN outputs as the request needs; the node creates them automatically. Add concise .label metadata when useful.\n\nUser request:\n" + userPrompt;
+		}
+
+		llmFuture = std::async(std::launch::async,
+			[fullPrompt, systemPrompt, apiKey]() {
+				return callAnthropicAPI(fullPrompt, systemPrompt, apiKey);
+			});
+	}
+
+	void pollLLMResult() {
+		if(!llmPending.load() || !llmFuture.valid()) return;
+		if(llmFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+
+		std::string result = llmFuture.get();
+		const bool apiError = result.rfind("Error:", 0) == 0 ||
+			result.rfind("API error:", 0) == 0;
+		if(apiError) {
+			llmStatusMsg = result;
+			llmHasError = true;
+		} else {
+			result = stripCodeFences(result);
+			formulaBuf = result;
+			formulaString.set(result);
+			previousFormula = result;
+			rebuildEvaluator();
+			calculate();
+
+			llmHasError = !formulaValid;
+			llmStatusMsg = formulaValid
+				? "AI formula ready"
+				: "AI formula needs editing: " + lastError;
+		}
+
+		llmPending.store(false);
+		llmDone.store(true);
+	}
+
+	void drawAIPopup() {
+		ImGui::SetNextWindowSize(ImVec2(520, 235), ImGuiCond_Appearing);
+		if(!ImGui::BeginPopup("##formula_ai_popup", ImGuiWindowFlags_None)) return;
+
+		ImGui::TextColored(ImVec4(0.72f, 0.60f, 1.0f, 1.0f),
+			"Ask Claude to create a Formula expression");
+		ImGui::SameLine();
+		if(llmApiKey.empty()) {
+			ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "  [No API key]");
+		} else {
+			ImGui::TextColored(ImVec4(0.35f, 1.0f, 0.55f, 1.0f), "  [Key loaded]");
+		}
+		ImGui::TextDisabled("Ports are created automatically from $iN, legacy $N, and $oN references.");
+		ImGui::Spacing();
+
+		auto modeButton = [](const char* label, bool active) {
+			ImGui::PushStyleColor(ImGuiCol_Button,
+				active ? IM_COL32(65, 40, 95, 255) : IM_COL32(28, 28, 38, 255));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(90, 58, 130, 255));
+			const bool clicked = ImGui::Button(label, ImVec2(122, 0));
+			ImGui::PopStyleColor(2);
+			return clicked;
+		};
+		if(modeButton("Generate##formula", !llmFixMode)) llmFixMode = false;
+		ImGui::SameLine(0, 2);
+		if(modeButton("Fix current##formula", llmFixMode)) llmFixMode = true;
+
+		ImGui::Separator();
+		ImGui::Spacing();
+
+		if(llmPending.load()) {
+			static const char* spinner = "|/-\\";
+			static int spinnerIndex = 0;
+			spinnerIndex = (spinnerIndex + 1) % 4;
+			ImGui::Text("Generating... %c", spinner[spinnerIndex]);
+			ImGui::TextDisabled("The result will replace the current formula when ready.");
+		} else if(llmDone.load() && llmHasError) {
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0.4f, 0.4f, 1));
+			ImGui::TextWrapped("%s", llmStatusMsg.c_str());
+			ImGui::PopStyleColor();
+			ImGui::Spacing();
+			if(ImGui::Button("Back##formula_ai", ImVec2(80, 0))) {
+				llmDone.store(false);
+				llmHasError = false;
+			}
+			ImGui::SameLine();
+			if(ImGui::Button("Close##formula_ai", ImVec2(80, 0))) {
+				llmDone.store(false);
+				ImGui::CloseCurrentPopup();
+			}
+		} else if(llmDone.load()) {
+			llmDone.store(false);
+			ImGui::CloseCurrentPopup();
+		} else {
+			ImGui::InputTextMultiline("##formula_ai_prompt", llmPromptBuf,
+				sizeof(llmPromptBuf), ImVec2(504, 100), ImGuiInputTextFlags_WordWrap);
+			ImGui::TextDisabled(llmFixMode
+				? "Describe the issue, or leave blank for a general repair."
+				: "Describe the vector or mathematical transformation you want.");
+			ImGui::Spacing();
+
+			const bool canSubmit = !llmApiKey.empty() &&
+				(llmFixMode || llmPromptBuf[0] != '\0');
+			if(!canSubmit) ImGui::BeginDisabled();
+			if(ImGui::Button(llmFixMode ? "Fix formula" : "Generate", ImVec2(100, 0))) {
+				requestLLMFormula(llmPromptBuf);
+			}
+			if(!canSubmit) ImGui::EndDisabled();
+			ImGui::SameLine(0, 10);
+			if(ImGui::Button("Cancel##formula_ai", ImVec2(70, 0))) {
+				ImGui::CloseCurrentPopup();
+			}
+
+			if(llmApiKey.empty()) {
+				ImGui::Spacing();
+				ImGui::TextColored(ImVec4(1, 0.65f, 0.3f, 1), "No API key found. Add one of:");
+				ImGui::TextDisabled("  data/anthropic_api_key.txt");
+				ImGui::TextDisabled("  ~/.anthropic_api_key");
+				ImGui::TextDisabled("  ANTHROPIC_API_KEY environment variable");
+			}
+		}
+
+		ImGui::EndPopup();
+	}
 
 	// ===== Formula library =====
 	static std::string sanitizeFormulaName(const std::string& value) {
@@ -224,7 +562,6 @@ private:
 		ofJson json = {
 			{"name", name},
 			{"description", "User formula"},
-			{"numInputs", numInputs.get()},
 			{"formula", formulaString.get()}
 		};
 
@@ -252,7 +589,6 @@ private:
 
 		try {
 			std::string loadedFormula;
-			int loadedNumInputs = numInputs.get();
 			std::string loadedName = ofFilePath::getBaseName(path);
 
 			if(ofToLower(ofFilePath::getFileExt(path)) == "json") {
@@ -261,9 +597,6 @@ private:
 					throw std::runtime_error("JSON file has no string 'formula' field");
 				}
 				loadedFormula = json["formula"].get<std::string>();
-				if(json.contains("numInputs") && json["numInputs"].is_number_integer()) {
-					loadedNumInputs = json["numInputs"].get<int>();
-				}
 				if(json.contains("name") && json["name"].is_string()) {
 					loadedName = json["name"].get<std::string>();
 				}
@@ -273,8 +606,6 @@ private:
 				loadedFormula = buffer.getText();
 			}
 
-			loadedNumInputs = std::max(1, std::min(16, loadedNumInputs));
-			numInputs.set(loadedNumInputs);
 			formulaName.setWithoutEventNotifications(sanitizeFormulaName(loadedName));
 			formulaString.set(loadedFormula);
 			formulaBuf = loadedFormula;
@@ -307,10 +638,20 @@ private:
 	};
 	using RPN = std::vector<Token>;
 
-	// A compiled statement: either an assignment (target non-empty) or, for the
-	// final statement only, a bare expression whose value becomes the output.
+	enum class PortKind { None, LegacyInput, NamedInput, Output };
+
+	struct PortLayout {
+		std::set<int> inputs;
+		std::set<int> namedInputs;
+		std::set<int> outputs;
+		std::map<int, std::string> inputLabels;
+		std::map<int, std::string> outputLabels;
+	};
+
+	// A compiled statement: either an assignment (target non-empty) or a bare
+	// expression. Bare expressions are allowed only in legacy single-output mode.
 	struct Statement {
-		std::string target;   // empty => output expression
+		std::string target;   // empty => legacy Output expression
 		RPN code;
 	};
 
@@ -362,48 +703,187 @@ private:
 		return Value::vector(std::move(out));
 	}
 
-	// ===== Listeners / inputs =====
+	// ===== Dynamic ports =====
 	void onFormulaParamChanged(std::string &s){
 		if(s != formulaBuf) formulaBuf = s;
 	}
 
-	void updateInputs() {
-		int newNumInputs = numInputs.get();
-		int currentNumInputs = (int)inputParameters.size();
+	static PortKind parsePortIdentifier(const std::string& id, int& number) {
+		number = 0;
+		if(id.size() < 2 || id[0] != '$') return PortKind::None;
 
-		if(newNumInputs > currentNumInputs) {
-			for(int i = currentNumInputs; i < newNumInputs; i++) addInputParameter(i);
-		} else if(newNumInputs < currentNumInputs) {
-			for(int i = currentNumInputs - 1; i >= newNumInputs; i--) removeInputParameter(i);
+		PortKind kind = PortKind::None;
+		size_t digitStart = 1;
+		if(std::isdigit(static_cast<unsigned char>(id[1]))) {
+			kind = PortKind::LegacyInput;
+		} else if(id[1] == 'i') {
+			kind = PortKind::NamedInput;
+			digitStart = 2;
+		} else if(id[1] == 'o') {
+			kind = PortKind::Output;
+			digitStart = 2;
+		} else {
+			return PortKind::None;
 		}
-		calculate();
+
+		if(digitStart >= id.size() || id[digitStart] == '0') return PortKind::None;
+		for(size_t i = digitStart; i < id.size(); ++i) {
+			if(!std::isdigit(static_cast<unsigned char>(id[i]))) return PortKind::None;
+		}
+
+		try {
+			const long long parsed = std::stoll(id.substr(digitStart));
+			if(parsed <= 0 || parsed > INT_MAX) return PortKind::None;
+			number = static_cast<int>(parsed);
+			return kind;
+		} catch(...) {
+			return PortKind::None;
+		}
 	}
 
-	void addInputParameter(int index) {
-		std::string name = "$" + ofToString(index + 1);
+	static bool parseLabelDeclaration(const std::string& segment,
+									  PortKind& kind,
+									  int& number,
+									  std::string& label) {
+		const std::string seg = trimStr(segment);
+		const size_t labelPos = seg.find(".label");
+		if(labelPos == std::string::npos) return false;
+
+		const std::string portName = trimStr(seg.substr(0, labelPos));
+		kind = parsePortIdentifier(portName, number);
+		if(kind == PortKind::None) return false;
+
+		size_t pos = labelPos + 6;
+		while(pos < seg.size() && std::isspace(static_cast<unsigned char>(seg[pos]))) ++pos;
+		if(pos >= seg.size() || seg[pos] != '=') {
+			throw std::runtime_error("Expected '=' after '" + portName + ".label'");
+		}
+
+		label = trimStr(seg.substr(pos + 1));
+		if(label.size() >= 2 &&
+		   ((label.front() == '"' && label.back() == '"') ||
+			(label.front() == '\'' && label.back() == '\''))) {
+			label = label.substr(1, label.size() - 2);
+		}
+		label = trimStr(label);
+		if(label.empty()) throw std::runtime_error("Port label cannot be empty");
+		return true;
+	}
+
+	static std::string chooseUniquePortName(const std::string& preferred,
+										const std::string& canonical,
+										std::set<std::string>& used) {
+		auto available = [&used](const std::string& candidate) {
+			return !candidate.empty() && used.count(candidate) == 0 && candidate != "Formula Editor";
+		};
+
+		std::string chosen = trimStr(preferred);
+		if(!available(chosen)) chosen = canonical;
+		if(!available(chosen)) {
+			int suffix = 2;
+			do {
+				chosen = canonical + " " + ofToString(suffix++);
+			} while(!available(chosen));
+		}
+		used.insert(chosen);
+		return chosen;
+	}
+
+	void addInputPort(int number, const std::string& name) {
 
 		auto paramRef = std::make_shared<ofParameter<std::vector<float>>>();
 		paramRef->set(name, {0}, {-FLT_MAX}, {FLT_MAX});
-		inputParamRefs[index] = paramRef;
+		inputParamRefs[number] = paramRef;
 
 		auto oceaParam = addParameter(*paramRef);
-		inputParameters[index] = oceaParam;
+		inputParameters[number] = oceaParam;
 
-		inputListeners[index] = paramRef->newListener([this](std::vector<float>&){ calculate(); });
+		inputListeners[number] = paramRef->newListener([this](std::vector<float>&){ calculate(); });
 	}
 
-	void removeInputParameter(int index) {
-		std::string name = "$" + ofToString(index + 1);
-		inputListeners.erase(index);
-		removeParameter(name);
-		inputParameters.erase(index);
-		inputParamRefs.erase(index);
+	void addOutputPort(int number, const std::string& name) {
+		auto paramRef = std::make_shared<ofParameter<std::vector<float>>>();
+		paramRef->set(name, {0}, {-FLT_MAX}, {FLT_MAX});
+		outputParamRefs[number] = paramRef;
+		outputParameters[number] = addOutputParameter(*paramRef);
+	}
+
+	void syncPorts(const PortLayout& layout) {
+		std::set<int> desiredOutputs = layout.outputs;
+		if(desiredOutputs.empty()) desiredOutputs.insert(0); // legacy Output
+
+		// Remove ports which no longer occur in the successfully compiled formula.
+		for(auto it = inputParameters.begin(); it != inputParameters.end();) {
+			if(layout.inputs.count(it->first) == 0) {
+				const int number = it->first;
+				removeParameter(it->second->getEscapedName());
+				inputListeners.erase(number);
+				inputParamRefs.erase(number);
+				it = inputParameters.erase(it);
+			} else {
+				++it;
+			}
+		}
+		for(auto it = outputParameters.begin(); it != outputParameters.end();) {
+			if(desiredOutputs.count(it->first) == 0) {
+				const int number = it->first;
+				removeParameter(it->second->getEscapedName());
+				outputParamRefs.erase(number);
+				it = outputParameters.erase(it);
+			} else {
+				++it;
+			}
+		}
+
+		std::set<std::string> usedNames;
+		std::map<int, std::string> inputNames;
+		std::map<int, std::string> outputNames;
+		for(int number : layout.inputs) {
+			const std::string canonical = (layout.namedInputs.count(number) > 0 ? "$i" : "$") +
+				ofToString(number);
+			auto labelIt = layout.inputLabels.find(number);
+			const std::string preferred = labelIt == layout.inputLabels.end() ? canonical : labelIt->second;
+			inputNames[number] = chooseUniquePortName(preferred, canonical, usedNames);
+		}
+		for(int number : desiredOutputs) {
+			const std::string canonical = number == 0 ? "Output" : "$o" + ofToString(number);
+			auto labelIt = layout.outputLabels.find(number);
+			const std::string preferred = labelIt == layout.outputLabels.end() ? canonical : labelIt->second;
+			outputNames[number] = chooseUniquePortName(preferred, canonical, usedNames);
+		}
+
+		// Move retained ports through unique temporary names so labels can be
+		// swapped without colliding inside the parameter group.
+		for(auto& entry : inputParameters) {
+			if(entry.second->getName() != inputNames[entry.first]) {
+				entry.second->setName("__formula_input_" + ofToString(entry.first) + "__");
+			}
+		}
+		for(auto& entry : outputParameters) {
+			if(entry.second->getName() != outputNames[entry.first]) {
+				entry.second->setName("__formula_output_" + ofToString(entry.first) + "__");
+			}
+		}
+
+		for(int number : layout.inputs) {
+			if(inputParameters.count(number) == 0) addInputPort(number, inputNames[number]);
+			else if(inputParameters[number]->getName() != inputNames[number])
+				inputParameters[number]->setName(inputNames[number]);
+		}
+		for(int number : desiredOutputs) {
+			if(outputParameters.count(number) == 0) addOutputPort(number, outputNames[number]);
+			else if(outputParameters[number]->getName() != outputNames[number])
+				outputParameters[number]->setName(outputNames[number]);
+		}
 	}
 
 	// ===== Public evaluation =====
 	void calculate() {
+		auto setAllOutputsToZero = [this]() {
+			for(auto& entry : outputParamRefs) entry.second->set(std::vector<float>{0.0f});
+		};
 		if(!formulaValid) {
-			output = {0.0f};
+			setAllOutputsToZero();
 			return;
 		}
 
@@ -416,42 +896,49 @@ private:
 		// Build evaluation environment with full vectors/scalars
 		Env env;
 		for(const auto& kv : inputParamRefs){
-			int idx = kv.first;
+			int number = kv.first;
 			const auto& vec = kv.second->get();
-			std::string key = "$" + ofToString(idx + 1);
-			if(vec.size() <= 1) {
-				env[key] = (vec.empty() ? Value::scalar(0.0f) : Value::scalar(vec[0]));
-			} else {
-				env[key] = Value::vector(vec);
-			}
+			Value value = vec.size() <= 1
+				? (vec.empty() ? Value::scalar(0.0f) : Value::scalar(vec[0]))
+				: Value::vector(vec);
+			env["$" + ofToString(number)] = value;
+			env["$i" + ofToString(number)] = value;
+		}
+		for(const auto& kv : outputParamRefs) {
+			if(kv.first > 0) env["$o" + ofToString(kv.first)] = Value::scalar(0.0f);
 		}
 		env["pi"] = Value::scalar(float(M_PI)); env["PI"] = env["pi"];
 		env["e"]  = Value::scalar(float(M_E));  env["E"]  = env["e"];
 		env["N"]  = Value::scalar(float(N));    // optional helper
 
 		try{
-			Value res;
-			bool haveResult = false;
+			Value legacyResult;
+			bool haveLegacyResult = false;
 
 			for(const auto& stmt : program){
 				Value r = evalRPN(stmt.code, env);
-				if(stmt.target.empty()){ res = r; haveResult = true; }
+				if(stmt.target.empty()){ legacyResult = r; haveLegacyResult = true; }
 				else                    { env[stmt.target] = r; }
 			}
 
-			if(!haveResult){ output = {0.0f}; return; }
+			auto toVector = [](const Value& value) {
+				return value.isVec
+					? (value.v.empty() ? std::vector<float>{0.0f} : value.v)
+					: std::vector<float>{value.f};
+			};
 
-			if(res.isVec){
-				// Return the vector result as-is (if empty, emit [0])
-				output = res.v.empty() ? std::vector<float>{0.0f} : res.v;
-			}else{
-				// Scalar result -> emit scalar (size 1)
-				output = std::vector<float>{ res.f };
+			for(auto& entry : outputParamRefs) {
+				if(entry.first == 0) {
+					entry.second->set(haveLegacyResult ? toVector(legacyResult) : std::vector<float>{0.0f});
+				} else {
+					auto valueIt = env.find("$o" + ofToString(entry.first));
+					entry.second->set(valueIt == env.end() ? std::vector<float>{0.0f} : toVector(valueIt->second));
+				}
 			}
 		}
 		catch(const std::exception& e){
 			ofLogError("Formula") << "Eval error: " << e.what();
-			output = {0.0f};
+			setAllOutputsToZero();
 		}
 	}
 
@@ -460,7 +947,6 @@ private:
 	void rebuildEvaluator() {
 		lastError.clear();
 		formulaValid = false;
-		program.clear();
 
 		std::string src = formulaString.get();
 		if(trimStr(src).empty()) {
@@ -483,39 +969,153 @@ private:
 			}
 
 			std::vector<Statement> prog;
+			PortLayout layout;
+			std::map<std::string, std::string> portAliases;
+			bool hasOutputAssignment = false;
+
+			// Collect labels before compiling expressions so aliases may be used
+			// before or after their metadata declaration.
+			for(const auto& rawSeg : segments) {
+				const std::string seg = trimStr(rawSeg);
+				if(seg.empty()) continue;
+
+				PortKind labelKind = PortKind::None;
+				int labelNumber = 0;
+				std::string label;
+				if(!parseLabelDeclaration(seg, labelKind, labelNumber, label)) continue;
+
+				if(!isPlainIdentifier(label)) {
+					throw std::runtime_error("Port label '" + label +
+						"' is invalid (use letters, digits, and underscores; no spaces)");
+				}
+				if(isReservedName(label) || isFunction(label)) {
+					throw std::runtime_error("Port label '" + label + "' is reserved");
+				}
+				if(portAliases.count(label) > 0) {
+					throw std::runtime_error("Duplicate port label '" + label + "'");
+				}
+
+				std::string canonical;
+				if(labelKind == PortKind::Output) {
+					if(layout.outputLabels.count(labelNumber) > 0)
+						throw std::runtime_error("Output $o" + ofToString(labelNumber) + " has more than one label");
+					layout.outputs.insert(labelNumber);
+					layout.outputLabels[labelNumber] = label;
+					canonical = "$o" + ofToString(labelNumber);
+				} else {
+					if(layout.inputLabels.count(labelNumber) > 0)
+						throw std::runtime_error(std::string("Input ") +
+							(labelKind == PortKind::NamedInput ? "$i" : "$") + ofToString(labelNumber) +
+							" has more than one label");
+					layout.inputs.insert(labelNumber);
+					if(labelKind == PortKind::NamedInput) layout.namedInputs.insert(labelNumber);
+					layout.inputLabels[labelNumber] = label;
+					canonical = (labelKind == PortKind::NamedInput ? "$i" : "$") + ofToString(labelNumber);
+				}
+				portAliases[label] = canonical;
+			}
+
+			auto recordIdentifier = [&layout](const std::string& identifier) {
+				int number = 0;
+				const PortKind kind = parsePortIdentifier(identifier, number);
+				if(kind == PortKind::None) {
+					if(!identifier.empty() && identifier[0] == '$') {
+						throw std::runtime_error("Invalid port identifier '" + identifier +
+							"' (use $i1, $o1, or legacy $1)");
+					}
+					return;
+				}
+				if(kind == PortKind::Output) {
+					layout.outputs.insert(number);
+				} else {
+					layout.inputs.insert(number);
+					if(kind == PortKind::NamedInput) layout.namedInputs.insert(number);
+				}
+			};
+
 			for(const auto& rawSeg : segments){
 				std::string seg = trimStr(rawSeg);
 				if(seg.empty()) continue;   // tolerates a trailing ';' and blank statements
 
+				PortKind labelKind = PortKind::None;
+				int labelNumber = 0;
+				std::string label;
+				if(parseLabelDeclaration(seg, labelKind, labelNumber, label)) continue;
+
 				std::string name, expr;
 				Statement st;
 				if(splitAssignment(seg, name, expr)){
+					auto aliasIt = portAliases.find(name);
+					if(aliasIt != portAliases.end()) name = aliasIt->second;
 					if(isFunction(name))
 						throw std::runtime_error("'" + name + "' is a built-in function and cannot be used as a variable");
 					if(isReservedName(name))
 						throw std::runtime_error("'" + name + "' is a reserved name and cannot be used as a variable");
+					if(!name.empty() && name[0] == '$') {
+						int targetNumber = 0;
+						const PortKind targetKind = parsePortIdentifier(name, targetNumber);
+						if(targetKind == PortKind::LegacyInput || targetKind == PortKind::NamedInput)
+							throw std::runtime_error("Cannot assign to input '" + name + "'");
+						if(targetKind != PortKind::Output)
+							throw std::runtime_error("Invalid assignment target '" + name + "'");
+					}
 					if(trimStr(expr).empty())
 						throw std::runtime_error("Assignment to '" + name + "' has no expression");
 					st.target = name;
-					st.code   = shuntingYard(tokenize(expr));
+					int targetNumber = 0;
+					if(parsePortIdentifier(name, targetNumber) == PortKind::Output) {
+						hasOutputAssignment = true;
+						recordIdentifier(name);
+					}
+					auto tokens = tokenize(expr);
+					for(auto& token : tokens) {
+						if(token.type != Token::Identifier) continue;
+						auto tokenAliasIt = portAliases.find(token.text);
+						if(tokenAliasIt != portAliases.end()) token.text = tokenAliasIt->second;
+					}
+					for(const auto& token : tokens) {
+						if(token.type == Token::Identifier) recordIdentifier(token.text);
+					}
+					st.code = shuntingYard(tokens);
 				}else{
 					st.target.clear();
-					st.code = shuntingYard(tokenize(seg));
+					auto tokens = tokenize(seg);
+					for(auto& token : tokens) {
+						if(token.type != Token::Identifier) continue;
+						auto tokenAliasIt = portAliases.find(token.text);
+						if(tokenAliasIt != portAliases.end()) token.text = tokenAliasIt->second;
+					}
+					for(const auto& token : tokens) {
+						if(token.type == Token::Identifier) recordIdentifier(token.text);
+					}
+					st.code = shuntingYard(tokens);
 				}
 				prog.push_back(std::move(st));
 			}
 
 			if(prog.empty()) throw std::runtime_error("Empty formula");
 
-			for(size_t k = 0; k + 1 < prog.size(); ++k){
-				if(prog[k].target.empty())
-					throw std::runtime_error("Statement " + ofToString((int)k + 1) +
-											 " has no effect: only the last statement may be a bare expression");
+			if(layout.outputs.empty()) {
+				for(size_t k = 0; k + 1 < prog.size(); ++k){
+					if(prog[k].target.empty())
+						throw std::runtime_error("Statement " + ofToString((int)k + 1) +
+							" has no effect: only the last statement may be a bare expression");
+				}
+				if(!prog.back().target.empty())
+					throw std::runtime_error("Formula must end with an expression, but the last statement assigns to '" +
+						prog.back().target + "'");
+			} else {
+				for(size_t k = 0; k < prog.size(); ++k) {
+					if(prog[k].target.empty()) {
+						throw std::runtime_error("Statement " + ofToString((int)k + 1) +
+							" is a bare expression; assign explicit formulas to $o1, $o2, etc.");
+					}
+				}
+				if(!hasOutputAssignment)
+					throw std::runtime_error("At least one explicit output must be assigned, for example $o1 = $i1");
 			}
-			if(!prog.back().target.empty())
-				throw std::runtime_error("Formula must end with an expression, but the last statement assigns to '" +
-										 prog.back().target + "'");
 
+			syncPorts(layout);
 			program = std::move(prog);
 			formulaValid = true;
 		} catch(const std::exception& e) {
@@ -537,6 +1137,15 @@ private:
 		return reserved.count(n) > 0;
 	}
 
+	static bool isPlainIdentifier(const std::string& name) {
+		if(name.empty() || !(std::isalpha(static_cast<unsigned char>(name[0])) || name[0] == '_'))
+			return false;
+		for(size_t i = 1; i < name.size(); ++i) {
+			if(!(std::isalnum(static_cast<unsigned char>(name[i])) || name[i] == '_')) return false;
+		}
+		return true;
+	}
+
 	// Recognises "name = expr". Returns false for anything else, including
 	// comparisons such as "a == b", which stay ordinary expressions.
 	static bool splitAssignment(const std::string& seg, std::string& name, std::string& expr){
@@ -553,7 +1162,15 @@ private:
 		if(j >= seg.size() || seg[j] != '=')        return false;   // not an assignment
 		if(j + 1 < seg.size() && seg[j + 1] == '=') return false;   // "==" comparison
 
-		if(id[0] == '$') throw std::runtime_error("Cannot assign to input '" + id + "'");
+		if(id[0] == '$') {
+			int number = 0;
+			const PortKind kind = parsePortIdentifier(id, number);
+			if(kind == PortKind::LegacyInput || kind == PortKind::NamedInput)
+				throw std::runtime_error("Cannot assign to input '" + id + "'");
+			if(kind != PortKind::Output)
+				throw std::runtime_error("Invalid assignment target '" + id +
+					"' (outputs use $o1, $o2, etc.)");
+		}
 
 		name = id;
 		expr = seg.substr(j + 1);
