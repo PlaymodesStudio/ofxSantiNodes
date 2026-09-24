@@ -18,6 +18,7 @@ private:
     ofParameter<int> partialsNum;
     ofParameter<int> partialStart;
     ofParameter<float> partialJump;
+    ofParameter<float> partialPow;
     ofParameter<bool> subharmonic;
     ofParameter<int> harmonicShape;
     ofParameter<vector<float>> output;

@@ -5,25 +5,33 @@
 
 void harmonicSeries::setup() {
     description = "Generates a selectable range of harmonic or subharmonic series for given pitches. "
+                  "Pow redistributes the selected partials toward the low or high end of the range. "
                   "Offers different shapes for amplitude distributions across the harmonic series, as well a simulation of LP and HP filtering.";
     
     previousDetuneAmounts.clear();
     detuneFactors.clear();
 
+    addSeparator("SOURCE", ofColor(200));
     addParameter(pitch.set("Pitch", {0}, {-FLT_MAX}, {FLT_MAX}));
+    addParameter(ampIn.set("Amp In", {1}, {0}, {1}));
+    addParameter(subharmonic.set("Subharmonic", false));
+
+    addSeparator("PARTIAL RANGE", ofColor(200));
     addParameter(partialsNum.set("Partials", 1, 1, INT_MAX));
     addParameter(partialStart.set("Partial Start", 1, 1, INT_MAX));
     addParameter(partialJump.set("Partial Jump", 1.0f, 0.0f, FLT_MAX));
-    addParameter(subharmonic.set("Subharmonic", false));
-    addParameterDropdown(harmonicShape, "Shape", 0, {"None", "Square", "Saw", "Triangle"});
-    addParameter(ampIn.set("Amp In", {1}, {0}, {1}));
-    addParameter(lpCutoff.set("LP Cut", {1}, {0}, {1}));
-    addParameter(hpCutoff.set("HP Cut", {0}, {0}, {1}));
+    addParameter(partialPow.set("Pow", 1.0f, 0.05f, 8.0f));
+    addParameter(harmonicStretch.set("Stretch", 1.0f, 0.05f, 8.0f));
     addParameter(detuneAmount.set("Detune", {0}, {0}, {1}));
+
+    addSeparator("AMPLITUDE", ofColor(200));
+    addParameterDropdown(harmonicShape, "Shape", 0, {"None", "Square", "Saw", "Triangle"});
     addParameter(oddHarmonicAmp.set("Odd", 1.0f, 0.0f, 1.0f));
     addParameter(evenHarmonicAmp.set("Even", 1.0f, 0.0f, 1.0f));
-    addParameter(harmonicStretch.set("Stretch", 1.0f, 0.05f, 8.0f));
+    addParameter(lpCutoff.set("LP Cut", {1}, {0}, {1}));
+    addParameter(hpCutoff.set("HP Cut", {0}, {0}, {1}));
 
+    addSeparator("OUTPUTS", ofColor(200));
     addOutputParameter(output.set("Output Hz", {0}, {-FLT_MAX}, {FLT_MAX}));
     addOutputParameter(outputPitch.set("Output Pitch", {0}, {-FLT_MAX}, {FLT_MAX}));
     addOutputParameter(amplitudes.set("Amplitudes", {0}, {0}, {1}));
@@ -49,6 +57,10 @@ void harmonicSeries::setup() {
     })));
 
     listeners.push_back(std::make_unique<ofEventListener>(partialJump.newListener([this](float& value) {
+        calculate();
+    })));
+
+    listeners.push_back(std::make_unique<ofEventListener>(partialPow.newListener([this](float& value) {
         calculate();
     })));
 
@@ -148,6 +160,7 @@ void harmonicSeries::calculate() {
     int shapeIndex = harmonicShape.get();
     vector<float> inputAmplitudes = ampIn.get();
     vector<float> detuneAmounts = detuneAmount.get();
+    float partialPower = partialPow.get();
     float stretchFactor = harmonicStretch.get();
     float stretchedStart = (firstPartial == 1)
                            ? 1.0f
@@ -164,7 +177,16 @@ void harmonicSeries::calculate() {
         float evenAmp = evenHarmonicAmp.get();
 
         for (int partialOffset = 0; partialOffset < numPartials; partialOffset++) {
-            float partialValue = static_cast<float>(firstPartial) + partialOffset * partialStep;
+            int curvedPartialOffset = partialOffset;
+            if (numPartials > 1 && partialPower != 1.0f) {
+                double normalizedOffset = static_cast<double>(partialOffset) /
+                                          static_cast<double>(numPartials - 1);
+                curvedPartialOffset = static_cast<int>(std::round(
+                    std::pow(normalizedOffset, static_cast<double>(partialPower)) *
+                    static_cast<double>(numPartials - 1)));
+            }
+
+            float partialValue = static_cast<float>(firstPartial) + curvedPartialOffset * partialStep;
             bool isEvenPartial = std::abs(std::fmod(partialValue, 2.0f)) < 0.0001f;
             float stretchedPartial = (partialValue == 1.0f)
                                      ? 1.0f
