@@ -6,7 +6,14 @@
 #define TriggerNode_h
 
 #include "ofxOceanodeNodeModel.h"
+// Transport mode needs ofxOceanode's global transport (feature-globalTransport branch).
+// Without it the node compiles exactly as before.
+#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
+#include "ofxOceanodeDeterministicRandom.h"
+#endif
 #include <queue>
+#include <cfloat>
+#include <climits>
 
 class trigger : public ofxOceanodeNodeModel {
 public:
@@ -31,8 +38,7 @@ public:
             vector<float> trigOutTemp(f.size(), 0.0f);
             for(int i = 0; i < f.size(); i++){
                 if(lastInputPh[i] < 0.5f && f[i] >= 0.5f){
-                    float rnd = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-                    if(rnd < chance) {
+                    if(passes(i)) {
                         trigOutTemp[i] = 0.5f;
                     }
                 }
@@ -48,8 +54,7 @@ public:
             vector<float> trigOutTemp(vf.size(), 0.0f);
             for(int i = 0; i < vf.size(); i++){
                 if(vf[i] != lastChange[i]){
-                    float rnd = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-                    if(rnd < chance) {
+                    if(passes(i)) {
                         trigOutTemp[i] = 0.5f;
                     }
                 }
@@ -59,8 +64,7 @@ public:
         }));
 
         listeners.push(event.newListener([this](vector<float> &vf) {
-            float rnd = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-            if(rnd < chance) {
+            if(passes(0)) {
                 enqueueOutputValue(vector<float>(vf.size(), 0.5f));
                 return;
             }
@@ -74,8 +78,7 @@ public:
             vector<float> trigOutTemp(g.size(), 0.0f);
             for(int i = 0; i < g.size(); i++){
                 if(lastGate[i] <= 0.0f && g[i] > 0.0f){
-                    float rnd = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-                    if(rnd < chance) {
+                    if(passes(i)) {
                         trigOutTemp[i] = 0.5f;
                     }
                 }
@@ -83,6 +86,17 @@ public:
             enqueueOutputValue(trigOutTemp);
             lastGate = g;
         }));
+
+#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
+        // ---- Sync To Transport ----
+        // The chance roll becomes a pure function of (Seed, Step, lane): one decision per
+        // lane per step, so scrubbing the timeline gives the same pass/fail pattern as playback.
+        sessionSalt = ofxOceanodeDeterministicRandom::makeSessionSalt();
+        addInspectorParameter(syncToTransport_Param.set("Sync To Transport", false));
+        listeners.push(syncToTransport_Param.newListener([this](bool &b){
+            setTransportInputsVisible(b);
+        }));
+#endif
 
         // create a listener for your app's update event
         //ofAddListener(ofEvents().update, this, &trigger::update);
@@ -103,7 +117,50 @@ public:
         outputQueue.push(vector<float>(value.size(), 0.0f));
     }
 
+#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
+    void loadBeforeConnections(ofJson &json) override {
+        // Restore the mode before connections so saved "Step"/"Seed" connections find their inputs.
+        deserializeParameter(json, syncToTransport_Param);
+    }
+#endif
+
 private:
+    bool passes(int lane) {
+#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
+        if(syncToTransport_Param) return transportPasses(lane);
+#endif
+        float rnd = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+        return rnd < chance;
+    }
+
+#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
+    bool transportPasses(int lane) {
+        const auto &steps = step_Param.get();
+        const float stepValue = steps.empty() ? 0.0f : (lane < (int)steps.size() ? steps[lane] : steps[0]);
+        const int64_t step = ofxOceanodeDeterministicRandom::stepFromFloat(stepValue);
+        const uint64_t key = ofxOceanodeDeterministicRandom::seedKey(seed_Param.get(), sessionSalt);
+        return ofxOceanodeDeterministicRandom::uniform(key, step, static_cast<uint64_t>(lane)) < chance;
+    }
+
+    void setTransportInputsVisible(bool visible) {
+        const bool present = getParameterGroup().contains("Step");
+        if(visible && !present) {
+            addParameter(step_Param.set("Step", {0}, {0}, {FLT_MAX}));
+            addParameter(seed_Param.set("Seed", 0, INT_MIN, INT_MAX));
+        } else if(!visible && present) {
+            getOceanodeParameter(step_Param).removeAllConnections();
+            getOceanodeParameter(seed_Param).removeAllConnections();
+            removeParameter("Step");
+            removeParameter("Seed");
+        }
+    }
+
+    ofParameter<bool> syncToTransport_Param;
+    ofParameter<vector<float>> step_Param; // only present in Sync To Transport mode
+    ofParameter<int> seed_Param;           // only present in Sync To Transport mode
+    uint64_t sessionSalt = 0;
+#endif
+
     ofParameter<vector<float>> inputPh;
     ofParameter<vector<float>> change;
     ofParameter<vector<float>> event;

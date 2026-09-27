@@ -2,6 +2,11 @@
 #define chancePass_h
 
 #include "ofxOceanodeNodeModel.h"
+// Transport mode needs ofxOceanode's global transport (feature-globalTransport branch).
+// Without it the node compiles exactly as before.
+#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
+#include "ofxOceanodeDeterministicRandom.h"
+#endif
 
 #include <vector>
 #include <random>
@@ -29,8 +34,9 @@ public:
 			std::vector<float> tempOut(output->size());
 			for (size_t i = 0; i < vf.size(); ++i) {
 				// if pass → take new number, else keep old output
-				tempOut[i] = (dist(mt[i]) < getProbability(i)) ? vf[i] : output->at(i);
+				tempOut[i] = roll(i) ? vf[i] : output->at(i);
 			}
+			lastStreamWasGate = false;
 			output = tempOut;
 		}));
 
@@ -39,23 +45,104 @@ public:
 			ensureVectorSize(vf.size());
 			std::vector<float> tempOut(output->size());
 			for (size_t i = 0; i < vf.size(); ++i) {
-				if (vf[i] > 0.0f && dist(mt[i]) < getProbability(i)) {
+				if (vf[i] > 0.0f && roll(i)) {
 					tempOut[i] = vf[i];
 				} else {
 					tempOut[i] = 0.0f;
 				}
 			}
+			lastStreamWasGate = true;
 			output = tempOut;
 		}));
 
 		// SEED CHANGE
 		listeners.push(seed.newListener([this](std::vector<int> &){
 			setSeed();
+#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
+			if (syncToTransport) reapplyTransport();
+#endif
 		}));
+
+#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
+		// ---- Sync To Transport ----
+		// The pass/fail roll becomes a pure function of (Seed, Step, lane): one decision per
+		// lane per step, so scrubbing gives the same pattern as playback. Gate mode is fully
+		// position-exact; Number mode holds the last passed value, which after a jump is
+		// whatever passed since the jump.
+		sessionSalt = ofxOceanodeDeterministicRandom::makeSessionSalt();
+		addInspectorParameter(syncToTransport.set("Sync To Transport", false));
+		listeners.push(syncToTransport.newListener([this](bool &b){
+			setStepInputVisible(b);
+			if (b) reapplyTransport();
+		}));
+		listeners.push(stepIn.newListener([this](std::vector<float> &){
+			if (syncToTransport) reapplyTransport();
+		}));
+#endif
 	}
+
+#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
+	void loadBeforeConnections(ofJson &json) override {
+		// Restore the mode before connections so a saved "Step" connection finds its input.
+		deserializeParameter(json, syncToTransport);
+	}
+#endif
 
 private:
 	ofEventListeners listeners;
+
+	// ---- transport mode ----
+	bool lastStreamWasGate = true;
+
+	bool roll(size_t i) {
+#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
+		if (syncToTransport) return transportRoll(i);
+#endif
+		return dist(mt[i]) < getProbability(i);
+	}
+
+#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
+	ofParameter<bool>               syncToTransport;
+	ofParameter<std::vector<float>> stepIn; // only present in Sync To Transport mode
+	uint64_t sessionSalt = 0;
+
+	bool transportRoll(size_t i) {
+		const auto &steps = stepIn.get();
+		const float stepValue = steps.empty() ? 0.0f : (i < steps.size() ? steps[i] : steps[0]);
+		const int64_t step = ofxOceanodeDeterministicRandom::stepFromFloat(stepValue);
+		return ofxOceanodeDeterministicRandom::uniform(laneKey(i), step, 0) < getProbability(i);
+	}
+
+	// Same seed rules as setSeed(): per-lane seeds, or single seed + lane offset; 0 = session-random.
+	uint64_t laneKey(size_t i) {
+		const auto &s = seed.get();
+		int laneSeed = 0;
+		if (!s.empty()) laneSeed = (s.size() == output->size()) ? s[i] : (s[0] == 0 ? 0 : s[0] + (int)i);
+		if (laneSeed == 0) return ofxOceanodeDeterministicRandom::mix(sessionSalt ^ (uint64_t)i);
+		return ofxOceanodeDeterministicRandom::seedKey(laneSeed, sessionSalt);
+	}
+
+	// Re-evaluate the current input for the current step (step or seed changed).
+	void reapplyTransport() {
+		if (lastStreamWasGate) {
+			auto g = gateIn.get();
+			gateIn.set(g);
+		} else {
+			auto n = numberIn.get();
+			numberIn.set(n);
+		}
+	}
+
+	void setStepInputVisible(bool visible) {
+		const bool present = getParameterGroup().contains("Step");
+		if (visible && !present) {
+			addParameter(stepIn.set("Step", {0.0f}, {0.0f}, {FLT_MAX}));
+		} else if (!visible && present) {
+			getOceanodeParameter(stepIn).removeAllConnections();
+			removeParameter("Step");
+		}
+	}
+#endif
 
 	ofParameter<std::vector<float>> numberIn;
 	ofParameter<std::vector<float>> gateIn;
