@@ -20,13 +20,15 @@ public:
     UnrepeatedRandom() : ofxOceanodeNodeModel("Unrepeated Random") {
         description = "This module generates random numbers in a given range. "
                       "It has a sequential mode where it ensures all numbers within the range "
-                      "are generated before repeating. It supports multiple triggers and provides "
-                      "synchronized random number arrays.";
+                      "are generated before repeating. Trigger reacts to rising edges; EvenTrig "
+                      "is a legacy-named event input that reacts to every received update.";
     }
 
     void setup() override {
         addParameter(trigger.set("Trigger", {0}, {0}, {1}));
-        addParameter(evenTrig.set("EvenTrig", {0}, {0}, {1}));
+        // Keep the legacy parameter name so existing presets and connections load.
+        // Unlike Trigger, this is an event input: any received value is valid.
+        addParameter(evenTrig.set("EvenTrig", {0}, {-FLT_MAX}, {FLT_MAX}));
         addParameter(min.set("Min", 0, 0, 100));
         addParameter(max.set("Max", 10, 0, 100));
         addParameter(sequentialMode.set("Sequential Mode", false));
@@ -37,9 +39,9 @@ public:
             generateRandomWrapper(trigger, previousTriggerTrigger);
         });
 
-        evenTrigListener = evenTrig.newListener([this](vector<float>& evenTrigger){
+        evenTrigListener = evenTrig.newListener([this](vector<float>& eventTrigger){
             if(isTransportMode()) return;
-            generateRandomWrapper(evenTrigger, previousTriggerEvenTrig);
+            generateRandomFromEvent(eventTrigger);
         });
 
 #if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
@@ -90,6 +92,21 @@ public:
             }
         }
         previousTriggerSource = triggerSource;
+        output = outputVec;
+    }
+
+    void generateRandomFromEvent(const vector<float>& eventSource) {
+        std::lock_guard<std::mutex> lock(mutex);
+        const int newSize = static_cast<int>(eventSource.size());
+        outputVec.resize(newSize);
+        sequences.resize(newSize);
+
+        // The parameter update is the event. Its numeric value and edge do not
+        // matter, so every lane is regenerated for each received update.
+        for(int i = 0; i < newSize; i++) {
+            generateRandom(i);
+        }
+
         output = outputVec;
     }
 
@@ -275,8 +292,7 @@ private:
 #endif
 
     // ======================= Free-running mode =======================
-    vector<float> previousTriggerTrigger;  // renamed
-    vector<float> previousTriggerEvenTrig;  // new
+    vector<float> previousTriggerTrigger;
     vector<int> outputVec;
     vector<vector<int>> sequences;
     ofParameter<vector<float>> trigger;
