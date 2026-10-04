@@ -10,6 +10,7 @@
 #include "BPMControl.h"
 #endif
 #include "cycleCount.h"
+#include "currentTime.h"
 #include "deltaTime.h"
 #include "divmult2ms.h"
 #include "framerateControl.h"
@@ -350,6 +351,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<BPMControl>("Santi/Timing");
 #endif
     o->registerModel<cycleCount>("Santi/Timing");
+    o->registerModel<currentTime>("Santi/Timing");
     o->registerModel<deltaTime>("Santi/Timing");
     o->registerModel<divmult2ms>("Santi/Timing");
     o->registerModel<framerateControl>("Santi/Timing");
