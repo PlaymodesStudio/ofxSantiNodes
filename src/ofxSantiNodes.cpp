@@ -230,7 +230,6 @@
 #include "spectrogramShift.h"
 #include "textureFlip.h"
 #include "textureSnapshot.h"
-#include "texUniForms.h"
 #include "zdepthConverter.h"
 
 // ─────────────────────────────────────────────
@@ -241,7 +240,6 @@
 #include "filenameExtractor.h"
 #include "ftos.h"
 #include "prepend.h"
-#include "probabilityDropdownList.h"
 #include "string2float.h"
 #include "stringBox.h"
 #include "stringComparator.h"
@@ -289,13 +287,6 @@
 #include "globalSnapshots.h"
 #include "snapshotClient.h"
 #include "snapshotServer.h"
-
-// ─────────────────────────────────────────────
-// OSC
-// ─────────────────────────────────────────────
-#ifdef OFXOCEANODE_USE_OSC
-#include "multiOscSender.h"
-#endif
 
 // ─────────────────────────────────────────────
 // MIDI
@@ -575,7 +566,6 @@ void registerModels(ofxOceanode *o)
     o->registerModel<spectrogramShift>("Santi/Textures");
     o->registerModel<textureFlip>("Santi/Textures");
     o->registerModel<textureSnapshot>("Santi/Textures");
-    o->registerModel<texUniForms>("Santi/Textures");
     o->registerModel<zdepthConverter>("Santi/Textures");
 
     // ─────────────────────────────────────────────
@@ -586,7 +576,6 @@ void registerModels(ofxOceanode *o)
     o->registerModel<filenameExtractor>("Santi/Strings");
     o->registerModel<ftos>("Santi/Strings");
     o->registerModel<prepend>("Santi/Strings");
-    o->registerModel<probabilityDropdownList>("Santi/Strings");
     o->registerModel<string2float>("Santi/Strings");
     o->registerModel<stringBox>("Santi/Strings");
     o->registerModel<stringComparator>("Santi/Strings");
@@ -632,13 +621,6 @@ void registerModels(ofxOceanode *o)
     o->registerModel<globalSnapshots>("Santi/Snapshots");
     o->registerModel<snapshotClient>("Santi/Snapshots");
     o->registerModel<snapshotServer>("Santi/Snapshots");
-
-    // ─────────────────────────────────────────────
-    // OSC
-    // ─────────────────────────────────────────────
-#ifdef OFXOCEANODE_USE_OSC
-    o->registerModel<multiOscSender>("Santi/OSC");
-#endif
 
     // ─────────────────────────────────────────────
     // MIDI
