@@ -3,6 +3,9 @@
 
 #include "ofxOceanodeNodeModel.h"
 #include "ofxOceanodeShared.h"
+#include "ofxOceanodeContainer.h"
+#include "ofxOceanodeNodeGui.h"
+#include "imgui_internal.h"
 #include <string>
 #include <regex>
 #include <cmath>
@@ -157,6 +160,7 @@ public:
 			// that the child window is using a 14 px font.
 			ImGui::PushFont(nullptr, childFontBase * (editorFontSize.get() / 14.0f));
 
+			const ImGuiID editorID = ImGui::GetID("##formulaML");
 			bool changed = ImGui::InputTextMultiline(
 				"##formulaML",
 				buf.data(), buf.size(),
@@ -173,6 +177,30 @@ public:
 				(void*)&buf
 			);
 			ImGui::PopFont();
+
+			// Idle, unselected canvas editors pass trackpad gestures through to the canvas.
+			// Keep normal editor scrolling when selected, editing, or rendered in Custom GUI.
+			auto* host = getHostContainer();
+			auto* nodeGui = host ? host->getGuiFromModel(this) : nullptr;
+			bool allowEditorScroll = customRegionContext.active || !nodeGui ||
+				nodeGui->getSelected() || ImGui::IsItemActive();
+			ImGuiWindow* editorWindow = ImGui::GetCurrentWindow();
+			ImGuiWindow* textWindow = nullptr;
+			for(auto* child : editorWindow->DC.ChildWindows){
+				if(child->ChildId == editorID){
+					textWindow = child;
+					if(GImGui->ActiveId != 0 && GImGui->ActiveIdWindow == child)
+						allowEditorScroll = true;
+					break;
+				}
+			}
+			auto setWheelScrolling = [allowEditorScroll](ImGuiWindow* window){
+				if(!window) return;
+				if(allowEditorScroll) window->Flags &= ~ImGuiWindowFlags_NoScrollWithMouse;
+				else window->Flags |= ImGuiWindowFlags_NoScrollWithMouse;
+			};
+			setWheelScrolling(editorWindow);
+			setWheelScrolling(textWindow);
 
 			if(changed){
 				llmStatusMsg.clear();
