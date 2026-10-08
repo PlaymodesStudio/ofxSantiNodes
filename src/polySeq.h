@@ -145,7 +145,13 @@ public:
 		if (json.count("CurrentSlots") == 1) {
 			currentSlots = json["CurrentSlots"].get<vector<int>>();
 		} else {
-			currentSlots = vector<int>(MAX_SLIDERS, 0);
+			currentSlots.clear();
+		}
+		// Presets store one slot per active track, not MAX_SLIDERS entries.
+		// Normalize before size.set() can trigger updateSizes().
+		currentSlots.resize(numSliders.get(), 0);
+		for (auto &currentSlot : currentSlots) {
+			currentSlot = std::max(0, std::min(currentSlot, NUM_SLOTS - 1));
 		}
 		
 		for (int slot = 0; slot < NUM_SLOTS; ++slot) {
@@ -169,9 +175,13 @@ public:
 	}
 	
 	void presetHasLoaded() override {
-		for (int i = 0; i < MAX_SLIDERS; i++) {
-			if (currentSlots[i] < allSlotData.size() && i < allSlotData[currentSlots[i]].size()) {
-				vectorValues[i] = allSlotData[currentSlots[i]][i];
+		const int activeTracks = std::min(numSliders.get(),
+			std::min(static_cast<int>(currentSlots.size()), static_cast<int>(vectorValues.size())));
+		for (int i = 0; i < activeTracks; i++) {
+			const int currentSlot = currentSlots[i];
+			if (currentSlot >= 0 && currentSlot < static_cast<int>(allSlotData.size()) &&
+				i < static_cast<int>(allSlotData[currentSlot].size())) {
+				vectorValues[i] = allSlotData[currentSlot][i];
 				// FIX: Do not assign the full vector to the parameter
 				// vectorValueParams[i] = vectorValues[i];
 			}
