@@ -37,6 +37,8 @@ globalSnapshots::globalSnapshots()
 , interpolationTargetSlot(-1)
 , interpolationBiPowValue(0.0f)
 {
+	// Preserve the snapshot matrix and its layout when the canvas hides ordinary node GUIs.
+	setFlags(ofxOceanodeNodeModelFlags_KeepGuiVisibleAtLowZoom);
 }
 
 void globalSnapshots::setContainer(ofxOceanodeContainer* c) {
@@ -380,6 +382,7 @@ void globalSnapshots::loadSnapshot(int slot) {
 }
 
 void globalSnapshots::renderSnapshotMatrix() {
+	const float zoom = ofxOceanodeShared::getZoomLevel();
 	ImGui::PushID("GlobalSnapshots");
 	const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
 	int rows = matrixRows.get();
@@ -442,8 +445,8 @@ void globalSnapshots::renderSnapshotMatrix() {
 
 			// Use invisible button for interaction and custom rendering
 			ImVec2 buttonSize_vec(
-				customRegionContext.active ? std::max(12.0f, customRegionContext.width / std::max(1, cols)) : buttonSize.get(),
-				customRegionContext.active ? std::max(10.0f, customRegionContext.height / std::max(1, rows)) : buttonSize.get()/1.5f
+				customRegionContext.active ? std::max(12.0f, customRegionContext.width / std::max(1, cols)) : buttonSize.get() * zoom,
+				customRegionContext.active ? std::max(10.0f, customRegionContext.height / std::max(1, rows)) : buttonSize.get() * zoom / 1.5f
 			);
 			ImVec2 p0 = ImGui::GetCursorScreenPos();
 			
@@ -460,7 +463,7 @@ void globalSnapshots::renderSnapshotMatrix() {
 				currentCol = buttonHoverCol;
 			}
 			
-			draw_list->AddRectFilled(p0, p1, ImGui::GetColorU32(currentCol), 3.0f);
+			draw_list->AddRectFilled(p0, p1, ImGui::GetColorU32(currentCol), 3.0f * zoom);
 			
 			// Draw centered multi-line text
 			ImVec2 textSize = ImGui::CalcTextSize(displayLabel.c_str());
