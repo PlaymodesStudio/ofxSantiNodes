@@ -111,7 +111,6 @@
 #include "distribute.h"
 #include "duplicator.h"
 #include "filterDuplicates.h"
-#include "generativeGrid2.h"
 #include "ignoreZeros.h"
 #include "indexHighlight.h"
 #include "indexRouter.h"
@@ -119,7 +118,6 @@
 #include "mergeVoid.h"
 #include "order.h"
 #include "permutations.h"
-#include "pitchGateFilter.h"
 #include "radialIndexer.h"
 #include "segmentLength.h"
 #include "splitMinMax.h"
@@ -144,6 +142,7 @@
 #include "vectorSetter.h"
 #include "vectorSplit.h"
 #include "vectorStorage.h"
+#include "vectorSymmetry.h"
 #include "vectorTimer.h"
 #include "vectorToCoordinates.h"
 
@@ -162,15 +161,6 @@
 #include "vectorMatrixSymmetry.h"
 
 // ─────────────────────────────────────────────
-// VECTOR GRAPHICS
-// ─────────────────────────────────────────────
-#include "barMaker.h"
-#include "generativeGrid.h"
-#include "pathMaker.h"
-#include "trimGroupPaths.h"
-#include "trimPathSequential.h"
-
-// ─────────────────────────────────────────────
 // PITCH
 // ─────────────────────────────────────────────
 #include "chordCypher.h"
@@ -182,6 +172,7 @@
 #include "harmonyDetector.h"
 #include "jazzStandards.h"
 #include "pitchClassLoad.h"
+#include "pitchGateFilter.h"
 #include "scalaTuning.h"
 
 // ─────────────────────────────────────────────
@@ -285,21 +276,14 @@
 // SNAPSHOTS
 // ─────────────────────────────────────────────
 #include "globalSnapshots.h"
-#include "snapshotClient.h"
-#include "snapshotServer.h"
 
 // ─────────────────────────────────────────────
 // MIDI
 // ─────────────────────────────────────────────
+#ifdef OFXOCEANODE_USE_MIDI
 #include "rotoControlConfig.h"
+#endif
 #include "midiKeyboardEmulator.h"
-
-// ─────────────────────────────────────────────
-// TTS (Text-to-Speech)
-// ─────────────────────────────────────────────
-#include "catotron.h"           // class is: Catotron
-#include "OpenAITTS.h"
-#include "TTS.h"
 
 // ─────────────────────────────────────────────
 // GENERAL / UTILITY
@@ -315,14 +299,6 @@
 #include "shell.h"
 #include "keystroke.h"
 #include "dataDelay.h"
-
-// ─────────────────────────────────────────────
-// THALASTASI
-// ─────────────────────────────────────────────
-#include "MPGeneTable.h"        // class is: geneTable
-#include "table.h"
-#include "tableRowId.h"
-#include "verticalProfileTable.h"  // class is: verticalProfile
 
 // ─────────────────────────────────────────────
 // PORTAL SELECTORS
@@ -364,7 +340,6 @@ void registerModels(ofxOceanode *o)
     o->registerModel<euclideanPatterns>("Santi/Sequencers");
     o->registerModel<euclideanTicks>("Santi/Sequencers");
     o->registerModel<euclideanTicksPoly>("Santi/Sequencers");
-    o->registerModel<gateDuration>("Santi/Sequencers");
     o->registerModel<markovVector>("Santi/Sequencers");
     o->registerModel<noteMatrix>("Santi/Sequencers");
     o->registerModel<pianoRoll>("Santi/Sequencers");
@@ -400,6 +375,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<edgeDetector>("Santi/Events");
     o->registerModel<eventCounter>("Santi/Events");
     o->registerModel<eventGate>("Santi/Events");
+    o->registerModel<gateDuration>("Santi/Events");
     o->registerModel<flipflop>("Santi/Events");
     o->registerModel<floatToBool>("Santi/Events");
     o->registerModel<floatToVoid>("Santi/Events");
@@ -445,7 +421,6 @@ void registerModels(ofxOceanode *o)
     o->registerModel<distribute>("Santi/Vectors");
     o->registerModel<duplicator>("Santi/Vectors");
     o->registerModel<filterDuplicates>("Santi/Vectors");
-    o->registerModel<generativeGrid2>("Santi/Vectors");
     o->registerModel<ignoreZeros>("Santi/Vectors");
     o->registerModel<indexHighlight>("Santi/Vectors");
     o->registerModel<indexRouter>("Santi/Vectors");
@@ -453,13 +428,11 @@ void registerModels(ofxOceanode *o)
     o->registerModel<mergeVoid>("Santi/Vectors");
     o->registerModel<order>("Santi/Vectors");
     o->registerModel<permutations>("Santi/Vectors");
-    o->registerModel<pitchGateFilter>("Santi/Vectors");
     o->registerModel<radialIndexer>("Santi/Vectors");
     o->registerModel<segmentLength>("Santi/Vectors");
     o->registerModel<splitMinMax>("Santi/Vectors");
     o->registerModel<splitResize>("Santi/Vectors");
     o->registerModel<splitRoute>("Santi/Vectors");
-    o->registerModel<trimGroupPaths>("Santi/Vectors");
     o->registerModel<valueIndex>("Santi/Vectors");
     o->registerModel<valuesChanged>("Santi/Vectors");
     o->registerModel<vecFilter>("Santi/Vectors");
@@ -479,6 +452,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<vectorSetter>("Santi/Vectors");
     o->registerModel<split>("Santi/Vectors");
     o->registerModel<vectorStorage>("Santi/Vectors");
+    o->registerModel<vectorSymmetry>("Santi/Vectors");
     o->registerModel<vectorTimer>("Santi/Vectors");
     o->registerModel<vectorToCoordinates>("Santi/Vectors");
 
@@ -497,14 +471,6 @@ void registerModels(ofxOceanode *o)
     o->registerModel<vectorMatrixSymmetry>("Santi/Matrix");
 
     // ─────────────────────────────────────────────
-    // VECTOR GRAPHICS
-    // ─────────────────────────────────────────────
-    o->registerModel<barMaker>("Santi/VectorGraphics");
-    o->registerModel<generativeGrid>("Santi/VectorGraphics");
-    o->registerModel<pathMaker>("Santi/VectorGraphics");
-    o->registerModel<trimPathSequential>("Santi/VectorGraphics");
-
-    // ─────────────────────────────────────────────
     // PITCH
     // ─────────────────────────────────────────────
     o->registerModel<chordCypher>("Santi/Pitch");
@@ -516,6 +482,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<harmonyDetector>("Santi/Pitch");
     o->registerModel<jazzStandards>("Santi/Pitch");
     o->registerModel<pitchClassLoad>("Santi/Pitch");
+    o->registerModel<pitchGateFilter>("Santi/Pitch");
     o->registerModel<scalaTuning>("Santi/Pitch");
 
     // ─────────────────────────────────────────────
@@ -619,21 +586,14 @@ void registerModels(ofxOceanode *o)
     // SNAPSHOTS
     // ─────────────────────────────────────────────
     o->registerModel<globalSnapshots>("Santi/Snapshots");
-    o->registerModel<snapshotClient>("Santi/Snapshots");
-    o->registerModel<snapshotServer>("Santi/Snapshots");
 
     // ─────────────────────────────────────────────
     // MIDI
     // ─────────────────────────────────────────────
     o->registerModel<midiKeyboardEmulator>("Santi/MIDI");
+#ifdef OFXOCEANODE_USE_MIDI
     o->registerModel<rotoControlConfig>("Santi/MIDI");
-
-    // ─────────────────────────────────────────────
-    // TTS (Text-to-Speech)
-    // ─────────────────────────────────────────────
-    o->registerModel<Catotron>("Santi/TTS");
-    o->registerModel<OpenAITTS>("Santi/TTS");
-    o->registerModel<TTS>("Santi/TTS");
+#endif
 
     // ─────────────────────────────────────────────
     // GENERAL / UTILITY
@@ -649,14 +609,6 @@ void registerModels(ofxOceanode *o)
     o->registerModel<shell>("Santi/General");
 	o->registerModel<keystroke>("Santi/General");
 	o->registerModel<dataDelay>("Santi/General");
-
-    // ─────────────────────────────────────────────
-    // THALASTASI
-    // ─────────────────────────────────────────────
-    o->registerModel<geneTable>("Santi/Thalastasi");
-    o->registerModel<table>("Santi/Thalastasi");
-    o->registerModel<tableRowId>("Santi/Thalastasi");
-    o->registerModel<verticalProfile>("Santi/Thalastasi");
 
     // ─────────────────────────────────────────────
     // PORTAL SELECTORS

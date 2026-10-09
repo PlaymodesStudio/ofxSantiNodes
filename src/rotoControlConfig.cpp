@@ -1,3 +1,4 @@
+#ifdef OFXOCEANODE_USE_MIDI
 #include "rotoControlConfig.h"
 #include "imgui.h"
 #include <thread>
@@ -2382,3 +2383,5 @@ void rotoControlConfig::receiveSwitchConfigFromDevice(int switchIndex) {
 	
 	ofLogVerbose("rotoControlConfig") << "Requested switch " << switchIndex << " config from device";
 }
+
+#endif // OFXOCEANODE_USE_MIDI

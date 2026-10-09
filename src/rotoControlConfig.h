@@ -1,6 +1,8 @@
 #ifndef rotoControlConfig_h
 #define rotoControlConfig_h
 
+#ifdef OFXOCEANODE_USE_MIDI
+
 #include "ofxOceanodeNodeModel.h"
 #include "ofSerial.h"
 #include "imgui.h"
@@ -205,4 +207,5 @@ private:
 
 };
 
+#endif // OFXOCEANODE_USE_MIDI
 #endif /* rotoControlConfig_h */

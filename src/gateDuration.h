@@ -16,16 +16,20 @@ public:
 		addOutputParameter(gateOutput.set("Output", {0}, {0}, {1}));
 		
 		// Initialize state tracking variables
-		lastGateValues.clear();
-		gateEndTimes.clear();
+		lastGateValues.assign(gateInput.get().size(), 0.0f);
+		gateEndTimes.assign(gateInput.get().size(), 0.0f);
 		
 		// Register listener for gate input changes
-		listener = gateInput.newListener([this](vector<float> &gates){
+		listener = gateInput.newListener([this](vector<float> &){
 			processGateChanges();
 		});
 	}
 	
-	void update(ofEventArgs &e) override {
+	void update(ofEventArgs &) override {
+		const size_t gateCount = gateInput.get().size();
+		// update() can run before the first input event (or after a resize).
+		lastGateValues.resize(gateCount, 0.0f);
+		gateEndTimes.resize(gateCount, 0.0f);
 		// Get current time
 		float currentTime = ofGetElapsedTimef();
 		
@@ -34,13 +38,13 @@ public:
 		bool outputChanged = false;
 		
 		// Make sure the output vector matches the input size
-		if (currentOutput.size() != gateInput->size()) {
-			currentOutput.resize(gateInput->size(), 0.0f);
+		if (currentOutput.size() != gateCount) {
+			currentOutput.resize(gateCount, 0.0f);
 			outputChanged = true;
 		}
 		
 		// Update gates based on timers
-		for (size_t i = 0; i < gateInput->size(); i++) {
+		for (size_t i = 0; i < gateCount; i++) {
 			// If the gate is currently active, check if it should turn off
 			if (currentOutput[i] > 0.5f && gateEndTimes[i] <= currentTime) {
 				currentOutput[i] = 0.0f;
