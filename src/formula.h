@@ -3,9 +3,9 @@
 
 #include "ofxOceanodeNodeModel.h"
 #include "ofxOceanodeShared.h"
-#include "ofxOceanodeContainer.h"
-#include "ofxOceanodeNodeGui.h"
+#include "ofxOceanodeColors.h"
 #include "imgui_internal.h"
+#include "formulaRequesty.h"
 #include <string>
 #include <regex>
 #include <cmath>
@@ -31,31 +31,13 @@
 
 class formula : public ofxOceanodeNodeModel {
 public:
-	formula() : ofxOceanodeNodeModel("Formula") {
-		// Use the same API-key locations as scDynGen's assistant.
-		auto tryReadKey = [this](const std::string& path) {
-			std::ifstream file(path);
-			if(!file) return false;
-			std::getline(file, llmApiKey);
-			return !llmApiKey.empty();
-		};
-
-		const char* envKey = std::getenv("ANTHROPIC_API_KEY");
-		if(envKey && *envKey) {
-			llmApiKey = envKey;
-		} else if(!tryReadKey(ofToDataPath("anthropic_api_key.txt"))) {
-			tryReadKey(ofFilePath::getUserHomeDir() + "/.anthropic_api_key");
-		}
-
-		while(!llmApiKey.empty() && std::isspace(static_cast<unsigned char>(llmApiKey.back()))) {
-			llmApiKey.pop_back();
-		}
-	}
+	formula() : ofxOceanodeNodeModel("Formula") {}
 
 	void setup() override {
+		refreshRequestyModels(false);
 		description =
 			"Math formula evaluator with vector support. Edit the formula on the node. "
-			"The built-in AI assistant can generate a new formula or repair the current one. "
+			"The Requesty AI assistant can generate a new formula or repair the current one. "
 			"Formula files can be loaded from or saved to the data/formulas library. "
 			"Use $i1, $i2... for automatically-created inputs and assign $o1, $o2... for outputs. "
 			"Legacy $1, $2... input names and a final bare-expression output remain supported. "
@@ -132,6 +114,11 @@ public:
 			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(90, 58, 130, 255));
 			ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(115, 78, 165, 255));
 			if(ImGui::Button(busy ? "..." : "AI", ImVec2(38.0f * zoom, 0)) && !busy) {
+				// A popup edits a draft; dismissal restores the last retained prompt.
+				cancelPromptEdit();
+				llmPromptBeforeEdit = llmPromptBuf;
+				llmPromptEditing = true;
+				llmPromptPopupId = ImGui::GetID("##formula_ai_popup");
 				ImGui::OpenPopup("##formula_ai_popup");
 			}
 			ImGui::PopStyleColor(3);
@@ -178,12 +165,8 @@ public:
 			);
 			ImGui::PopFont();
 
-			// Idle, unselected canvas editors pass trackpad gestures through to the canvas.
-			// Keep normal editor scrolling when selected, editing, or rendered in Custom GUI.
-			auto* host = getHostContainer();
-			auto* nodeGui = host ? host->getGuiFromModel(this) : nullptr;
-			bool allowEditorScroll = customRegionContext.active || !nodeGui ||
-				nodeGui->getSelected() || ImGui::IsItemActive();
+			// Only the active editor captures wheel scrolling; node selection is irrelevant.
+			bool allowEditorScroll = ImGui::IsItemActive();
 			ImGuiWindow* editorWindow = ImGui::GetCurrentWindow();
 			ImGuiWindow* textWindow = nullptr;
 			for(auto* child : editorWindow->DC.ChildWindows){
@@ -232,7 +215,20 @@ public:
 		rebuildEvaluator();
 	}
 
+	void presetSave(ofJson& json) override {
+		json["requesty_model"] = llmModel;
+	}
+
+	void presetRecallAfterSettingParameters(ofJson& json) override {
+		if(json.contains("requesty_model") && json["requesty_model"].is_string() &&
+			!json["requesty_model"].get<std::string>().empty()) {
+			llmModel = json["requesty_model"].get<std::string>();
+			llmProvider = providerForModel(llmModel);
+		}
+	}
+
 	void update(ofEventArgs &args) override {
+		if(llmCatalogue) llmCatalogue->poll();
 		pollLLMResult();
 		if(formulaString.get() != previousFormula) {
 			previousFormula = formulaString.get();
@@ -260,6 +256,10 @@ private:
 
 	// ===== AI formula assistant =====
 	std::string              llmApiKey;
+	std::string              llmModel = "zai/glm-5.3-flash";
+	std::string              llmProvider = "zai";
+	char                     llmProviderSearch[128] = {};
+	std::shared_ptr<formula_requesty::Catalogue> llmCatalogue;
 	std::future<std::string> llmFuture;
 	std::atomic<bool>        llmPending { false };
 	std::atomic<bool>        llmDone { false };
@@ -267,6 +267,9 @@ private:
 	bool                     llmFixMode = false;
 	std::string              llmStatusMsg;
 	char                     llmPromptBuf[2048] = {};
+	std::string              llmPromptBeforeEdit;
+	bool                     llmPromptEditing = false;
+	ImGuiID                  llmPromptPopupId = 0;
 
 	// Change tracking
 	std::string previousFormula = "";
@@ -320,16 +323,6 @@ $o1 = if($i1 > 0, $i1, 0)
 )FORMULA_PROMPT";
 	}
 
-	static std::string shellQuote(const std::string& value) {
-		std::string quoted = "'";
-		for(char c : value) {
-			if(c == '\'') quoted += "'\\''";
-			else quoted.push_back(c);
-		}
-		quoted.push_back('\'');
-		return quoted;
-	}
-
 	static std::string stripCodeFences(std::string result) {
 		result = trimStr(result);
 		if(result.rfind("```", 0) != 0) return result;
@@ -342,63 +335,144 @@ $o1 = if($i1 > 0, $i1, 0)
 		return trimStr(result);
 	}
 
-	static std::string callAnthropicAPI(const std::string& fullPrompt,
-										const std::string& systemPrompt,
-										const std::string& apiKey) {
+	static std::string providerForModel(const std::string& id) {
+		const auto slash = id.find('/');
+		return slash == std::string::npos ? "Requesty" : id.substr(0, slash);
+	}
+
+	void refreshRequestyModels(bool force) {
+		// Resolve the app's data path, never an installation-specific absolute path.
+		std::ifstream config(ofToDataPath("config/requesty.md"));
+		std::string key = formula_requesty::parseKey(config);
+		if(key.empty()) {
+			const char* environmentKey = std::getenv("REQUESTY_API_KEY");
+			if(environmentKey) key = formula_requesty::trim(environmentKey);
+		}
+		llmApiKey = key;
+		if(key.empty()) { llmCatalogue.reset(); return; }
+		llmCatalogue = formula_requesty::sharedCatalogue(key);
+		if(force) llmCatalogue->refresh(key);
+	}
+
+	const formula_requesty::Model* selectedRequestyModel() const {
+		if(!llmCatalogue || !llmCatalogue->loaded) return nullptr;
+		for(const auto& model : llmCatalogue->models) {
+			if(model.id == llmModel && model.provider == llmProvider) return &model;
+		}
+		return nullptr;
+	}
+
+	void drawRequestyModels() {
+		if(llmCatalogue) llmCatalogue->poll();
+		const bool disabled = llmPending.load();
+		if(disabled) ImGui::BeginDisabled();
+		std::set<std::string> providers;
+		if(llmCatalogue) for(const auto& model : llmCatalogue->models) providers.insert(model.provider);
+		ImGui::SetNextItemWidth(150);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(260, 0),
+			ImVec2(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
+		if(ImGui::BeginCombo("Provider##formula_requesty", llmProvider.c_str(), ImGuiComboFlags_HeightLarge)) {
+			if(ImGui::IsWindowAppearing()) {
+				llmProviderSearch[0] = '\0';
+				ImGui::SetKeyboardFocusHere();
+			}
+			ImGui::SetNextItemWidth(-1);
+			ImGui::InputTextWithHint("##provider_search", "Search providers...",
+				llmProviderSearch, sizeof(llmProviderSearch));
+			ImGui::Separator();
+			const auto query = ofToLower(formula_requesty::trim(llmProviderSearch));
+			// Keep the search field visible while the filtered results scroll.
+			if(ImGui::BeginChild("##provider_results", ImVec2(0, ImGui::GetTextLineHeightWithSpacing() * 10), false)) {
+				bool hasMatches = false;
+				for(const auto& provider : providers) {
+					if(!query.empty() && ofToLower(provider).find(query) == std::string::npos) continue;
+					hasMatches = true;
+					if(ImGui::Selectable(provider.c_str(), provider == llmProvider)) {
+						llmProvider = provider;
+						if(providerForModel(llmModel) != provider) {
+							for(const auto& model : llmCatalogue->models) {
+								if(model.provider == provider) { llmModel = model.id; break; }
+							}
+						}
+						ImGui::CloseCurrentPopup();
+					}
+				}
+				if(!hasMatches) ImGui::TextDisabled("No matching providers");
+			}
+			ImGui::EndChild();
+			ImGui::EndCombo();
+		}
+		const auto slash = llmModel.find('/');
+		const auto modelName = slash == std::string::npos ? llmModel : llmModel.substr(slash + 1);
+		ImGui::SetNextItemWidth(355);
+		const float modelPopupWidth = std::max(355.0f,
+			std::min(780.0f, ImGui::GetMainViewport()->WorkSize.x - 24.0f));
+		ImGui::SetNextWindowSizeConstraints(ImVec2(modelPopupWidth, 0), ImVec2(modelPopupWidth, 400));
+		if(ImGui::BeginCombo("Model##formula_requesty", modelName.c_str())) {
+			// Match the Nodes list stripes rather than the theme's global table colours.
+			ImGui::PushStyleColor(ImGuiCol_TableRowBg, OceanodeColors::ZebraEven);
+			ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, OceanodeColors::ZebraOdd);
+			ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, ImGui::GetStyleColorVec4(ImGuiCol_PopupBg));
+			if(ImGui::BeginTable("##formula_model_details", 4,
+				ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
+				ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthStretch);
+				ImGui::TableSetupColumn("Context (tokens)", ImGuiTableColumnFlags_WidthFixed, 125);
+				ImGui::TableSetupColumn("Input ($/M)", ImGuiTableColumnFlags_WidthFixed, 105);
+				ImGui::TableSetupColumn("Output ($/M)", ImGuiTableColumnFlags_WidthFixed, 105);
+				ImGui::TableHeadersRow();
+				if(llmCatalogue) for(const auto& model : llmCatalogue->models) {
+					if(model.provider != llmProvider) continue;
+					ImGui::PushID(model.id.c_str());
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0);
+					const bool selected = model.id == llmModel;
+					if(ImGui::Selectable(model.name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
+						llmModel = model.id;
+					if(selected) ImGui::SetItemDefaultFocus();
+					if(ImGui::IsItemHovered()) {
+						ImGui::BeginTooltip();
+						ImGui::TextUnformatted(model.id.c_str());
+						if(model.inputPrice.max > model.inputPrice.min || model.outputPrice.max > model.outputPrice.min)
+							ImGui::TextUnformatted("Price ranges reflect rates for different prompt lengths.");
+						ImGui::EndTooltip();
+					}
+					ImGui::TableSetColumnIndex(1);
+					ImGui::TextUnformatted(formula_requesty::formatContextWindow(model.contextWindow).c_str());
+					ImGui::TableSetColumnIndex(2);
+					ImGui::TextUnformatted(formula_requesty::formatPricePerMillion(model.inputPrice).c_str());
+					ImGui::TableSetColumnIndex(3);
+					ImGui::TextUnformatted(formula_requesty::formatPricePerMillion(model.outputPrice).c_str());
+					ImGui::PopID();
+				}
+				ImGui::EndTable();
+			}
+			ImGui::PopStyleColor(3);
+			ImGui::EndCombo();
+		}
+		const bool refreshing = llmCatalogue && llmCatalogue->pending;
+		if(refreshing) ImGui::BeginDisabled();
+		if(ImGui::Button("Refresh models##formula_requesty")) refreshRequestyModels(true);
+		if(refreshing) ImGui::EndDisabled();
+		if(disabled) ImGui::EndDisabled();
+		ImGui::SameLine();
+		if(refreshing) ImGui::TextDisabled("Loading models...");
+		else if(llmCatalogue && llmCatalogue->loaded)
+			ImGui::TextDisabled("%d models", static_cast<int>(llmCatalogue->models.size()));
+		if(llmCatalogue && !llmCatalogue->error.empty())
+			ImGui::TextWrapped("Could not refresh models: %s", llmCatalogue->error.c_str());
+		if(llmCatalogue && llmCatalogue->loaded && !selectedRequestyModel())
+			ImGui::TextWrapped("Selected model is unavailable. Choose another provider/model or refresh.");
+	}
+
+	static std::string callRequestyAPI(const std::string& fullPrompt,
+		const std::string& systemPrompt, const std::string& apiKey,
+		const std::string& model, int maxTokens) {
 		try {
-			ofJson requestBody = {
-				{"model", "claude-sonnet-4-5"},
-				{"max_tokens", 1024},
-				{"system", systemPrompt},
+			const ofJson body = {
+				{"model", model}, {"max_tokens", maxTokens}, {"system", systemPrompt},
 				{"messages", ofJson::array({{{"role", "user"}, {"content", fullPrompt}}})}
 			};
-
-			static std::atomic<unsigned long long> requestCounter { 0 };
-			const auto ticks = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-			const auto sequence = requestCounter.fetch_add(1);
-			std::string tmpDir = std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp";
-			if(!tmpDir.empty() && tmpDir.back() != '/') tmpDir.push_back('/');
-			const std::string tmpPath = tmpDir + "formula_api_req_" +
-				std::to_string(ticks) + "_" + std::to_string(sequence) + ".json";
-
-			{
-				std::ofstream file(tmpPath);
-				if(!file) return "Error: cannot create the temporary API request";
-				file << requestBody.dump();
-			}
-
-			const std::string command =
-				"curl -sS --connect-timeout 10 --max-time 90"
-				" -X POST https://api.anthropic.com/v1/messages"
-				" -H " + shellQuote("content-type: application/json") +
-				" -H " + shellQuote("x-api-key: " + apiKey) +
-				" -H " + shellQuote("anthropic-version: 2023-06-01") +
-				" -d @" + shellQuote(tmpPath) + " 2>&1";
-
-			FILE* pipe = popen(command.c_str(), "r");
-			if(!pipe) {
-				std::remove(tmpPath.c_str());
-				return "Error: could not start curl";
-			}
-
-			std::string response;
-			char chunk[4096];
-			while(fgets(chunk, sizeof(chunk), pipe)) response += chunk;
-			const int curlStatus = pclose(pipe);
-			std::remove(tmpPath.c_str());
-
-			if(response.empty()) {
-				return curlStatus == 0 ? "Error: empty API response" : "Error: API request failed";
-			}
-
-			ofJson object = ofJson::parse(response);
-			if(object.contains("error")) {
-				return "API error: " + object["error"].value("message", "unknown error");
-			}
-			if(!object.contains("content") || !object["content"].is_array() || object["content"].empty()) {
-				return "Error: unexpected API response";
-			}
-			return object["content"][0].value("text", "");
+			return formula_requesty::parseFormula(formula_requesty::request(apiKey, &body));
 		} catch(const std::exception& e) {
 			return std::string("Error: ") + e.what();
 		}
@@ -413,6 +487,17 @@ $o1 = if($i1 > 0, $i1, 0)
 			return;
 		}
 
+		const auto* selectedModel = selectedRequestyModel();
+		if(!selectedModel) {
+			llmStatusMsg = "Choose an available Requesty model before generating.";
+			llmHasError = true;
+			llmDone.store(true);
+			return;
+		}
+		const std::string model = selectedModel->id;
+		const int maxTokens = selectedModel->maxOutputTokens;
+		// Submission retains this prompt even if the API request later fails.
+		llmPromptBeforeEdit = userPrompt;
 		llmPending.store(true);
 		llmDone.store(false);
 		llmHasError = false;
@@ -434,8 +519,8 @@ $o1 = if($i1 > 0, $i1, 0)
 		}
 
 		llmFuture = std::async(std::launch::async,
-			[fullPrompt, systemPrompt, apiKey]() {
-				return callAnthropicAPI(fullPrompt, systemPrompt, apiKey);
+			[fullPrompt, systemPrompt, apiKey, model, maxTokens]() {
+				return callRequestyAPI(fullPrompt, systemPrompt, apiKey, model, maxTokens);
 			});
 	}
 
@@ -451,6 +536,13 @@ $o1 = if($i1 > 0, $i1, 0)
 			llmHasError = true;
 		} else {
 			result = stripCodeFences(result);
+			if(result.empty()) {
+				llmStatusMsg = "The model returned an empty formula. The current formula was kept unchanged.";
+				llmHasError = true;
+				llmPending.store(false);
+				llmDone.store(true);
+				return;
+			}
 			formulaBuf = result;
 			formulaString.set(result);
 			previousFormula = result;
@@ -467,12 +559,25 @@ $o1 = if($i1 > 0, $i1, 0)
 		llmDone.store(true);
 	}
 
+	void cancelPromptEdit() {
+		if(!llmPromptEditing) return;
+		std::snprintf(llmPromptBuf, sizeof(llmPromptBuf), "%s", llmPromptBeforeEdit.c_str());
+		llmPromptEditing = false;
+		llmPromptPopupId = 0;
+	}
+
 	void drawAIPopup() {
-		ImGui::SetNextWindowSize(ImVec2(520, 235), ImGuiCond_Appearing);
-		if(!ImGui::BeginPopup("##formula_ai_popup", ImGuiWindowFlags_None)) return;
+		ImGui::SetNextWindowSize(ImVec2(560, 390), ImGuiCond_Appearing);
+		const ImGuiID popupId = ImGui::GetID("##formula_ai_popup");
+		if(!ImGui::BeginPopup("##formula_ai_popup", ImGuiWindowFlags_None)) {
+			// Escape/outside-click dismissal is also cancellation. The same node may
+			// render in both Canvas and Custom GUI; only its owning popup can cancel.
+			if(llmPromptPopupId == popupId) cancelPromptEdit();
+			return;
+		}
 
 		ImGui::TextColored(ImVec4(0.72f, 0.60f, 1.0f, 1.0f),
-			"Ask Claude to create a Formula expression");
+			"Create a Formula expression with Requesty");
 		ImGui::SameLine();
 		if(llmApiKey.empty()) {
 			ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "  [No API key]");
@@ -480,6 +585,8 @@ $o1 = if($i1 > 0, $i1, 0)
 			ImGui::TextColored(ImVec4(0.35f, 1.0f, 0.55f, 1.0f), "  [Key loaded]");
 		}
 		ImGui::TextDisabled("Ports are created automatically from $iN, legacy $N, and $oN references.");
+		ImGui::Spacing();
+		drawRequestyModels();
 		ImGui::Spacing();
 
 		auto modeButton = [](const char* label, bool active) {
@@ -515,20 +622,22 @@ $o1 = if($i1 > 0, $i1, 0)
 			ImGui::SameLine();
 			if(ImGui::Button("Close##formula_ai", ImVec2(80, 0))) {
 				llmDone.store(false);
+				cancelPromptEdit();
 				ImGui::CloseCurrentPopup();
 			}
 		} else if(llmDone.load()) {
 			llmDone.store(false);
+			cancelPromptEdit();
 			ImGui::CloseCurrentPopup();
 		} else {
 			ImGui::InputTextMultiline("##formula_ai_prompt", llmPromptBuf,
-				sizeof(llmPromptBuf), ImVec2(504, 100), ImGuiInputTextFlags_WordWrap);
+				sizeof(llmPromptBuf), ImVec2(-1, 100), ImGuiInputTextFlags_WordWrap);
 			ImGui::TextDisabled(llmFixMode
 				? "Describe the issue, or leave blank for a general repair."
 				: "Describe the vector or mathematical transformation you want.");
 			ImGui::Spacing();
 
-			const bool canSubmit = !llmApiKey.empty() &&
+			const bool canSubmit = !llmApiKey.empty() && selectedRequestyModel() &&
 				(llmFixMode || llmPromptBuf[0] != '\0');
 			if(!canSubmit) ImGui::BeginDisabled();
 			if(ImGui::Button(llmFixMode ? "Fix formula" : "Generate", ImVec2(100, 0))) {
@@ -537,15 +646,16 @@ $o1 = if($i1 > 0, $i1, 0)
 			if(!canSubmit) ImGui::EndDisabled();
 			ImGui::SameLine(0, 10);
 			if(ImGui::Button("Cancel##formula_ai", ImVec2(70, 0))) {
+				cancelPromptEdit();
 				ImGui::CloseCurrentPopup();
 			}
 
 			if(llmApiKey.empty()) {
 				ImGui::Spacing();
 				ImGui::TextColored(ImVec4(1, 0.65f, 0.3f, 1), "No API key found. Add one of:");
-				ImGui::TextDisabled("  data/anthropic_api_key.txt");
-				ImGui::TextDisabled("  ~/.anthropic_api_key");
-				ImGui::TextDisabled("  ANTHROPIC_API_KEY environment variable");
+				ImGui::TextDisabled("  data/config/requesty.md: api_key: \"your-key\"");
+				ImGui::TextDisabled("  REQUESTY_API_KEY environment variable");
+				ImGui::TextDisabled("Then click Refresh models to reload the key.");
 			}
 		}
 
