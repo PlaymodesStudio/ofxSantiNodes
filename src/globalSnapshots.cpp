@@ -385,6 +385,7 @@ void globalSnapshots::renderSnapshotMatrix() {
 	const float zoom = ofxOceanodeShared::getZoomLevel();
 	ImGui::PushID("GlobalSnapshots");
 	const auto& customRegionContext = ofxOceanodeShared::getCustomRegionRenderContext();
+	const bool drawLabels = customRegionContext.active || zoom > 0.5f;
 	int rows = matrixRows.get();
 	int cols = matrixCols.get();
 
@@ -465,13 +466,15 @@ void globalSnapshots::renderSnapshotMatrix() {
 			
 			draw_list->AddRectFilled(p0, p1, ImGui::GetColorU32(currentCol), 3.0f * zoom);
 			
-			// Draw centered multi-line text
-			ImVec2 textSize = ImGui::CalcTextSize(displayLabel.c_str());
-			ImVec2 textPos(
-				p0.x + (buttonSize_vec.x - textSize.x) * 0.5f,
-				p0.y + (buttonSize_vec.y - textSize.y) * 0.5f
-			);
-			draw_list->AddText(textPos, ImGui::GetColorU32(ImVec4(0.8f,0.8f,0.8f,1)), displayLabel.c_str());
+			if(drawLabels) {
+				// Draw centered multi-line text
+				ImVec2 textSize = ImGui::CalcTextSize(displayLabel.c_str());
+				ImVec2 textPos(
+					p0.x + (buttonSize_vec.x - textSize.x) * 0.5f,
+					p0.y + (buttonSize_vec.y - textSize.y) * 0.5f
+				);
+				draw_list->AddText(textPos, ImGui::GetColorU32(ImVec4(0.8f,0.8f,0.8f,1)), displayLabel.c_str());
+			}
 			
 			if(clicked) {
 				if(ImGui::GetIO().KeyShift) {
@@ -488,7 +491,13 @@ void globalSnapshots::renderSnapshotMatrix() {
 		}
 	}
 	
-	ImGui::Text(". . . . . . . . . . . . . . . . .");
+	const char* footer = ". . . . . . . . . . . . . . . . .";
+	if(drawLabels) {
+		ImGui::TextUnformatted(footer);
+	} else {
+		// Keep the same bounds when text is hidden at low canvas zoom.
+		ImGui::Dummy(ImGui::CalcTextSize(footer));
+	}
 	ImGui::PopID();
 }
 
