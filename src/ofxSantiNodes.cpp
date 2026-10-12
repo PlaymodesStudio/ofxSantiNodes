@@ -173,6 +173,7 @@
 #include "jazzStandards.h"
 #include "pitchClassLoad.h"
 #include "pitchGateFilter.h"
+#include "risset.h"
 #include "scalaTuning.h"
 
 // ─────────────────────────────────────────────
@@ -483,6 +484,7 @@ void registerModels(ofxOceanode *o)
     o->registerModel<jazzStandards>("Santi/Pitch");
     o->registerModel<pitchClassLoad>("Santi/Pitch");
     o->registerModel<pitchGateFilter>("Santi/Pitch");
+    o->registerModel<risset>("Santi/Pitch");
     o->registerModel<scalaTuning>("Santi/Pitch");
 
     // ─────────────────────────────────────────────
