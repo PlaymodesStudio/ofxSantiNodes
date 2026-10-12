@@ -5,7 +5,7 @@
 #include "ofxOceanodeShared.h"
 #include "ofxOceanodeColors.h"
 #include "imgui_internal.h"
-#include "formulaRequesty.h"
+#include "ofxOceanodeAIAssistant.h"
 #include <string>
 #include <regex>
 #include <cmath>
@@ -34,7 +34,7 @@ public:
 	formula() : ofxOceanodeNodeModel("Formula") {}
 
 	void setup() override {
-		refreshRequestyModels(false);
+		setupAIAssistant();
 		description =
 			"Math formula evaluator with vector support. Edit the formula on the node. "
 			"The Requesty AI assistant can generate a new formula or repair the current one. "
@@ -108,25 +108,12 @@ public:
 			ImGui::SetWindowFontScale(std::max(0.05f, parentFontPx / childFontBase));
 
 			ImGui::SetCursorPos(ImVec2(PADDING, PADDING));
-			bool busy = llmPending.load();
-			ImGui::PushStyleColor(ImGuiCol_Button,
-				busy ? IM_COL32(40, 20, 65, 255) : IM_COL32(60, 38, 90, 255));
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(90, 58, 130, 255));
-			ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(115, 78, 165, 255));
-			if(ImGui::Button(busy ? "..." : "AI", ImVec2(38.0f * zoom, 0)) && !busy) {
-				// A popup edits a draft; dismissal restores the last retained prompt.
-				cancelPromptEdit();
-				llmPromptBeforeEdit = llmPromptBuf;
-				llmPromptEditing = true;
-				llmPromptPopupId = ImGui::GetID("##formula_ai_popup");
-				ImGui::OpenPopup("##formula_ai_popup");
-			}
-			ImGui::PopStyleColor(3);
+			ai.drawButton(ImVec2(38.0f * zoom, 0));
 			ImGui::SameLine(0, 6.0f * zoom);
 			if(!formulaValid && !lastError.empty()) {
 				ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", lastError.c_str());
-			} else if(!llmStatusMsg.empty()) {
-				ImGui::TextDisabled("%s", llmStatusMsg.c_str());
+			} else if(!ai.getStatus().empty()) {
+				ImGui::TextDisabled("%s", ai.getStatus().c_str());
 			} else {
 				ImGui::TextDisabled("%d input%s / %d output%s",
 					static_cast<int>(inputParameters.size()), inputParameters.size() == 1 ? "" : "s",
@@ -186,14 +173,14 @@ public:
 			setWheelScrolling(textWindow);
 
 			if(changed){
-				llmStatusMsg.clear();
+				ai.clearStatus();
 				formulaBuf.assign(buf.data(), std::strlen(buf.data()));
 				if(formulaBuf != formulaString.get()){
 					formulaString.set(formulaBuf);
 				}
 			}
 
-			drawAIPopup();
+			ai.drawPopup();
 			ImGui::EndChild();
 		});
 		addCustomRegion(formulaEditorRegion, formulaEditorRegion.get());
@@ -216,20 +203,15 @@ public:
 	}
 
 	void presetSave(ofJson& json) override {
-		json["requesty_model"] = llmModel;
+		ai.save(json);
 	}
 
 	void presetRecallAfterSettingParameters(ofJson& json) override {
-		if(json.contains("requesty_model") && json["requesty_model"].is_string() &&
-			!json["requesty_model"].get<std::string>().empty()) {
-			llmModel = json["requesty_model"].get<std::string>();
-			llmProvider = providerForModel(llmModel);
-		}
+		ai.load(json);
 	}
 
 	void update(ofEventArgs &args) override {
-		if(llmCatalogue) llmCatalogue->poll();
-		pollLLMResult();
+		ai.update();
 		if(formulaString.get() != previousFormula) {
 			previousFormula = formulaString.get();
 			rebuildEvaluator();
@@ -255,21 +237,7 @@ private:
 	ofEventListener    saveFormulaListener;
 
 	// ===== AI formula assistant =====
-	std::string              llmApiKey;
-	std::string              llmModel = "zai/glm-5.3-flash";
-	std::string              llmProvider = "zai";
-	char                     llmProviderSearch[128] = {};
-	std::shared_ptr<formula_requesty::Catalogue> llmCatalogue;
-	std::future<std::string> llmFuture;
-	std::atomic<bool>        llmPending { false };
-	std::atomic<bool>        llmDone { false };
-	bool                     llmHasError = false;
-	bool                     llmFixMode = false;
-	std::string              llmStatusMsg;
-	char                     llmPromptBuf[2048] = {};
-	std::string              llmPromptBeforeEdit;
-	bool                     llmPromptEditing = false;
-	ImGuiID                  llmPromptPopupId = 0;
+	ofxOceanodeAIAssistant ai;
 
 	// Change tracking
 	std::string previousFormula = "";
@@ -323,343 +291,35 @@ $o1 = if($i1 > 0, $i1, 0)
 )FORMULA_PROMPT";
 	}
 
-	static std::string stripCodeFences(std::string result) {
-		result = trimStr(result);
-		if(result.rfind("```", 0) != 0) return result;
-
-		size_t firstLineEnd = result.find('\n');
-		if(firstLineEnd == std::string::npos) return result;
-		result.erase(0, firstLineEnd + 1);
-		size_t closingFence = result.rfind("```");
-		if(closingFence != std::string::npos) result.erase(closingFence);
-		return trimStr(result);
-	}
-
-	static std::string providerForModel(const std::string& id) {
-		const auto slash = id.find('/');
-		return slash == std::string::npos ? "Requesty" : id.substr(0, slash);
-	}
-
-	void refreshRequestyModels(bool force) {
-		// Resolve the app's data path, never an installation-specific absolute path.
-		std::ifstream config(ofToDataPath("config/requesty.md"));
-		std::string key = formula_requesty::parseKey(config);
-		if(key.empty()) {
-			const char* environmentKey = std::getenv("REQUESTY_API_KEY");
-			if(environmentKey) key = formula_requesty::trim(environmentKey);
-		}
-		llmApiKey = key;
-		if(key.empty()) { llmCatalogue.reset(); return; }
-		llmCatalogue = formula_requesty::sharedCatalogue(key);
-		if(force) llmCatalogue->refresh(key);
-	}
-
-	const formula_requesty::Model* selectedRequestyModel() const {
-		if(!llmCatalogue || !llmCatalogue->loaded) return nullptr;
-		for(const auto& model : llmCatalogue->models) {
-			if(model.id == llmModel && model.provider == llmProvider) return &model;
-		}
-		return nullptr;
-	}
-
-	void drawRequestyModels() {
-		if(llmCatalogue) llmCatalogue->poll();
-		const bool disabled = llmPending.load();
-		if(disabled) ImGui::BeginDisabled();
-		std::set<std::string> providers;
-		if(llmCatalogue) for(const auto& model : llmCatalogue->models) providers.insert(model.provider);
-		ImGui::SetNextItemWidth(150);
-		ImGui::SetNextWindowSizeConstraints(ImVec2(260, 0),
-			ImVec2(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
-		if(ImGui::BeginCombo("Provider##formula_requesty", llmProvider.c_str(), ImGuiComboFlags_HeightLarge)) {
-			if(ImGui::IsWindowAppearing()) {
-				llmProviderSearch[0] = '\0';
-				ImGui::SetKeyboardFocusHere();
+	void setupAIAssistant() {
+		ofxOceanodeAIAssistant::Spec spec;
+		spec.title = "Create a Formula expression with Requesty";
+		spec.subtitle = []() { return std::string("Ports are created automatically from $iN, legacy $N, and $oN references."); };
+		spec.generateHint = "Describe the vector or mathematical transformation you want.";
+		spec.fixHint = "Describe the issue, or leave blank for a general repair.";
+		spec.fixButton = "Fix formula";
+		spec.pendingHint = "The result will replace the current formula when ready.";
+		spec.readyMessage = "AI formula ready";
+		spec.systemPrompt = &formula::buildFormulaSystemPrompt;
+		spec.buildPrompt = [this](const std::string& userPrompt, bool fixMode) {
+			if(fixMode) {
+				const std::string issue = userPrompt.empty()
+					? "Fix any syntax or logic problems while preserving the apparent intent."
+					: "Requested change or issue: " + userPrompt;
+				return "Fix this Formula-node expression. Preserve its current port numbers and labels unless the request requires changing them.\n\nCurrent formula:\n" +
+					formulaString.get() + "\n\n" + issue;
 			}
-			ImGui::SetNextItemWidth(-1);
-			ImGui::InputTextWithHint("##provider_search", "Search providers...",
-				llmProviderSearch, sizeof(llmProviderSearch));
-			ImGui::Separator();
-			const auto query = ofToLower(formula_requesty::trim(llmProviderSearch));
-			// Keep the search field visible while the filtered results scroll.
-			if(ImGui::BeginChild("##provider_results", ImVec2(0, ImGui::GetTextLineHeightWithSpacing() * 10), false)) {
-				bool hasMatches = false;
-				for(const auto& provider : providers) {
-					if(!query.empty() && ofToLower(provider).find(query) == std::string::npos) continue;
-					hasMatches = true;
-					if(ImGui::Selectable(provider.c_str(), provider == llmProvider)) {
-						llmProvider = provider;
-						if(providerForModel(llmModel) != provider) {
-							for(const auto& model : llmCatalogue->models) {
-								if(model.provider == provider) { llmModel = model.id; break; }
-							}
-						}
-						ImGui::CloseCurrentPopup();
-					}
-				}
-				if(!hasMatches) ImGui::TextDisabled("No matching providers");
-			}
-			ImGui::EndChild();
-			ImGui::EndCombo();
-		}
-		const auto slash = llmModel.find('/');
-		const auto modelName = slash == std::string::npos ? llmModel : llmModel.substr(slash + 1);
-		ImGui::SetNextItemWidth(355);
-		const float modelPopupWidth = std::max(355.0f,
-			std::min(780.0f, ImGui::GetMainViewport()->WorkSize.x - 24.0f));
-		ImGui::SetNextWindowSizeConstraints(ImVec2(modelPopupWidth, 0), ImVec2(modelPopupWidth, 400));
-		if(ImGui::BeginCombo("Model##formula_requesty", modelName.c_str())) {
-			// Match the Nodes list stripes rather than the theme's global table colours.
-			ImGui::PushStyleColor(ImGuiCol_TableRowBg, OceanodeColors::ZebraEven);
-			ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, OceanodeColors::ZebraOdd);
-			ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, ImGui::GetStyleColorVec4(ImGuiCol_PopupBg));
-			if(ImGui::BeginTable("##formula_model_details", 4,
-				ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
-				ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthStretch);
-				ImGui::TableSetupColumn("Context (tokens)", ImGuiTableColumnFlags_WidthFixed, 125);
-				ImGui::TableSetupColumn("Input ($/M)", ImGuiTableColumnFlags_WidthFixed, 105);
-				ImGui::TableSetupColumn("Output ($/M)", ImGuiTableColumnFlags_WidthFixed, 105);
-				ImGui::TableHeadersRow();
-				if(llmCatalogue) for(const auto& model : llmCatalogue->models) {
-					if(model.provider != llmProvider) continue;
-					ImGui::PushID(model.id.c_str());
-					ImGui::TableNextRow();
-					ImGui::TableSetColumnIndex(0);
-					const bool selected = model.id == llmModel;
-					if(ImGui::Selectable(model.name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
-						llmModel = model.id;
-					if(selected) ImGui::SetItemDefaultFocus();
-					if(ImGui::IsItemHovered()) {
-						ImGui::BeginTooltip();
-						ImGui::TextUnformatted(model.id.c_str());
-						if(model.inputPrice.max > model.inputPrice.min || model.outputPrice.max > model.outputPrice.min)
-							ImGui::TextUnformatted("Price ranges reflect rates for different prompt lengths.");
-						ImGui::EndTooltip();
-					}
-					ImGui::TableSetColumnIndex(1);
-					ImGui::TextUnformatted(formula_requesty::formatContextWindow(model.contextWindow).c_str());
-					ImGui::TableSetColumnIndex(2);
-					ImGui::TextUnformatted(formula_requesty::formatPricePerMillion(model.inputPrice).c_str());
-					ImGui::TableSetColumnIndex(3);
-					ImGui::TextUnformatted(formula_requesty::formatPricePerMillion(model.outputPrice).c_str());
-					ImGui::PopID();
-				}
-				ImGui::EndTable();
-			}
-			ImGui::PopStyleColor(3);
-			ImGui::EndCombo();
-		}
-		const bool refreshing = llmCatalogue && llmCatalogue->pending;
-		if(refreshing) ImGui::BeginDisabled();
-		if(ImGui::Button("Refresh models##formula_requesty")) refreshRequestyModels(true);
-		if(refreshing) ImGui::EndDisabled();
-		if(disabled) ImGui::EndDisabled();
-		ImGui::SameLine();
-		if(refreshing) ImGui::TextDisabled("Loading models...");
-		else if(llmCatalogue && llmCatalogue->loaded)
-			ImGui::TextDisabled("%d models", static_cast<int>(llmCatalogue->models.size()));
-		if(llmCatalogue && !llmCatalogue->error.empty())
-			ImGui::TextWrapped("Could not refresh models: %s", llmCatalogue->error.c_str());
-		if(llmCatalogue && llmCatalogue->loaded && !selectedRequestyModel())
-			ImGui::TextWrapped("Selected model is unavailable. Choose another provider/model or refresh.");
-	}
-
-	static std::string callRequestyAPI(const std::string& fullPrompt,
-		const std::string& systemPrompt, const std::string& apiKey,
-		const std::string& model, int maxTokens) {
-		try {
-			const ofJson body = {
-				{"model", model}, {"max_tokens", maxTokens}, {"system", systemPrompt},
-				{"messages", ofJson::array({{{"role", "user"}, {"content", fullPrompt}}})}
-			};
-			return formula_requesty::parseFormula(formula_requesty::request(apiKey, &body));
-		} catch(const std::exception& e) {
-			return std::string("Error: ") + e.what();
-		}
-	}
-
-	void requestLLMFormula(const std::string& userPrompt) {
-		if(llmPending.load()) return;
-		if(llmApiKey.empty()) {
-			llmStatusMsg = "No API key";
-			llmHasError = true;
-			llmDone.store(true);
-			return;
-		}
-
-		const auto* selectedModel = selectedRequestyModel();
-		if(!selectedModel) {
-			llmStatusMsg = "Choose an available Requesty model before generating.";
-			llmHasError = true;
-			llmDone.store(true);
-			return;
-		}
-		const std::string model = selectedModel->id;
-		const int maxTokens = selectedModel->maxOutputTokens;
-		// Submission retains this prompt even if the API request later fails.
-		llmPromptBeforeEdit = userPrompt;
-		llmPending.store(true);
-		llmDone.store(false);
-		llmHasError = false;
-		llmStatusMsg = "Generating...";
-
-		const std::string currentFormula = formulaString.get();
-		const std::string systemPrompt = buildFormulaSystemPrompt();
-		const std::string apiKey = llmApiKey;
-		std::string fullPrompt;
-
-		if(llmFixMode) {
-			const std::string issue = userPrompt.empty()
-				? "Fix any syntax or logic problems while preserving the apparent intent."
-				: "Requested change or issue: " + userPrompt;
-			fullPrompt = "Fix this Formula-node expression. Preserve its current port numbers and labels unless the request requires changing them.\n\nCurrent formula:\n" +
-				currentFormula + "\n\n" + issue;
-		} else {
-			fullPrompt = "Create a Formula-node expression. Choose as many $iN inputs and $oN outputs as the request needs; the node creates them automatically. Add concise .label metadata when useful.\n\nUser request:\n" + userPrompt;
-		}
-
-		llmFuture = std::async(std::launch::async,
-			[fullPrompt, systemPrompt, apiKey, model, maxTokens]() {
-				return callRequestyAPI(fullPrompt, systemPrompt, apiKey, model, maxTokens);
-			});
-	}
-
-	void pollLLMResult() {
-		if(!llmPending.load() || !llmFuture.valid()) return;
-		if(llmFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
-
-		std::string result = llmFuture.get();
-		const bool apiError = result.rfind("Error:", 0) == 0 ||
-			result.rfind("API error:", 0) == 0;
-		if(apiError) {
-			llmStatusMsg = result;
-			llmHasError = true;
-		} else {
-			result = stripCodeFences(result);
-			if(result.empty()) {
-				llmStatusMsg = "The model returned an empty formula. The current formula was kept unchanged.";
-				llmHasError = true;
-				llmPending.store(false);
-				llmDone.store(true);
-				return;
-			}
+			return "Create a Formula-node expression. Choose as many $iN inputs and $oN outputs as the request needs; the node creates them automatically. Add concise .label metadata when useful.\n\nUser request:\n" + userPrompt;
+		};
+		spec.apply = [this](const std::string& result) -> std::string {
 			formulaBuf = result;
 			formulaString.set(result);
 			previousFormula = result;
 			rebuildEvaluator();
 			calculate();
-
-			llmHasError = !formulaValid;
-			llmStatusMsg = formulaValid
-				? "AI formula ready"
-				: "AI formula needs editing: " + lastError;
-		}
-
-		llmPending.store(false);
-		llmDone.store(true);
-	}
-
-	void cancelPromptEdit() {
-		if(!llmPromptEditing) return;
-		std::snprintf(llmPromptBuf, sizeof(llmPromptBuf), "%s", llmPromptBeforeEdit.c_str());
-		llmPromptEditing = false;
-		llmPromptPopupId = 0;
-	}
-
-	void drawAIPopup() {
-		ImGui::SetNextWindowSize(ImVec2(560, 390), ImGuiCond_Appearing);
-		const ImGuiID popupId = ImGui::GetID("##formula_ai_popup");
-		if(!ImGui::BeginPopup("##formula_ai_popup", ImGuiWindowFlags_None)) {
-			// Escape/outside-click dismissal is also cancellation. The same node may
-			// render in both Canvas and Custom GUI; only its owning popup can cancel.
-			if(llmPromptPopupId == popupId) cancelPromptEdit();
-			return;
-		}
-
-		ImGui::TextColored(ImVec4(0.72f, 0.60f, 1.0f, 1.0f),
-			"Create a Formula expression with Requesty");
-		ImGui::SameLine();
-		if(llmApiKey.empty()) {
-			ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "  [No API key]");
-		} else {
-			ImGui::TextColored(ImVec4(0.35f, 1.0f, 0.55f, 1.0f), "  [Key loaded]");
-		}
-		ImGui::TextDisabled("Ports are created automatically from $iN, legacy $N, and $oN references.");
-		ImGui::Spacing();
-		drawRequestyModels();
-		ImGui::Spacing();
-
-		auto modeButton = [](const char* label, bool active) {
-			ImGui::PushStyleColor(ImGuiCol_Button,
-				active ? IM_COL32(65, 40, 95, 255) : IM_COL32(28, 28, 38, 255));
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(90, 58, 130, 255));
-			const bool clicked = ImGui::Button(label, ImVec2(122, 0));
-			ImGui::PopStyleColor(2);
-			return clicked;
+			return formulaValid ? "" : "AI formula needs editing: " + lastError;
 		};
-		if(modeButton("Generate##formula", !llmFixMode)) llmFixMode = false;
-		ImGui::SameLine(0, 2);
-		if(modeButton("Fix current##formula", llmFixMode)) llmFixMode = true;
-
-		ImGui::Separator();
-		ImGui::Spacing();
-
-		if(llmPending.load()) {
-			static const char* spinner = "|/-\\";
-			static int spinnerIndex = 0;
-			spinnerIndex = (spinnerIndex + 1) % 4;
-			ImGui::Text("Generating... %c", spinner[spinnerIndex]);
-			ImGui::TextDisabled("The result will replace the current formula when ready.");
-		} else if(llmDone.load() && llmHasError) {
-			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0.4f, 0.4f, 1));
-			ImGui::TextWrapped("%s", llmStatusMsg.c_str());
-			ImGui::PopStyleColor();
-			ImGui::Spacing();
-			if(ImGui::Button("Back##formula_ai", ImVec2(80, 0))) {
-				llmDone.store(false);
-				llmHasError = false;
-			}
-			ImGui::SameLine();
-			if(ImGui::Button("Close##formula_ai", ImVec2(80, 0))) {
-				llmDone.store(false);
-				cancelPromptEdit();
-				ImGui::CloseCurrentPopup();
-			}
-		} else if(llmDone.load()) {
-			llmDone.store(false);
-			cancelPromptEdit();
-			ImGui::CloseCurrentPopup();
-		} else {
-			ImGui::InputTextMultiline("##formula_ai_prompt", llmPromptBuf,
-				sizeof(llmPromptBuf), ImVec2(-1, 100), ImGuiInputTextFlags_WordWrap);
-			ImGui::TextDisabled(llmFixMode
-				? "Describe the issue, or leave blank for a general repair."
-				: "Describe the vector or mathematical transformation you want.");
-			ImGui::Spacing();
-
-			const bool canSubmit = !llmApiKey.empty() && selectedRequestyModel() &&
-				(llmFixMode || llmPromptBuf[0] != '\0');
-			if(!canSubmit) ImGui::BeginDisabled();
-			if(ImGui::Button(llmFixMode ? "Fix formula" : "Generate", ImVec2(100, 0))) {
-				requestLLMFormula(llmPromptBuf);
-			}
-			if(!canSubmit) ImGui::EndDisabled();
-			ImGui::SameLine(0, 10);
-			if(ImGui::Button("Cancel##formula_ai", ImVec2(70, 0))) {
-				cancelPromptEdit();
-				ImGui::CloseCurrentPopup();
-			}
-
-			if(llmApiKey.empty()) {
-				ImGui::Spacing();
-				ImGui::TextColored(ImVec4(1, 0.65f, 0.3f, 1), "No API key found. Add one of:");
-				ImGui::TextDisabled("  data/config/requesty.md: api_key: \"your-key\"");
-				ImGui::TextDisabled("  REQUESTY_API_KEY environment variable");
-				ImGui::TextDisabled("Then click Refresh models to reload the key.");
-			}
-		}
-
-		ImGui::EndPopup();
+		ai.setup(spec);
 	}
 
 	// ===== Formula library =====
