@@ -19,13 +19,6 @@
 #include "resetPhasor.h"
 
 // ─────────────────────────────────────────────
-// SHARED TRANSPORT STATUS
-// ─────────────────────────────────────────────
-#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
-#include "beatTransport.h"
-#endif
-
-// ─────────────────────────────────────────────
 // SEQUENCERS
 // ─────────────────────────────────────────────
 #include "buttonMatrix.h"
@@ -213,7 +206,6 @@
 // ─────────────────────────────────────────────
 // TEXTURES
 // ─────────────────────────────────────────────
-#include "cameraInput.h"
 #include "blobDetector.h"
 #include "colorTracker.h"
 #include "pixelStretch.h"
@@ -221,7 +213,6 @@
 #include "paletteQuantizerGrey.h"
 #include "spectrogramShift.h"
 #include "textureFlip.h"
-#include "textureSnapshot.h"
 #include "zdepthConverter.h"
 
 // ─────────────────────────────────────────────
@@ -295,17 +286,10 @@
 #include "frameGate.h"
 #include "increment.h"
 #include "ocurrence.h"          // class is: Ocurrence
-#include "presetLoadTrigger.h"
 #include "ramp.h"               // class is: rampTrigger
 #include "shell.h"
 #include "keystroke.h"
 #include "dataDelay.h"
-
-// ─────────────────────────────────────────────
-// PORTAL SELECTORS
-// ─────────────────────────────────────────────
-#include "portalSelector.h"
-
 
 namespace ofxOceanodeSanti{
 
@@ -326,13 +310,6 @@ void registerModels(ofxOceanode *o)
     o->registerModel<phasorSwing>("Santi/Timing");
     o->registerModel<rateLimiter>("Santi/Timing");
     o->registerModel<resetPhasor>("Santi/Timing");
-
-    // ─────────────────────────────────────────────
-    // SHARED TRANSPORT STATUS
-    // ─────────────────────────────────────────────
-#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
-    o->registerModel<beatTransport>("Santi/Timeline");
-#endif
 
     // ─────────────────────────────────────────────
     // SEQUENCERS
@@ -526,7 +503,6 @@ void registerModels(ofxOceanode *o)
     // TEXTURES
     // ─────────────────────────────────────────────
     o->registerModel<blobDetector>("Santi/Textures");
-    o->registerModel<cameraInput>("Santi/Textures");
     o->registerModel<colorTracker>("Santi/Textures");
     o->registerModel<paletteQuantizer>("Santi/Textures");
     o->registerModel<paletteQuantizerGrey>("Santi/Textures");
@@ -534,7 +510,6 @@ void registerModels(ofxOceanode *o)
     o->registerModel<histogramVector>("Santi/Textures");
     o->registerModel<spectrogramShift>("Santi/Textures");
     o->registerModel<textureFlip>("Santi/Textures");
-    o->registerModel<textureSnapshot>("Santi/Textures");
     o->registerModel<zdepthConverter>("Santi/Textures");
 
     // ─────────────────────────────────────────────
@@ -606,27 +581,10 @@ void registerModels(ofxOceanode *o)
     o->registerModel<frameGate>("Santi/General");
     o->registerModel<increment>("Santi/General");
     o->registerModel<Ocurrence>("Santi/General");
-    o->registerModel<presetLoadTrigger>("Santi/General");
     o->registerModel<rampTrigger>("Santi/General");
     o->registerModel<shell>("Santi/General");
 	o->registerModel<keystroke>("Santi/General");
 	o->registerModel<dataDelay>("Santi/General");
 
-    // ─────────────────────────────────────────────
-    // PORTAL SELECTORS
-    // ─────────────────────────────────────────────
-    o->registerModel<portalSelector<bool>>("Santi/PortalSelectors", "b", false);
-    o->registerModel<portalSelector<char>>("Santi/PortalSelectors", "c", ' ');
-    o->registerModel<portalSelector<float>>("Santi/PortalSelectors", "f", 0.0f);
-    o->registerModel<portalSelector<int>>("Santi/PortalSelectors", "i", 0);
-    o->registerModel<portalSelector<ofColor>>("Santi/PortalSelectors", "color", ofColor::black);
-    o->registerModel<portalSelector<ofFloatColor>>("Santi/PortalSelectors", "color_f", ofFloatColor::black);
-    o->registerModel<portalSelector<ofTexture*>>("Santi/PortalSelectors", "texture", nullptr);
-    o->registerModel<portalSelector<string>>("Santi/PortalSelectors", "s", "");
-    o->registerModel<portalSelector<Timestamp>>("Santi/PortalSelectors", "timestamp", Timestamp());
-    o->registerModel<portalSelector<vector<float>>>("Santi/PortalSelectors", "v_f", 0.0f);
-    o->registerModel<portalSelector<vector<int>>>("Santi/PortalSelectors", "v_i", 0);
-    o->registerModel<portalSelector<vector<string>>>("Santi/PortalSelectors", "v_s", string(""));
-    o->registerModel<portalSelector<void>>("Santi/PortalSelectors", "v");
 }
 }
