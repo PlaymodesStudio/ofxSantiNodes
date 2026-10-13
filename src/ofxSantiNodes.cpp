@@ -206,14 +206,8 @@
 // ─────────────────────────────────────────────
 // TEXTURES
 // ─────────────────────────────────────────────
-#include "blobDetector.h"
-#include "colorTracker.h"
 #include "pixelStretch.h"
-#include "paletteQuantizer.h"
-#include "paletteQuantizerGrey.h"
 #include "spectrogramShift.h"
-#include "textureFlip.h"
-#include "zdepthConverter.h"
 
 // ─────────────────────────────────────────────
 // STRINGS
@@ -502,15 +496,9 @@ void registerModels(ofxOceanode *o)
     // ─────────────────────────────────────────────
     // TEXTURES
     // ─────────────────────────────────────────────
-    o->registerModel<blobDetector>("Santi/Textures");
-    o->registerModel<colorTracker>("Santi/Textures");
-    o->registerModel<paletteQuantizer>("Santi/Textures");
-    o->registerModel<paletteQuantizerGrey>("Santi/Textures");
     o->registerModel<pixelStretch>("Santi/Textures");
     o->registerModel<histogramVector>("Santi/Textures");
     o->registerModel<spectrogramShift>("Santi/Textures");
-    o->registerModel<textureFlip>("Santi/Textures");
-    o->registerModel<zdepthConverter>("Santi/Textures");
 
     // ─────────────────────────────────────────────
     // STRINGS

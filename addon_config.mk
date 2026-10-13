@@ -24,7 +24,7 @@ meta:
 common:
 	# dependencies with other addons, a list of them separated by spaces
 	# or use += in several lines
-	ADDON_DEPENDENCIES = ofxOceanode
+	ADDON_DEPENDENCIES = ofxOceanode ofxOceanodeTextures
 
 	# include search paths, this will be usually parsed from the file system
 	# but if the addon or addon libraries need special search paths they can be
