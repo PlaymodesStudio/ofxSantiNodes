@@ -56,9 +56,8 @@ private:
 
 	void loadChordAliases() {
 		chordAliases.clear();
-		if(chordCypherAliases::mergeAliasesFromFile(chordAliases, "ChordCypher") == 0) {
-			setupChordMap();
-		}
+		setupChordMap();
+		chordCypherAliases::mergeAliasesFromFile(chordAliases, "ChordCypher");
 	}
 	
 	void setupChordMap() {
@@ -76,6 +75,8 @@ private:
 				// Augmented variations (before sevenths)
 				{"+5", "aug"},
 				{"#5", "aug"},
+				{"m#5", "m+"},
+				{"m(#5)", "m+"},
 				{"+", "aug"},
 				
 				// Diminished and half-diminished
@@ -420,7 +421,18 @@ private:
 			rootOut.set(0);
 			return;
 		}
-		
+
+		// Chord labels may use Unicode accidentals, while the dictionary uses ASCII.
+		auto replaceAccidental = [&input](const string& symbol, const string& replacement) {
+			size_t pos = 0;
+			while((pos = input.find(symbol, pos)) != string::npos) {
+				input.replace(pos, symbol.size(), replacement);
+				pos += replacement.size();
+			}
+		};
+		replaceAccidental("♯", "#");
+		replaceAccidental("♭", "b");
+
 		// Handle substitutions vs extensions
 		std::regex subRegex("([A-Za-z][#b]?[^(]*)\\(([A-Za-z][#b]?.*?)\\)");
 		std::regex extRegex("([^(]*)\\(([^A-Za-z]*[#b0-9]*)\\)");
@@ -438,23 +450,30 @@ private:
 				bassNote[0] = toupper(bassNote[0]);
 				hasSlash = true;
 			}
-		}
-		else if(std::regex_search(input, matches, subRegex)) {
-			processedInput = matches[1].str();
-		}
-		else if(std::regex_search(input, matches, extRegex)) {
-			processedInput = matches[1].str() + matches[2].str();
-		}
-		else {
+		} else {
 			processedInput = input;
 		}
-		
+
 		if(!processedInput.empty()) {
 			processedInput[0] = toupper(processedInput[0]);
 		}
-		
-		// Modified regex to capture root and all modifiers - UPDATED REGEX
+
 		std::regex chordRegex("([A-G][#b]?)(.*)");
+		std::smatch chordMatches;
+		if(std::regex_match(processedInput, chordMatches, chordRegex)) {
+			string fullSuffix = chordMatches[2].str();
+			fullSuffix.erase(std::remove(fullSuffix.begin(), fullSuffix.end(), ' '), fullSuffix.end());
+			// A known parenthesized quality is a whole chord suffix. Do not strip
+			// (maj7) from m(maj7) before consulting the dictionary aliases.
+			if(chordDefinitions.find(fullSuffix) == chordDefinitions.end() &&
+			   chordAliases.find(fullSuffix) == chordAliases.end()) {
+				if(std::regex_search(processedInput, matches, subRegex)) {
+					processedInput = matches[1].str();
+				} else if(std::regex_search(processedInput, matches, extRegex)) {
+					processedInput = matches[1].str() + matches[2].str();
+				}
+			}
+		}
 		
 		if(std::regex_match(processedInput, matches, chordRegex)) {
 			string noteName = matches[1].str();
@@ -490,8 +509,8 @@ private:
 				}
 				
 				// Check if it's in aliases
-				if(!foundMatch && chordAliases.find(chordSuffix) != chordAliases.end()) {
-					string aliasedType = chordAliases[chordSuffix];
+				if(!foundMatch) {
+					string aliasedType = chordCypherAliases::resolveAlias(chordAliases, chordSuffix);
 					if(chordDefinitions.find(aliasedType) != chordDefinitions.end()) {
 						intervals = chordDefinitions[aliasedType];
 						foundMatch = true;
