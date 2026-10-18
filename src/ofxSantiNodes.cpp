@@ -476,7 +476,8 @@ void registerModels(ofxOceanode *o)
     o->registerModel<polyFill>("Santi/Voicing");
     o->registerModel<polyphonicArpeggiator>("Santi/Voicing");
 #ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
-    o->registerModel<polyphonicArpeggiatorGUI>("Santi/Voicing");
+    // retired 2026-10-18: replaced by SC ArpeggiatorBox (ofxOceanodeSuperCollider; tools/migrate_polyarp_gui.py converts presets)
+    // o->registerModel<polyphonicArpeggiatorGUI>("Santi/Voicing");
 #endif
     o->registerModel<schoenbergMatrix>("Santi/Voicing");
     o->registerModel<voiceExpanding>("Santi/Voicing");
