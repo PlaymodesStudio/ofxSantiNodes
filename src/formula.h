@@ -486,18 +486,20 @@ $o1 = if($i1 > 0, $i1, 0)
 	};
 	using Env = std::map<std::string, Value>;
 
-	static inline Value liftUnary(const Value& a, const std::function<float(float)>& f){
+	template<typename F>
+	static inline Value liftUnary(const Value& a, const F& f){
 		if(!a.isVec) return Value::scalar(f(a.f));
 		std::vector<float> out; out.reserve(a.v.size());
 		for(float x: a.v) out.push_back(f(x));
 		return Value::vector(std::move(out));
 	}
-	static inline Value liftBinary(const Value& a, const Value& b, const std::function<float(float,float)>& f){
+	template<typename F>
+	static inline Value liftBinary(const Value& a, const Value& b, const F& f){
 		size_t n = std::max(a.size(), b.size());
 		if(n==1) return Value::scalar(f(a.getScalar(), b.getScalar()));
-		auto A = a.broadcast(n), B = b.broadcast(n);
+		// Broadcast as we read: no full-sized copies of either operand.
 		std::vector<float> out(n);
-		for(size_t i=0;i<n;i++) out[i] = f(A[i], B[i]);
+		for(size_t i=0;i<n;i++) out[i] = f(sampleAt(a, i), sampleAt(b, i));
 		return Value::vector(std::move(out));
 	}
 
@@ -700,7 +702,7 @@ $o1 = if($i1 > 0, $i1, 0)
 				? (vec.empty() ? Value::scalar(0.0f) : Value::scalar(vec[0]))
 				: Value::vector(vec);
 			env["$" + ofToString(number)] = value;
-			env["$i" + ofToString(number)] = value;
+			env["$i" + ofToString(number)] = std::move(value);
 		}
 		for(const auto& kv : outputParamRefs) {
 			if(kv.first > 0) env["$o" + ofToString(kv.first)] = Value::scalar(0.0f);
@@ -715,8 +717,8 @@ $o1 = if($i1 > 0, $i1, 0)
 
 			for(const auto& stmt : program){
 				Value r = evalRPN(stmt.code, env);
-				if(stmt.target.empty()){ legacyResult = r; haveLegacyResult = true; }
-				else                    { env[stmt.target] = r; }
+				if(stmt.target.empty()){ legacyResult = std::move(r); haveLegacyResult = true; }
+				else                    { env[stmt.target] = std::move(r); }
 			}
 
 			auto toVector = [](const Value& value) {
@@ -1220,22 +1222,21 @@ $o1 = if($i1 > 0, $i1, 0)
 	// ===== Vector-aware evaluator (returns Value) =====
 	Value evalRPN(const RPN& code, const Env& env){
 		std::vector<Value> st;
+		st.reserve(std::min<size_t>(code.size(), 32));
 
-		auto pop1=[&](){ if(st.empty()) throw std::runtime_error("Stack underflow"); auto x=st.back(); st.pop_back(); return x; };
-		auto pop2=[&](){ auto b=pop1(); auto a=pop1(); return std::pair<Value,Value>(a,b); };
+		auto pop1=[&](){ if(st.empty()) throw std::runtime_error("Stack underflow"); auto x=std::move(st.back()); st.pop_back(); return x; };
+		auto pop2=[&](){ auto b=pop1(); auto a=pop1(); return std::pair<Value,Value>(std::move(a),std::move(b)); };
 		auto popN=[&](int n){ std::vector<Value> a(n); for(int i=n-1;i>=0;--i) a[i]=pop1(); return a; };
 
-		auto getIdent=[&](const std::string& id)->Value{
-			auto it=env.find(id);
-			if(it!=env.end()) return it->second;
-			throw std::runtime_error("Unknown identifier: "+id);
-		};
 		auto asInt = [](float x){ return (int)std::floor(x+1e-6f); };
 		auto clampf=[](float x,float lo,float hi){ return std::max(lo,std::min(hi,x)); };
 
 		// reducers for 1-arg functions → scalar
 		auto reduce = [&](const Value& a, const std::string& which)->Value{
-			const std::vector<float>& v = a.isVec ? a.v : std::vector<float>{a.f};
+			// Keep the vector branch an lvalue: mixing it with a temporary
+			// in ?: otherwise copies the entire vector, even for sum/mean.
+			const std::vector<float> scalar = a.isVec ? std::vector<float>{} : std::vector<float>{a.f};
+			const std::vector<float>& v = a.isVec ? a.v : scalar;
 			if(v.empty()) return Value::scalar(0.0f);
 
 			if(which=="sum"){
@@ -1294,7 +1295,8 @@ $o1 = if($i1 > 0, $i1, 0)
 				const std::string& id = t.text;
 
 				// variable / constant?
-				if(env.find(id)!=env.end()){ st.push_back(getIdent(id)); continue; }
+				auto variable = env.find(id);
+				if(variable!=env.end()){ st.push_back(variable->second); continue; }
 
 				// vector literal
 				if(id=="__veclit"){
@@ -1363,8 +1365,8 @@ $o1 = if($i1 > 0, $i1, 0)
 					if((id=="min"||id=="max") && argc>=2){
 						auto args=popN(argc);
 						auto f = (id=="min") ? [](float a,float b){return std::min(a,b);} : [](float a,float b){return std::max(a,b);};
-						Value cur=args[0]; for(int i=1;i<argc;i++) cur = liftBinary(cur,args[i],f);
-						st.push_back(cur); continue;
+						Value cur=std::move(args[0]); for(int i=1;i<argc;i++) cur = liftBinary(cur,args[i],f);
+						st.push_back(std::move(cur)); continue;
 					}
 					throw std::runtime_error(id+" expects 1 arg");
 				}
@@ -1414,7 +1416,7 @@ $o1 = if($i1 > 0, $i1, 0)
 					// SCALAR condition: return branch AS-IS (no length alignment)
 					if(!cond.isVec){
 						const bool ctrue = (cond.getScalar() != 0.0f);
-						st.push_back(ctrue ? thenV : elseV);
+						st.push_back(ctrue ? std::move(thenV) : std::move(elseV));
 						continue;
 					}
 
@@ -1481,7 +1483,7 @@ $o1 = if($i1 > 0, $i1, 0)
 		}
 
 		if(st.size()!=1) throw std::runtime_error("Evaluation ended with bad stack size");
-		return st.back();
+		return std::move(st.back());
 	}
 
 };

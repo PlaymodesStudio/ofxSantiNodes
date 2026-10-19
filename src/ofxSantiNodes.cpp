@@ -447,7 +447,8 @@ void registerModels(ofxOceanode *o)
     // ─────────────────────────────────────────────
     o->registerModel<chordCypher>("Santi/Pitch");
 #ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
-    o->registerModel<chordSequence>("Santi/Pitch");
+    // retired 2026-10-18: replaced by SC ChordBox (ofxOceanodeSuperCollider; tools/migrate_chordsequence.py converts presets)
+    // o->registerModel<chordSequence>("Santi/Pitch");
 #endif
     o->registerModel<chordProgressions>("Santi/Pitch");
     o->registerModel<fitNotesInRange>("Santi/Pitch");
