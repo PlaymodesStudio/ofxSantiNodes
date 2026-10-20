@@ -1,4 +1,5 @@
 #include "globalSnapshots.h"
+#include "ofxOceanodeContainer.h"
 #include "imgui.h"
 #include "ofxOceanodeShared.h"
 #include <vector>

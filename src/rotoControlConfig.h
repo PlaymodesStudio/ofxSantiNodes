@@ -6,7 +6,7 @@
 #include "ofxOceanodeNodeModel.h"
 #include "ofSerial.h"
 #include "imgui.h"
-#include "ofxOceanodeContainer.h"
+class ofxOceanodeContainer;
 #include "ofxOceanodeMidiBinding.h"
 #include "ofThread.h"
 #include <mutex>

@@ -1,5 +1,6 @@
 #ifdef OFXOCEANODE_USE_MIDI
 #include "rotoControlConfig.h"
+#include "ofxOceanodeContainer.h"
 #include "imgui.h"
 #include <thread>
 #include <atomic>

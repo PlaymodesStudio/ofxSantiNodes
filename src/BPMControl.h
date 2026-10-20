@@ -2,7 +2,7 @@
 #define BPMControl_h
 
 #include "ofxOceanodeNodeModel.h"
-#include "ofxOceanodeContainer.h"
+class ofxOceanodeContainer;
 #include "ofxOsc.h"
 
 class BPMControl : public ofxOceanodeNodeModel {
@@ -40,25 +40,9 @@ public:
         setupOscSender(port);
     }
     
-    void update(ofEventArgs &a) override{
-        if(scopedMode && updateBpmInNextCycle){
-            if(parentContainer == nullptr) return;
-            updatingBpm = true;
-            parentContainer->setBpm(bpm);
-            updatingBpm = false;
-            updateBpmInNextCycle = false;
-        }
-    }
+    void update(ofEventArgs &a) override;
 
-    void setContainer(ofxOceanodeContainer* container) override {
-        ofxOceanodeNodeModel::setContainer(container);
-        parentContainer = container;
-        if(scopedMode){
-            updatingBpm = true;
-            parentContainer->setBpm(bpm);
-            updatingBpm = false;
-        }
-    }
+    void setContainer(ofxOceanodeContainer* container) override;
 
     void resetPhase() override
     {
@@ -80,30 +64,9 @@ private:
         sender.setup("localhost", newPort);
     }
 
-    void applyBPM(float newBpm){
-        if(scopedMode){
-            if(parentContainer == nullptr) return;
-            updatingBpm = true;
-            parentContainer->setBpm(newBpm);
-            updatingBpm = false;
-        }else{
-            ofxOscMessage m;
-            m.setAddress("/bpm");
-            m.addFloatArg(newBpm);
-            sender.sendMessage(m, false);
-        }
-    }
+    void applyBPM(float newBpm);
 
-    void applyPhaseReset(){
-        if(scopedMode){
-            if(parentContainer == nullptr) return;
-            parentContainer->resetPhase();
-        }else{
-            ofxOscMessage m;
-            m.setAddress("/phaseReset");
-            sender.sendMessage(m, false);
-        }
-    }
+    void applyPhaseReset();
 
     ofParameter<float> bpm;
     ofParameter<bool> scopedMode;

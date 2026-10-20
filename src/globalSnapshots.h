@@ -2,7 +2,7 @@
 #define GLOBAL_SNAPSHOTS_H
 
 #include "ofxOceanodeNodeModel.h"
-#include "ofxOceanodeContainer.h"
+class ofxOceanodeContainer;
 #include "ofxOceanodeShared.h"
 #include "ofxOceanodeParameter.h"
 #include <map>

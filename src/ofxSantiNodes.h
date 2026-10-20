@@ -6,7 +6,8 @@ class ofxOceanode;
 
 namespace ofxOceanodeSanti{
 
-void registerModels(ofxOceanode *o);
+void registerModels(ofxOceanode &o);
+void registerCollection(ofxOceanode &o);
 
 }
 #endif /* ofxSantiNodes_h */
