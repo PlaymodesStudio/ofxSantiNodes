@@ -1,6 +1,5 @@
 #include "polyphonicArpeggiatorGUI.h"
 
-#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
 
 #include "imgui.h"
 #include <algorithm>
@@ -6105,5 +6104,3 @@ void polyphonicArpeggiatorGUI::presetRecallAfterSettingParameters(ofJson &json) 
     mutedSequenceStepsRemaining = 0;
     updateOutputs();
 }
-
-#endif

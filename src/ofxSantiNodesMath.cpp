@@ -8,7 +8,7 @@
 
 #include "ofxSantiNodes.h"
 #include "ofxOceanode.h"
-#include "santiNodesTransportCompat.h"
+#include "ofxOceanodeTransport.h"
 #include "circularCrossfade.h"
 #include "derivative.h"
 #include "Fold.h"

@@ -8,7 +8,7 @@
 
 #include "ofxSantiNodes.h"
 #include "ofxOceanode.h"
-#include "santiNodesTransportCompat.h"
+#include "ofxOceanodeTransport.h"
 #include "histogramVector.h"
 #include "colorToVector.h"      // also contains: vectorToColor
 #include "hue2rgb.h"            // class is: hsv2rgb

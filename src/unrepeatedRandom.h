@@ -2,11 +2,7 @@
 #define UnrepeatedRandom_h
 
 #include "ofxOceanodeNodeModel.h"
-// Transport mode needs ofxOceanode's global transport (feature-globalTransport branch).
-// Without it the node compiles exactly as before.
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 #include "ofxOceanodeDeterministicRandom.h"
-#endif
 #include <vector>
 #include <random>
 #include <algorithm>
@@ -44,7 +40,6 @@ public:
             generateRandomFromEvent(eventTrigger);
         });
 
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
         // ---- Sync To Transport ----
         // Output is a pure function of (Seed, Step, Min, Max, mode), so scrubbing the
         // timeline gives exactly what playback gives. Connect Step to a Phasor "Cycle".
@@ -69,15 +64,12 @@ public:
         transportListeners.push(sequentialMode.newListener([this](bool &){
             if(syncToTransport_Param) computeTransport();
         }));
-#endif
     }
 
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
     void loadBeforeConnections(ofJson &json) override {
         // Restore the mode before connections so saved "Step"/"Seed" connections find their inputs.
         deserializeParameter(json, syncToTransport_Param);
     }
-#endif
 
     void generateRandomWrapper(vector<float>& triggerSource, vector<float>& previousTriggerSource) {
         std::lock_guard<std::mutex> lock(mutex);
@@ -132,7 +124,6 @@ public:
 
 private:
     // ======================= Transport mode =======================
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
     bool isTransportMode() const { return syncToTransport_Param.get(); }
     ofParameter<bool> syncToTransport_Param;
     ofParameter<vector<float>> step_Param; // only present in Sync To Transport mode
@@ -287,9 +278,6 @@ private:
         output = outputVec;
     }
 
-#else
-    bool isTransportMode() const { return false; }
-#endif
 
     // ======================= Free-running mode =======================
     vector<float> previousTriggerTrigger;

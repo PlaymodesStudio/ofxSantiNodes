@@ -6,11 +6,7 @@
 #define TriggerNode_h
 
 #include "ofxOceanodeNodeModel.h"
-// Transport mode needs ofxOceanode's global transport (feature-globalTransport branch).
-// Without it the node compiles exactly as before.
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 #include "ofxOceanodeDeterministicRandom.h"
-#endif
 #include <queue>
 #include <cfloat>
 #include <climits>
@@ -87,7 +83,6 @@ public:
             lastGate = g;
         }));
 
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
         // ---- Sync To Transport ----
         // The chance roll becomes a pure function of (Seed, Step, lane): one decision per
         // lane per step, so scrubbing the timeline gives the same pass/fail pattern as playback.
@@ -96,7 +91,6 @@ public:
         listeners.push(syncToTransport_Param.newListener([this](bool &b){
             setTransportInputsVisible(b);
         }));
-#endif
 
         // create a listener for your app's update event
         //ofAddListener(ofEvents().update, this, &trigger::update);
@@ -117,23 +111,18 @@ public:
         outputQueue.push(vector<float>(value.size(), 0.0f));
     }
 
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
     void loadBeforeConnections(ofJson &json) override {
         // Restore the mode before connections so saved "Step"/"Seed" connections find their inputs.
         deserializeParameter(json, syncToTransport_Param);
     }
-#endif
 
 private:
     bool passes(int lane) {
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
         if(syncToTransport_Param) return transportPasses(lane);
-#endif
         float rnd = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
         return rnd < chance;
     }
 
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
     bool transportPasses(int lane) {
         const auto &steps = step_Param.get();
         const float stepValue = steps.empty() ? 0.0f : (lane < (int)steps.size() ? steps[lane] : steps[0]);
@@ -159,7 +148,6 @@ private:
     ofParameter<vector<float>> step_Param; // only present in Sync To Transport mode
     ofParameter<int> seed_Param;           // only present in Sync To Transport mode
     uint64_t sessionSalt = 0;
-#endif
 
     ofParameter<vector<float>> inputPh;
     ofParameter<vector<float>> change;

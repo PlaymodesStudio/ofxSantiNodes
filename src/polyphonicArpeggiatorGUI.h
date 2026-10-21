@@ -1,8 +1,7 @@
 #pragma once
-#include "santiNodesTransportCompat.h"
+#include "ofxOceanodeTransport.h"
 #include "ofxOceanodeNodeModel.h"
 
-#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
 
 #include <algorithm>
 #include <cstdint>
@@ -697,5 +696,3 @@ private:
         }
     }
 };
-
-#endif

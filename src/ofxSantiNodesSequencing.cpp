@@ -8,7 +8,7 @@
 
 #include "ofxSantiNodes.h"
 #include "ofxOceanode.h"
-#include "santiNodesTransportCompat.h"
+#include "ofxOceanodeTransport.h"
 #include "beatMeasures.h"
 #ifdef OFXOCEANODE_USE_OSC
 #include "BPMControl.h"

@@ -2,11 +2,7 @@
 #define choose_h
 
 #include "ofxOceanodeNodeModel.h"
-// Transport mode needs ofxOceanode's global transport (feature-globalTransport branch).
-// Without it the node compiles exactly as before.
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 #include "ofxOceanodeDeterministicRandom.h"
-#endif
 #include <map>
 #include <random>
 #include <algorithm>
@@ -112,7 +108,6 @@ NOTES
 			if (isTransportMode()) computeTransport();
 		}));
 
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 		// ---------- Sync To Transport ----------
 		// Output is a pure function of (Input, Weights, URN, Unique, Seed, Step): every lane
 		// picks at every step, so scrubbing the timeline gives exactly what playback gives.
@@ -126,7 +121,6 @@ NOTES
 		listeners.push(stepIn.newListener([this](std::vector<float> &){
 			if (syncToTransport) computeTransport();
 		}));
-#endif
 
 		// ---------- initial state ----------
 		reseedAll();
@@ -134,16 +128,13 @@ NOTES
 		lastTrigger = trigger.get();
 	}
 
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 	void loadBeforeConnections(ofJson &json) override {
 		// Restore the mode before connections so a saved "Step" connection finds its input.
 		deserializeParameter(json, syncToTransport);
 	}
-#endif
 
 private:
 	// ======================= transport mode =======================
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 	bool isTransportMode() const { return syncToTransport.get(); }
 	ofParameter<bool>               syncToTransport;
 	ofParameter<std::vector<float>> stepIn; // only present in Sync To Transport mode
@@ -288,10 +279,6 @@ private:
 		}
 		output = out;
 	}
-#else
-	bool isTransportMode() const { return false; }
-	void computeTransport(){}
-#endif
 
 	// -------- params --------
 	ofParameter<std::vector<float>> input;

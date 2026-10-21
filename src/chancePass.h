@@ -2,11 +2,7 @@
 #define chancePass_h
 
 #include "ofxOceanodeNodeModel.h"
-// Transport mode needs ofxOceanode's global transport (feature-globalTransport branch).
-// Without it the node compiles exactly as before.
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 #include "ofxOceanodeDeterministicRandom.h"
-#endif
 
 #include <vector>
 #include <random>
@@ -58,12 +54,9 @@ public:
 		// SEED CHANGE
 		listeners.push(seed.newListener([this](std::vector<int> &){
 			setSeed();
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 			if (syncToTransport) reapplyTransport();
-#endif
 		}));
 
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 		// ---- Sync To Transport ----
 		// The pass/fail roll becomes a pure function of (Seed, Step, lane): one decision per
 		// lane per step, so scrubbing gives the same pattern as playback. Gate mode is fully
@@ -78,15 +71,12 @@ public:
 		listeners.push(stepIn.newListener([this](std::vector<float> &){
 			if (syncToTransport) reapplyTransport();
 		}));
-#endif
 	}
 
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 	void loadBeforeConnections(ofJson &json) override {
 		// Restore the mode before connections so a saved "Step" connection finds its input.
 		deserializeParameter(json, syncToTransport);
 	}
-#endif
 
 private:
 	ofEventListeners listeners;
@@ -95,13 +85,10 @@ private:
 	bool lastStreamWasGate = true;
 
 	bool roll(size_t i) {
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 		if (syncToTransport) return transportRoll(i);
-#endif
 		return dist(mt[i]) < getProbability(i);
 	}
 
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 	ofParameter<bool>               syncToTransport;
 	ofParameter<std::vector<float>> stepIn; // only present in Sync To Transport mode
 	uint64_t sessionSalt = 0;
@@ -142,7 +129,6 @@ private:
 			removeParameter("Step");
 		}
 	}
-#endif
 
 	ofParameter<std::vector<float>> numberIn;
 	ofParameter<std::vector<float>> gateIn;

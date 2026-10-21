@@ -1,11 +1,7 @@
 // randomValues.h
 #pragma once
 #include "ofxOceanodeNodeModel.h"
-// Transport mode needs ofxOceanode's global transport (feature-globalTransport branch).
-// Without it the node compiles exactly as before.
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 #include "ofxOceanodeDeterministicRandom.h"
-#endif
 #include <vector>
 #include <random>
 #include <cstdint>
@@ -41,10 +37,8 @@ public:
 		// Sync To Transport: output is a pure function of (Seed, Step, params), regenerated
 		// whenever any of them changes. Connect Step to a Phasor "Cycle" output so any
 		// timeline position (play, scrub, seek) gives the same values.
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 		sessionSalt = ofxOceanodeDeterministicRandom::makeSessionSalt();
 		addInspectorParameter(syncToTransport_Param.set("Sync To Transport", false));
-#endif
 
 		generateListener = generateVoid.newListener([this]{
 			if(isTransportMode()) generateTransport(false);
@@ -64,7 +58,6 @@ public:
 			output.setMax(std::vector<float>(1, v));
 			transportParamChanged();
 		});
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 		transportListeners.push(size_Param.newListener([this](int &){ transportParamChanged(); }));
 		transportListeners.push(pow_Param.newListener([this](float &){ transportParamChanged(); }));
 		transportListeners.push(biPow_Param.newListener([this](float &){ transportParamChanged(); }));
@@ -78,23 +71,19 @@ public:
 			if(b) generateTransport(true);
 			else reseedGenerator();
 		}));
-#endif
 
 		// Initialize the RNG before producing the initial vector.
 		reseedGenerator();
 		generateNow();
 	}
 
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 	void loadBeforeConnections(ofJson &json) override {
 		// Restore the mode before connections so a saved "Step" connection finds its input.
 		deserializeParameter(json, syncToTransport_Param);
 	}
-#endif
 
 private:
 	// ---------- Transport mode ----------
-#if defined(OFX_OCEANODE_HAS_GLOBAL_TRANSPORT)
 	bool isTransportMode() const { return syncToTransport_Param.get(); }
 	ofParameter<bool> syncToTransport_Param;
 	ofParameter<std::vector<float>> step_Param; // only present in Sync To Transport mode
@@ -138,11 +127,6 @@ private:
 		output.setMin(std::vector<float>(1, min_Param.get()));
 		output.setMax(std::vector<float>(1, max_Param.get()));
 	}
-#else
-	bool isTransportMode() const { return false; }
-	void transportParamChanged(){}
-	void generateTransport(bool){}
-#endif
 
 	float shapeValue(float f){
 		const float pw = pow_Param.get();

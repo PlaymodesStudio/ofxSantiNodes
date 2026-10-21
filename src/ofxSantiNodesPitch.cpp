@@ -8,7 +8,7 @@
 
 #include "ofxSantiNodes.h"
 #include "ofxOceanode.h"
-#include "santiNodesTransportCompat.h"
+#include "ofxOceanodeTransport.h"
 #include "matrixDisplay.h"
 #include "multiSliderGrid.h"
 #include "multiSliderMatrix.h"
@@ -66,10 +66,8 @@ void registerPitchNodes(ofxOceanode &o)
     // PITCH
     // ─────────────────────────────────────────────
     o.registerModel<chordCypher>("Santi/Pitch");
-#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
     // retired 2026-10-18: replaced by SC ChordBox (ofxOceanodeSuperCollider; tools/migrate_chordsequence.py converts presets)
     // o.registerModel<chordSequence>("Santi/Pitch");
-#endif
     o.registerModel<chordProgressions>("Santi/Pitch");
     o.registerModel<fitNotesInRange>("Santi/Pitch");
     o.registerModel<harmonyDetector>("Santi/Pitch");
@@ -97,10 +95,8 @@ void registerPitchNodes(ofxOceanode &o)
     o.registerModel<limitPolyphony>("Santi/Voicing");
     o.registerModel<polyFill>("Santi/Voicing");
     o.registerModel<polyphonicArpeggiator>("Santi/Voicing");
-#ifdef OFX_OCEANODE_HAS_GLOBAL_TRANSPORT
     // retired 2026-10-18: replaced by SC ArpeggiatorBox (ofxOceanodeSuperCollider; tools/migrate_polyarp_gui.py converts presets)
     // o.registerModel<polyphonicArpeggiatorGUI>("Santi/Voicing");
-#endif
     o.registerModel<schoenbergMatrix>("Santi/Voicing");
     o.registerModel<voiceExpanding>("Santi/Voicing");
     o.registerModel<voiceExpanding2>("Santi/Voicing");

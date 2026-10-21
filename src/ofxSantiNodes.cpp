@@ -1,6 +1,6 @@
 #include "ofxSantiNodes.h"
 #include "ofxOceanode.h"
-#include "santiNodesTransportCompat.h"
+#include "ofxOceanodeTransport.h"
 
 // The nodes are registered in ofxSantiNodesSequencing/Math/Pitch/Utility.cpp,
 // so the node headers compile in parallel and an edited node header rebuilds
