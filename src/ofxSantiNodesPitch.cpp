@@ -25,6 +25,7 @@
 #include "harmonyDetector.h"
 #include "jazzStandards.h"
 #include "pitchClassLoad.h"
+#include "pitchMap.h"
 #include "pitchGateFilter.h"
 #include "risset.h"
 #include "scalaTuning.h"
@@ -74,6 +75,7 @@ void registerPitchNodes(ofxOceanode &o)
     o.registerModel<harmonyDetector>("Santi/Pitch");
     o.registerModel<jazzStandards>("Santi/Pitch");
     o.registerModel<pitchClassLoad>("Santi/Pitch");
+    o.registerModel<pitchMap>("Santi/Pitch");
     o.registerModel<pitchGateFilter>("Santi/Pitch");
     o.registerModel<risset>("Santi/Pitch");
     o.registerModel<scalaTuning>("Santi/Pitch");
