@@ -39,9 +39,9 @@ public:
         addParameter(input);
         addParameter(timeIn);
         addParameter(selectedIdx);
-        addParameter(output);
-        addParameter(timeOut);
-        addParameter(idxOut);
+        addOutputParameter(output);
+        addOutputParameter(timeOut);
+        addOutputParameter(idxOut);
         
         // Add button parameters
         addParameter(add.set("Add"));

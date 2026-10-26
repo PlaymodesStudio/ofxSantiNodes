@@ -18,10 +18,10 @@ public:
         addParameter(openFile.set("Open File"));
         
         // Add output parameter for text content
-        addParameter(output.set("Output", ""));
+        addOutputParameter(output.set("Output", ""));
         
         // Add output parameter to show if file exists
-        addParameter(fileExists.set("File Exists", false));
+        addOutputParameter(fileExists.set("File Exists", false));
         
         // Add listener for file path changes
         pathListener = filePath.newListener([this](string &path){

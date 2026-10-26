@@ -84,7 +84,7 @@ private:
                                vector<float>(1, 0.0f),
                                vector<float>(1, 0.0f),
                                vector<float>(1, 1.0f));
-                addParameter(outputs[i]);
+                addOutputParameter(outputs[i]);
             }
         }
 

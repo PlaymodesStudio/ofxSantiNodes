@@ -86,7 +86,7 @@ public:
                             vector<float>(1, 0.0f), vector<float>(1, -FLT_MAX), vector<float>(1, FLT_MAX)));
                     }
                     for(int i = oldSize; i < newSize; i++) {
-                        addParameter(scalarOutputs[i].set("out" + ofToString(i + 1),
+                        addOutputParameter(scalarOutputs[i].set("out" + ofToString(i + 1),
                             0.0f, -FLT_MAX, FLT_MAX));
                     }
                 }

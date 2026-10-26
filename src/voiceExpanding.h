@@ -16,8 +16,8 @@ public:
         addParameter(inputPitch.set("Input Pitch", vector<float>(1, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 127.0f)));
         addParameter(inputGate.set("Input Gate", vector<float>(1, 0.0f), vector<float>(1, 0.0f), vector<float>(1, 1.0f)));
         addParameter(outputSize.set("Output Size", 8, 1, 128));
-        addParameter(outputPitch.set("Output Pitch", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 127.0f)));
-        addParameter(outputGate.set("Output Gate", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 1.0f)));
+        addOutputParameter(outputPitch.set("Output Pitch", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 127.0f)));
+        addOutputParameter(outputGate.set("Output Gate", vector<float>(8, 0.0f), vector<float>(8, 0.0f), vector<float>(8, 1.0f)));
 
         listeners.push(outputSize.newListener([this](int &size){
             resizeOutputs(size);

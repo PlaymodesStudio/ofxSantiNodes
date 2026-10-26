@@ -18,8 +18,8 @@ public:
 		addParameter(reset.set("Reset"));
 		addParameter(resetNext.set("Reset Next"));
 		addParameter(everyN.set("Every N", 1, 1, INT_MAX));
-		addParameter(countOut.set("Count", 0, 0, INT_MAX));
-		addParameter(everyNOut.set("Every N Out"));
+		addOutputParameter(countOut.set("Count", 0, 0, INT_MAX));
+		addOutputParameter(everyNOut.set("Every N Out"));
 		
 		// Set up event listeners
 		listeners.push(voidIn.newListener([this](){

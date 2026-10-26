@@ -14,7 +14,7 @@ public:
     void setup() {
         addParameter(x.set("X", {0.5}, {0}, {1}));
         addParameter(y.set("Y", {0.5}, {0}, {1}));
-        addParameter(slope_out.set("Slope_out", {0}, {-FLT_MAX}, {FLT_MAX}));
+        addOutputParameter(slope_out.set("Slope_out", {0}, {-FLT_MAX}, {FLT_MAX}));
 
         listeners.push(x.newListener([this](vector<float> &vf){
             if(x->size() == y->size() && x->size() > 1){

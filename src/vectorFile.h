@@ -13,11 +13,11 @@ public:
         // Add parameters
         addParameter(open.set("OpenFile"));
         addParameter(filepath.set("FilePath", ""));
-        addParameter(totalLines.set("Total Lines", 0, 0, INT_MAX));
+        addOutputParameter(totalLines.set("Total Lines", 0, 0, INT_MAX));
         addParameter(line.set("Line", 0, 0, INT_MAX));
         addParameter(input.set("Input", {0}, {-FLT_MIN}, {FLT_MAX}));
         addParameter(add.set("Add"));
-        addParameter(output.set("Output", {0}, {-FLT_MIN}, {FLT_MAX}));
+        addOutputParameter(output.set("Output", {0}, {-FLT_MIN}, {FLT_MAX}));
         
 
         // Setup listeners

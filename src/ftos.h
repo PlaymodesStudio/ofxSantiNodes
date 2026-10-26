@@ -18,7 +18,7 @@ public:
         addParameter(separator.set("Separator", " "));
         
         // Add output string parameter
-        addParameter(output.set("Output", ""));
+        addOutputParameter(output.set("Output", ""));
         
         // Add listener for input changes
         listener = input.newListener([this](vector<float> &vf){

@@ -11,7 +11,7 @@ public:
     boolToVoid() : ofxOceanodeNodeModel("BoolToVoid") {
         addParameter(triggerReset.set("Reset"));
         addParameter(boolIn.set("Bool In",false));
-        addParameter(voidOut.set("Void Out"));
+        addOutputParameter(voidOut.set("Void Out"));
         lastBool = false;
         boolInListener = boolIn.newListener([this](bool &b){
             if(boolIn&&(lastBool!=true))
@@ -39,7 +39,7 @@ class floatToBool : public ofxOceanodeNodeModel {
 public:
     floatToBool() : ofxOceanodeNodeModel("FloatToBool") {
         addParameter(floatIn.set("Float In",0.0,0.0,1.0));
-        addParameter(boolOut.set("Bool Out",true));
+        addOutputParameter(boolOut.set("Bool Out",true));
         lastFloat = 0.0;
         floatInListener = floatIn.newListener([this](float &f){
             if(floatIn==0.0)
@@ -64,7 +64,7 @@ class boolToFloat : public ofxOceanodeNodeModel {
 public:
     boolToFloat() : ofxOceanodeNodeModel("BoolToFloat") {
         addParameter(boolIn.set("Bool In",false));
-        addParameter(floatOut.set("Float Out",0.0,0.0,1.0));
+        addOutputParameter(floatOut.set("Float Out",0.0,0.0,1.0));
         boolInListener = boolIn.newListener([this](bool &f){
             if(boolIn)
             {
@@ -87,7 +87,7 @@ class floatToVoid : public ofxOceanodeNodeModel {
 public:
     floatToVoid() : ofxOceanodeNodeModel("FloatToVoid") {
         addParameter(floatIn.set("Float In",0,0,1));
-        addParameter(voidOut.set("Void Out"));
+        addOutputParameter(voidOut.set("Void Out"));
         lastFloat = 0.0;
         floatInListener = floatIn.newListener([this](float &f){
             if((floatIn==1.0)&&(lastFloat!=1.0))

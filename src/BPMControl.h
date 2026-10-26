@@ -18,7 +18,7 @@ public:
         addParameter(scopedMode.set("Scoped", false));
         addParameter(port.set("Port", 12345, 1, 65535));
         addParameter(resetOnChg.set("RstPhOnChg",true));
-        addParameter(phaseHasReset.set("Trig.Rst"));
+        addOutputParameter(phaseHasReset.set("Trig.Rst"));
 
         phaseResetListener = phaseReset.newListener([this](){
             applyPhaseReset();

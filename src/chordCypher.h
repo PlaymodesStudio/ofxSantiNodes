@@ -24,8 +24,8 @@ public:
 			addParameter(chordInput);
 			addParameter(transpose);
 			addParameter(fold);
-			addParameter(output);
-			addParameter(rootOut);
+			addOutputParameter(output);
+			addOutputParameter(rootOut);
 			
 			listeners.push(chordInput.newListener([this](string &s){
 				updateChord();

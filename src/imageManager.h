@@ -18,9 +18,9 @@ public:
 		addParameter(imagePath.set("Path", ""));
 		addParameter(openButton.set("Open"));
 		addParameter(saveButton.set("Save"));
-		addParameter(imageWidth.set("Width", 0, 0, INT_MAX));
-		addParameter(imageHeight.set("Height", 0, 0, INT_MAX));
-		addParameter(loadingStatus.set("Status", "Ready"));
+		addOutputParameter(imageWidth.set("Width", 0, 0, INT_MAX));
+		addOutputParameter(imageHeight.set("Height", 0, 0, INT_MAX));
+		addOutputParameter(loadingStatus.set("Status", "Ready"));
 		addOutputParameter(texture.set("Output", nullptr));
 		
 		// Listeners

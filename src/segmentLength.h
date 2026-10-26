@@ -11,7 +11,7 @@ public:
         description = "calculates the length of segments and their midpoints";
         addParameter(pointsX.set("Points.X", {0.5}, {0}, {1}));
         addParameter(pointsY.set("Points.Y", {0.5}, {0}, {1}));
-        addParameter(lengths.set("Lengths", {0.5}, {0}, {1}));
+        addOutputParameter(lengths.set("Lengths", {0.5}, {0}, {1}));
         addParameter(separator.set("Separator", true));
         addOutputParameter(output.set("Output", {0}, {0}, {1}));  // Output parameter for visualization
         addOutputParameter(midpointX.set("Midpoint.X", {0}, {0}, {1}));  // New midpoint X output

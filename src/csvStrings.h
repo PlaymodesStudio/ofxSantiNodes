@@ -15,8 +15,8 @@ public:
         
         addParameter(input);
         addParameter(index);
-        addParameter(size);
-        addParameter(output);
+        addOutputParameter(size);
+        addOutputParameter(output);
         
         listeners.push(input.newListener([this](string &s){
             processInput();

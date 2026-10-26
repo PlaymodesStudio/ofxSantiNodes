@@ -11,7 +11,7 @@ public:
         description = "Bin Permute calculates all possible binary combinations of a vector based on the 'size' parameter. The 'index' parameter selects which permutation to output. The 'num' parameter shows the total number of permutations.";
         addParameter(size.set("Size", 3, 1, 32));
         addParameter(index.set("Index", 0, 0, 0)); // Temporarily set max to 0; will update after setup
-        addParameter(num.set("Num", 0, 0, std::numeric_limits<int>::max()));
+        addOutputParameter(num.set("Num", 0, 0, std::numeric_limits<int>::max()));
         
         addOutputParameter(output.set("Output", {}, {0}, {1}));
 

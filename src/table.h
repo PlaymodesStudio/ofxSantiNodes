@@ -19,11 +19,11 @@ public:
         addParameter(writeRow.set("WriteRow"));
         addParameter(rRow.set("rRow", 0, 0, 1080));
         addParameter(wRow.set("wRow", 0, 0, 1080));
-        addParameter(outputRow.set("Out R", {0}, {-FLT_MIN}, {FLT_MAX}));
-        addParameter(rowSize.set("RowSize", 0, 0, INT_MAX));
+        addOutputParameter(outputRow.set("Out R", {0}, {-FLT_MIN}, {FLT_MAX}));
+        addOutputParameter(rowSize.set("RowSize", 0, 0, INT_MAX));
         addParameter(rCol.set("rCol", 0, 0, 1080));
-        addParameter(outputCol.set("Out C", {0}, {-FLT_MAX}, {FLT_MAX}));
-        addParameter(colSize.set("ColSize", 0, 0, INT_MAX));
+        addOutputParameter(outputCol.set("Out C", {0}, {-FLT_MAX}, {FLT_MAX}));
+        addOutputParameter(colSize.set("ColSize", 0, 0, INT_MAX));
 
 
         openListener = open.newListener([&](void) {

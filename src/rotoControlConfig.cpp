@@ -461,7 +461,7 @@ void rotoControlConfig::setup() {
 		ofParameter<std::function<void()>>().set("", [](){ drawThickSeparator(); })
 	);
 	
-	addParameter(configStatus.set("Status", "Ready"));
+	addOutputParameter(configStatus.set("Status", "Ready"));
 	addParameter(saveConfigButton.set("Save Config"));
 	addParameter(loadConfigButton.set("Load Config"));
 	addParameter(sendConfigToDevice.set("SEND"));

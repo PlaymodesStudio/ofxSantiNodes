@@ -28,7 +28,7 @@ envelopeGenerator2::envelopeGenerator2() : ofxOceanodeNodeModel("Envelope Genera
 	addParameter(polyMode.set("Poly", false));
 	addParameter(clipOut.set("ClipOut", false));
 
-	addParameter(curvePreview.set("Curve", {0}, {0}, {1}));
+	addOutputParameter(curvePreview.set("Curve", {0}, {0}, {1}));
 	addOutputParameter(output.set("Output", {0}, {0}, {1}));
 
 	oldGateIn = {0};

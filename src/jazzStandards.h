@@ -26,8 +26,8 @@ public:
             timeSignature.set("Signature", "");
             composer.set("Composer", "");
             
-            addParameter(timeSignature);
-            addParameter(composer);
+            addOutputParameter(timeSignature);
+            addOutputParameter(composer);
             
             // Section A parameters
             sections[0].chords.set("A Chords", "");
@@ -46,17 +46,17 @@ public:
             endings[1].timings.set("B End Time", initTimings, minTimings, maxTimings);
             
             // Add all parameters in desired order
-            addParameter(sections[0].chords);
-            addParameter(sections[0].timings);
-            addParameter(sections[0].repeats);
-            addParameter(endings[0].chords);
-            addParameter(endings[0].timings);
+            addOutputParameter(sections[0].chords);
+            addOutputParameter(sections[0].timings);
+            addOutputParameter(sections[0].repeats);
+            addOutputParameter(endings[0].chords);
+            addOutputParameter(endings[0].timings);
             
-            addParameter(sections[1].chords);
-            addParameter(sections[1].timings);
-            addParameter(sections[1].repeats);
-            addParameter(endings[1].chords);
-            addParameter(endings[1].timings);
+            addOutputParameter(sections[1].chords);
+            addOutputParameter(sections[1].timings);
+            addOutputParameter(sections[1].repeats);
+            addOutputParameter(endings[1].chords);
+            addOutputParameter(endings[1].timings);
             
             listeners.push(selectedSong.newListener([this](int &i){
                 updateSong();
