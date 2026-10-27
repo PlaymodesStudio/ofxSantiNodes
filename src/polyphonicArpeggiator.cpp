@@ -146,7 +146,7 @@ void polyphonicArpeggiator::setup() {
 	addInspectorParameter(euclideanHeight.set("Euclidean Height", 80.0f, 40.0f, 150.0f));
 
 	uiPattern.set("Pattern Display", [this](){ drawPatternDisplay(); });
-	addCustomRegion(uiPattern.set("Pattern", [this](){ drawPatternDisplay(); }), [this](){ drawPatternDisplay(); });
+	addCustomRegion(uiPattern, [this](){ drawPatternDisplay(); });
 
 	uiEuclidean.set("Euclidean Display", [this](){ drawEuclideanDisplay(); });
 	addCustomRegion(uiEuclidean.set("Euclidean", [this](){ drawEuclideanDisplay(); }), [this](){ drawEuclideanDisplay(); });
