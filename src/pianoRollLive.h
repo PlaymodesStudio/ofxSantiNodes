@@ -3,6 +3,7 @@
 
 #include "ofxOceanodeNodeModel.h"
 #include "ofxOceanodeShared.h"
+#include "ofxOceanodeGlobalPitch.h"
 #include "imgui.h"
 #include <algorithm>
 #include <cmath>
@@ -16,10 +17,13 @@ public:
     pianoRollLive() : ofxOceanodeNodeModel("Piano Roll Live") {
         description =
             "Displays incoming pitch, gate, and velocity vectors as a scrolling live piano roll.\n"
-            "Velocity is shown as dimmer-to-brighter notes in a separate dockable window.";
+            "Velocity is shown as dimmer-to-brighter notes in a separate dockable window.\n"
+            "Notes are drawn as Global Pitch changes them (untick it in Global Pitch to see the input).";
     }
+    ~pianoRollLive() { ofxOceanodeGlobalPitch::unfollow(this); }
 
     void setup() override {
+        ofxOceanodeGlobalPitch::follow(this, true, {});   // shows the notes as they will sound
         addParameter(pitchInput.set("Pitch", std::vector<float>{60.0f}, std::vector<float>{0.0f}, std::vector<float>{127.0f}));
         addParameter(gateInput.set("Gate", std::vector<float>{0.0f}, std::vector<float>{0.0f}, std::vector<float>{1.0f}));
         addParameter(velocityInput.set("Velocity", std::vector<float>{1.0f}, std::vector<float>{0.0f}, std::vector<float>{1.0f}));
@@ -50,7 +54,8 @@ public:
 
         for(size_t i = 0; i < voiceCount; i++) {
             const bool gateOn = getVectorValue(gateInput.get(), i, 0.0f) > 0.5f;
-            const int pitch = ofClamp((int)std::round(getVectorValue(pitchInput.get(), i, 60.0f)), 0, 127);
+            const float input = getVectorValue(pitchInput.get(), i, 60.0f);
+            const int pitch = ofClamp((int)std::round(ofxOceanodeGlobalPitch::apply(this, input, (int)i, false)), 0, 127);
             const float velocity = ofClamp(getVectorValue(velocityInput.get(), i, 1.0f), 0.0f, 1.0f);
             auto &voice = activeVoices[i];
 
