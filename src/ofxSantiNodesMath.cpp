@@ -124,7 +124,7 @@ void registerMathNodes(ofxOceanode &o)
     o.registerModel<vecFilter>("Santi/Vectors");
     o.registerModel<vectorExtract>("Santi/Vectors");
     o.registerModel<vectorFeedback>("Santi/Vectors");
-    o.registerModel<vectorFile>("Santi/Vectors");
+    o.registerModel<vectorFile>("Santi/Vectors", ofxOceanodeNodeRegistrationFlags::Sink);
     o.registerModel<vectorInsert>("Santi/Vectors");
     o.registerModel<vectorInverter>("Santi/Vectors");
     o.registerModel<vectorMorphology>("Santi/Vectors");

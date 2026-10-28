@@ -71,13 +71,13 @@ void registerSequencingNodes(ofxOceanode &o)
     // ─────────────────────────────────────────────
     o.registerModel<beatMeasures>("Santi/Timing");
 #ifdef OFXOCEANODE_USE_OSC
-    o.registerModel<BPMControl>("Santi/Timing");
+    o.registerModel<BPMControl>("Santi/Timing", ofxOceanodeNodeRegistrationFlags::Sink);
 #endif
     o.registerModel<cycleCount>("Santi/Timing");
     o.registerModel<currentTime>("Santi/Timing");
     o.registerModel<deltaTime>("Santi/Timing");
     o.registerModel<divmult2ms>("Santi/Timing");
-    o.registerModel<framerateControl>("Santi/Timing");
+    o.registerModel<framerateControl>("Santi/Timing", ofxOceanodeNodeRegistrationFlags::Sink);
     o.registerModel<phasorSwing>("Santi/Timing");
     o.registerModel<rateLimiter>("Santi/Timing");
     o.registerModel<resetPhasor>("Santi/Timing");

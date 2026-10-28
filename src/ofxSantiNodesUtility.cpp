@@ -135,14 +135,14 @@ void registerUtilityNodes(ofxOceanode &o)
     // ─────────────────────────────────────────────
     // SNAPSHOTS
     // ─────────────────────────────────────────────
-    o.registerModel<globalSnapshots>("Santi/Snapshots");
+    o.registerModel<globalSnapshots>("Santi/Snapshots", ofxOceanodeNodeRegistrationFlags::Sink);
 
     // ─────────────────────────────────────────────
     // MIDI
     // ─────────────────────────────────────────────
     o.registerModel<midiKeyboardEmulator>("Santi/MIDI");
 #ifdef OFXOCEANODE_USE_MIDI
-    o.registerModel<rotoControlConfig>("Santi/MIDI");
+    o.registerModel<rotoControlConfig>("Santi/MIDI", ofxOceanodeNodeRegistrationFlags::Sink);
 #endif
 
     // ─────────────────────────────────────────────
