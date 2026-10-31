@@ -34,6 +34,8 @@ public:
 
         area.setMax(in.size());
         std::vector<float> out(in.size(), 0.0f);
+        bool hasFullAverage = false;
+        float fullAverage = 0.0f;
 
         for(size_t i = 0; i < in.size(); i++) {
             float currentInfluence = isVectorInfluence ?
@@ -45,7 +47,11 @@ public:
                 continue;
             }
             else if(currentInfluence == 1.0f){
-                out[i] = std::accumulate(in.begin(), in.end(), 0.0f) / in.size();
+                if(!hasFullAverage){
+                    fullAverage = std::accumulate(in.begin(), in.end(), 0.0f) / in.size();
+                    hasFullAverage = true;
+                }
+                out[i] = fullAverage;
                 continue;
             }
 

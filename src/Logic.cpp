@@ -34,13 +34,13 @@ void Logic::computeLogic() {
 		};
 
 		vector<float> result;
-		vector<string> operations = {">", ">=", "<", "<=", "==", "!=", "&&", "||",
+		static const vector<string> operations = {">", ">=", "<", "<=", "==", "!=", "&&", "||",
 									 "!>", "!<", "!>=", "!<=",
 									 "XOR", "NAND", "NOR", "XNOR", "NOT1", "NOT2"};
 
+		const string& op = operations[operation.get()];
 		for (size_t i = 0; i < std::max(input1->size(), input2->size()); ++i) {
 			bool logicResult = false;
-			string op = operations[operation.get()];
 			float val1 = getValueForIndex(input1, i);
 			float val2 = getValueForIndex(input2, i);
 			bool bool1 = static_cast<bool>(val1);

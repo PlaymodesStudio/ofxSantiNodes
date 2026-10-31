@@ -306,7 +306,7 @@ private:
 
 	void drawSlider() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
-		string name = sliderName.get();
+		const string& name = sliderName.get();
 		if (!name.empty()) {
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();

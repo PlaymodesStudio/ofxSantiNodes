@@ -167,7 +167,7 @@ private:
 	}
 	
 	void syncFromStoredValues() {
-		vector<int> v = storedValues.get();
+		const vector<int>& v = storedValues.get();
 		int n = numToggles.get();
 		toggleValues.resize(n, 0);
 		for (int i = 0; i < n && i < (int)v.size(); ++i) {
@@ -495,7 +495,7 @@ private:
 	void drawMultitoggle() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Draw the multitoggle name above if not empty
-		string name = toggleName.get();
+		const string& name = toggleName.get();
 		if (!name.empty()) {
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();

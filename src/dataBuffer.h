@@ -40,6 +40,7 @@ public:
         }
 
         vector<float> outAux;
+        outAux.reserve(input.get().size());
         for(int i = 0; i < input.get().size(); i++)
         {
             int storeSize = store.size();

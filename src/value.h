@@ -165,7 +165,7 @@ private:
 							displayName += " *";
 						}
 
-						newPortalNames.push_back(displayName);
+						newPortalNames.push_back(std::move(displayName));
 						newCompatiblePortals.push_back(portalPtr);
 						uniquePortalNames.insert(portalName);
 					}
@@ -173,8 +173,8 @@ private:
 			}
 		}
 
-		portalNames = newPortalNames;
-		compatiblePortals = newCompatiblePortals;
+		portalNames = std::move(newPortalNames);
+		compatiblePortals = std::move(newCompatiblePortals);
 
 		if (portalNames.empty()) {
 			portalNames.push_back("No Compatible Portals");
@@ -221,7 +221,7 @@ private:
 							displayName += " *";
 						}
 
-						newPortalNames.push_back(displayName);
+						newPortalNames.push_back(std::move(displayName));
 						newCompatiblePortals.push_back(portalPtr);
 						uniquePortalNames.insert(portalName);
 					}
@@ -232,8 +232,8 @@ private:
 		if (newPortalNames != portalNames || newCompatiblePortals != compatiblePortals) {
 			string nameToRestore = selectedPortalName.get();
 
-			portalNames = newPortalNames;
-			compatiblePortals = newCompatiblePortals;
+			portalNames = std::move(newPortalNames);
+			compatiblePortals = std::move(newCompatiblePortals);
 
 			if (portalNames.empty()) {
 				portalNames.push_back("No Compatible Portals");
@@ -378,7 +378,7 @@ private:
 	
 	void drawValue() {
 		// Draw the value name above the input if it's not empty
-		string name = valueName.get();
+		const string& name = valueName.get();
 		if (!name.empty()) {
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();

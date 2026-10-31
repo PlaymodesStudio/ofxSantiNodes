@@ -184,9 +184,7 @@ private:
 			gateActive.assign(n, false);
 			gateWaiting.assign(n, false);
 			
-			auto o = output.get();
-			o.assign(n, 0.0f);
-			output = o;
+			output = vector<float>(n, 0.0f);
 		}
 	}
 

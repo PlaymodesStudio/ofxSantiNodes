@@ -1343,7 +1343,7 @@ void polyphonicArpeggiatorGUI::syncVelocityCurveShape() {
 }
 
 void polyphonicArpeggiatorGUI::syncVelocityCurveEditorStateFromCurve() {
-    const std::vector<float> curve = velocityCurve.get();
+    const std::vector<float> &curve = velocityCurve.get();
     if(curve.empty()) {
         velocityCurveEditorStart = 0.0f;
         velocityCurveEditorEnd = 0.0f;
@@ -2632,7 +2632,7 @@ void polyphonicArpeggiatorGUI::drawVelocityCurveEditor(float width, float height
         velocityCurveActiveHandle = 0;
     }
 
-    std::vector<float> curve = velocityCurve.get();
+    const std::vector<float> &curve = velocityCurve.get();
     if(curve.empty()) return;
 
     std::vector<ImVec2> linePoints;
@@ -3032,8 +3032,8 @@ void polyphonicArpeggiatorGUI::drawOutputSection() {
     }
     if(notes.empty()) {
         StepPreviewInfo info = buildStepPreview(wrapIndex(highlightedStep, std::max(1, seqSize.get())));
-        notes = info.notes;
-        velocities = info.noteVelocities;
+        notes = std::move(info.notes);
+        velocities = std::move(info.noteVelocities);
     }
     if(notes.empty()) notes = getActiveOutputPreviewNotes();
     drawKeyboardDisplay("OutputKeyboard", notes, &velocities, ImGui::GetContentRegionAvail().x, 64.0f * editorZoom, true, true);
@@ -3372,10 +3372,12 @@ void polyphonicArpeggiatorGUI::drawEuclideanPreview(float width, float height) c
     std::vector<bool> pulsePreview(previewLength, true);
     std::vector<bool> accentPreview(previewLength, false);
     std::vector<bool> durationPreview(previewLength, false);
+    int gateProgressionIndex = 0;
     for(int i = 0; i < previewLength; i++) {
         pulsePreview[i] = isPulseActiveForStepPreview(i);
-        accentPreview[i] = isAccentPreviewLaneActive(i);
-        durationPreview[i] = isDurationPreviewLaneActive(i);
+        accentPreview[i] = isAccentPreviewLaneActive(i, gateProgressionIndex);
+        durationPreview[i] = isDurationPreviewLaneActive(i, gateProgressionIndex);
+        if(pulsePreview[i]) gateProgressionIndex++;
     }
 
     struct LaneInfo {
@@ -3422,14 +3424,16 @@ void polyphonicArpeggiatorGUI::drawArpGrid(float width, float height) const {
 
     int minNote = 127;
     int maxNote = 0;
+    int gateProgressionIndex = 0;
     for(int step = 0; step < steps; step++) {
-        StepPreviewInfo info = buildStepPreview(step);
+        StepPreviewInfo info = buildStepPreview(step, gateProgressionIndex);
+        if(info.gate) gateProgressionIndex++;
         for(float note : info.notes) {
             int rounded = ofClamp(static_cast<int>(std::round(note)), 0, 127);
             minNote = std::min(minNote, rounded);
             maxNote = std::max(maxNote, rounded);
         }
-        previewSteps.push_back(info);
+        previewSteps.push_back(std::move(info));
     }
 
     if(minNote > maxNote) {
@@ -3466,10 +3470,10 @@ void polyphonicArpeggiatorGUI::drawArpGrid(float width, float height) const {
     drawList->AddRectFilled(ImVec2(playheadX, gridY), ImVec2(playheadX + stepWidth, gridY + gridH), IM_COL32(255, 255, 255, 16));
     drawList->AddLine(ImVec2(playheadX, gridY), ImVec2(playheadX, gridY + gridH), IM_COL32(250, 240, 160, 210), 2.0f);
 
+    bool hasVisibleStrum = strum.get() > 0.001f || strumRndm.get() > 0.001f || swing.get() > 0.001f || positionRndm.get() > 0.001f;
     for(int step = 0; step < steps; step++) {
         const StepPreviewInfo &info = previewSteps[step];
         if(!info.gate) continue;
-        bool hasVisibleStrum = strum.get() > 0.001f || strumRndm.get() > 0.001f || swing.get() > 0.001f || positionRndm.get() > 0.001f;
 
         for(size_t voice = 0; voice < info.notes.size(); voice++) {
             int note = ofClamp(static_cast<int>(std::round(info.notes[voice])), 0, 127);
@@ -3980,8 +3984,12 @@ int polyphonicArpeggiatorGUI::getBidirectionalPatternOffset(int stepIndex, bool 
 }
 
 int polyphonicArpeggiatorGUI::getPatternOffsetForStepPreview(int stepIndex) const {
+    return getPatternOffsetForStepPreview(stepIndex, gateAdvance.get() ? getGateProgressionIndexPreview(stepIndex) : stepIndex);
+}
+
+int polyphonicArpeggiatorGUI::getPatternOffsetForStepPreview(int stepIndex, int gateProgressionIndex) const {
     int size = getPatternTraversalSize();
-    int shiftedStepIndex = getShiftedSequenceStepIndex(getPitchProgressionIndexPreview(stepIndex));
+    int shiftedStepIndex = getShiftedSequenceStepIndex(gateAdvance.get() ? gateProgressionIndex : stepIndex);
     if(patternMode.get() == 1) {
         return size - 1 - wrapIndex(shiftedStepIndex, size);
     }
@@ -4056,8 +4064,14 @@ void polyphonicArpeggiatorGUI::rebuildEuclideanOutputs() {
     std::vector<int> durationValues(size, 0);
 
     for(int i = 0; i < size; i++) gateValues[i] = isPulseActiveForStepPreview(i) ? 1 : 0;
-    for(int i = 0; i < size; i++) accentValues[i] = isAccentPreviewLaneActive(i) ? 1 : 0;
-    for(int i = 0; i < size; i++) durationValues[i] = isDurationPreviewLaneActive(i) ? 1 : 0;
+    for(int i = 0, gateCount = 0; i < size; i++) {
+        accentValues[i] = isAccentPreviewLaneActive(i, gateCount) ? 1 : 0;
+        gateCount += gateValues[i];
+    }
+    for(int i = 0, gateCount = 0; i < size; i++) {
+        durationValues[i] = isDurationPreviewLaneActive(i, gateCount) ? 1 : 0;
+        gateCount += gateValues[i];
+    }
 
     eucGateOut.set(gateValues);
     eucAccOut.set(accentValues);
@@ -4399,7 +4413,11 @@ bool polyphonicArpeggiatorGUI::isDurationNoteActivePreview(int stepIndex, int vo
 }
 
 bool polyphonicArpeggiatorGUI::isAccentPreviewLaneActive(int stepIndex) const {
-    int accentPreviewIndex = accentOnsetMode.get() ? getGateProgressionIndexPreview(stepIndex) : stepIndex;
+    return isAccentPreviewLaneActive(stepIndex, accentOnsetMode.get() ? getGateProgressionIndexPreview(stepIndex) : stepIndex);
+}
+
+bool polyphonicArpeggiatorGUI::isAccentPreviewLaneActive(int stepIndex, int gateProgressionIndex) const {
+    int accentPreviewIndex = accentOnsetMode.get() ? gateProgressionIndex : stepIndex;
     int shiftedStepIndex = getShiftedSequenceStepIndex(accentPreviewIndex);
     if(accentPatternMode.get() != RandomNoteEventPattern) {
         return isAccentStepActivePreview(shiftedStepIndex);
@@ -4413,7 +4431,11 @@ bool polyphonicArpeggiatorGUI::isAccentPreviewLaneActive(int stepIndex) const {
 }
 
 bool polyphonicArpeggiatorGUI::isDurationPreviewLaneActive(int stepIndex) const {
-    int accentPreviewIndex = accentOnsetMode.get() ? getGateProgressionIndexPreview(stepIndex) : stepIndex;
+    return isDurationPreviewLaneActive(stepIndex, accentOnsetMode.get() ? getGateProgressionIndexPreview(stepIndex) : stepIndex);
+}
+
+bool polyphonicArpeggiatorGUI::isDurationPreviewLaneActive(int stepIndex, int gateProgressionIndex) const {
+    int accentPreviewIndex = accentOnsetMode.get() ? gateProgressionIndex : stepIndex;
     int shiftedStepIndex = getShiftedSequenceStepIndex(accentPreviewIndex);
     if(durationPatternMode.get() != RandomNoteEventPattern) {
         return isDurationStepActivePreview(shiftedStepIndex);
@@ -4676,9 +4698,13 @@ float polyphonicArpeggiatorGUI::computePreviewPositionOffset(int stepIndex, int 
 }
 
 polyphonicArpeggiatorGUI::StepPreviewInfo polyphonicArpeggiatorGUI::buildStepPreview(int stepIndex) const {
+    return buildStepPreview(stepIndex, (accentOnsetMode.get() || gateAdvance.get()) ? getGateProgressionIndexPreview(stepIndex) : stepIndex);
+}
+
+polyphonicArpeggiatorGUI::StepPreviewInfo polyphonicArpeggiatorGUI::buildStepPreview(int stepIndex, int gateProgressionIndex) const {
     StepPreviewInfo info;
     int shiftedStepIndex = getShiftedSequenceStepIndex(stepIndex);
-    int accentPreviewIndex = accentOnsetMode.get() ? getGateProgressionIndexPreview(stepIndex) : stepIndex;
+    int accentPreviewIndex = accentOnsetMode.get() ? gateProgressionIndex : stepIndex;
     int shiftedAccentIndex = getShiftedSequenceStepIndex(accentPreviewIndex);
     info.gate = isPulseActiveForStepPreview(stepIndex);
     bool stepAccentActive = isAccentStepActivePreview(shiftedAccentIndex);
@@ -4691,7 +4717,7 @@ polyphonicArpeggiatorGUI::StepPreviewInfo polyphonicArpeggiatorGUI::buildStepPre
     int poly = std::min(polyphony.get() + (stepAccentActive ? polyAccent.get() : 0), MaxPolyphony);
     int interval = std::max(1, polyInterval.get());
 
-    int patternOffset = getPatternOffsetForStepPreview(stepIndex);
+    int patternOffset = getPatternOffsetForStepPreview(stepIndex, gateProgressionIndex);
     int baseRelativeOffset = patternOffset * std::max(0, sourceStride.get());
     int baseSourceIndex = sourceStart.get() + baseRelativeOffset;
     float sharedStepVelocityOffset = computePreviewStepVelocityRandomOffset(stepIndex);
@@ -4817,7 +4843,7 @@ std::vector<float> polyphonicArpeggiatorGUI::getActiveOutputPreviewNotes() const
     }
     if(notes.empty()) {
         StepPreviewInfo info = buildStepPreview(wrapIndex(highlightedStep, std::max(1, seqSize.get())));
-        notes = info.notes;
+        notes = std::move(info.notes);
     }
     if(notes.empty()) notes = currentPitches;
     return notes;

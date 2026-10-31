@@ -30,12 +30,12 @@ void euclideanTicksPoly::setup() {
 }
 
 void euclideanTicksPoly::calculate() {
+    if(inCount.get() == prevInCount) return; // No changes, so return
+
     std::vector<int> inCountVal = inCount.get();
     std::vector<int> lengthVal = length.get();
     std::vector<int> onsetsVal = onsets.get();
     std::vector<int> offsetVal = offset.get();
-
-    if(inCountVal == prevInCount) return; // No changes, so return
     
     // Resize and fill the length, onsets, and offset vectors if they are scalars and inCount is a vector
     if(inCountVal.size() > 1) {

@@ -42,7 +42,7 @@ public:
             
             // Get and check output vectors
             vector<float> outPitch = outputPitch.get();
-            vector<float> outGate = outputGate.get();
+            vector<float> outGate(outputGate.get().size(), 0.0f);
             
             // Safety check for output vectors
             if(outPitch.empty() || outGate.empty()) {
@@ -60,9 +60,6 @@ public:
             for(size_t i = 0; i < outSize && !inPitch.empty(); ++i) {
                 outPitch[i] = inPitch[i % inPitch.size()];
             }
-
-            // Clear output gates
-            fill(outGate.begin(), outGate.end(), 0.0f);
 
             // Create pitch-to-slots mapping
             map<int, vector<size_t>> pitchToSlots;

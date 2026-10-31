@@ -222,6 +222,9 @@ private:
 		std::vector<float> out;
 		out.resize(in.size());
 
+		float harmonicCache[12];
+		bool harmonicCached[12] = {};
+
 		for(size_t i = 0; i < in.size(); ++i){
 			float s = in[i];
 
@@ -258,9 +261,16 @@ private:
 				case 5: // Custom
 					baseRatio = ratioCustom(deg, custom);
 					break;
-				case 6: // Nearest harmonic 1..maxHarmonic
-					baseRatio = ratioNearestHarmonic(deg);
+				case 6: { // Nearest harmonic 1..maxHarmonic
+					int key = deg % 12;
+					if(key < 0) key += 12;
+					if(!harmonicCached[key]){
+						harmonicCache[key] = ratioNearestHarmonic(deg);
+						harmonicCached[key] = true;
+					}
+					baseRatio = harmonicCache[key];
 					break;
+				}
 				default:
 					baseRatio = 1.0f;
 					break;

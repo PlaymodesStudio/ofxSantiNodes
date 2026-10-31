@@ -29,6 +29,8 @@ public:
     void recalculate() {
         vector<float> divOut, multOut;
         int figIndex = figure.get(); // Retrieve the integer value
+        divOut.reserve(barDiv.get().size());
+        multOut.reserve(barDiv.get().size());
 
         for(const auto& value : barDiv.get()){
             int divRes, multRes;

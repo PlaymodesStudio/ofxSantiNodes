@@ -19,7 +19,7 @@ void EqualLoudness::setup() {
 }
 
 void EqualLoudness::calculate() {
-	vector<float> pitches = pitch.get();
+	const vector<float>& pitches = pitch.get();
 	vector<float> amplitudes(pitches.size());
 	float strengthValue = strength.get();
 

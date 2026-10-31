@@ -77,6 +77,7 @@ public:
         if(synth != nullptr && outBus != nullptr){
             // Only take every other value (just the frequency, skip the hasFreq)
             vector<float> pitchOnly;
+            pitchOnly.reserve(outBus->readValues.size()/2);
             for(int i = 0; i < outBus->readValues.size()/2; i++) {
                 pitchOnly.push_back(outBus->readValues[i]);
             }

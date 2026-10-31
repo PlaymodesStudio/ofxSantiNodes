@@ -44,7 +44,8 @@ private:
         
         // Process all numbers except the last one
         for(size_t i = 0; i < inputVec.size() - 1; ++i) {
-            result += ofToString(inputVec[i]) + separator.get();
+            result += ofToString(inputVec[i]);
+            result += separator.get();
         }
         
         // Add the last number without separator

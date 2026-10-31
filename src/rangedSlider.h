@@ -236,8 +236,8 @@ private:
 			}
 		}
 
-		portalNames = newPortalNames;
-		compatiblePortals = newCompatiblePortals;
+		portalNames = std::move(newPortalNames);
+		compatiblePortals = std::move(newCompatiblePortals);
 
 		if (portalNames.empty()) {
 			portalNames.push_back("No Compatible Portals");
@@ -298,8 +298,8 @@ private:
 				currentlySelectedPortalName = getActualPortalNameFromDisplayName(portalNames[selectedPortalIndex]);
 			}
 			
-			portalNames = newPortalNames;
-			compatiblePortals = newCompatiblePortals;
+			portalNames = std::move(newPortalNames);
+			compatiblePortals = std::move(newCompatiblePortals);
 
 			if (portalNames.empty()) {
 				portalNames.push_back("No Compatible Portals");
@@ -483,7 +483,7 @@ private:
 	void drawSlider() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Draw the slider name above the slider if it's not empty
-		string name = sliderName.get();
+		const string& name = sliderName.get();
 		if (!name.empty()) {
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();

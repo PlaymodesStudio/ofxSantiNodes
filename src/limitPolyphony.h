@@ -33,13 +33,7 @@ public:
 
             for (int i = 0; i < 128; ++i) {
                 if (vf[i] != 0) {
-                    // If note is on and wasn't on previously, add to deque
-                    if (std::find(noteOns.begin(), noteOns.end(), i) == noteOns.end()) {
-                        noteOns.push_back(i);
-                    }
-                } else {
-                    // If note is off, remove from deque
-                    noteOns.erase(std::remove(noteOns.begin(), noteOns.end(), i), noteOns.end());
+                    noteOns.push_back(i);
                 }
             }
 

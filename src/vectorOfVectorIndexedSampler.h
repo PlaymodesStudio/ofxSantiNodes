@@ -30,9 +30,9 @@ public:
 
 private:
 	void computeOutput(){
-		auto inputVV = input.get();
-		auto vecIdx = vectorIndex.get();
-		auto elemIdx = elementIndex.get();
+		const auto &inputVV = input.get();
+		const auto &vecIdx = vectorIndex.get();
+		const auto &elemIdx = elementIndex.get();
 		
 		// Determine output size based on the maximum length of the two index vectors
 		size_t outputSize = std::max(vecIdx.size(), elemIdx.size());

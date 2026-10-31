@@ -145,6 +145,12 @@ inline float shapedVoiceIndex(const Map& m,int i,int n) {
     for(int j=0;j<n;++j){const float x=rawVoiceIndex(m,j,n);lo=std::min(lo,x);hi=std::max(hi,x);}
     return hi-lo<1.e-6f?v:lo+(hi-lo)*santipitchmorph::normalizedPow((v-lo)/(hi-lo),m.pow);
 }
+inline float shapedVoiceIndex(const Map& m,int i,int n,float rangeLo,float rangeHi) {
+    const float v=rawVoiceIndex(m,i,n);
+    if(!m.morphGeometry || std::abs(m.pow)<1.e-6f)return v;
+    const float lo=std::min(v,rangeLo),hi=std::max(v,rangeHi);
+    return hi-lo<1.e-6f?v:lo+(hi-lo)*santipitchmorph::normalizedPow((v-lo)/(hi-lo),m.pow);
+}
 
 // Every downstream mapper sees integer positions, including bent/sine/random
 // geometries. Keep the continuous helper for versioned legacy-state migration.
@@ -152,6 +158,12 @@ inline float voiceIndex(const Map& m,int i,int n) {
     float v=shapedVoiceIndex(m,i,n);
     const float half=std::round(v*2)*0.5f;
     if(std::abs(v-half)<1e-5f)v=half; // stable ties at exact sine quarter-cycles
+    return std::round(v);
+}
+inline float voiceIndex(const Map& m,int i,int n,float rangeLo,float rangeHi) {
+    float v=shapedVoiceIndex(m,i,n,rangeLo,rangeHi);
+    const float half=std::round(v*2)*0.5f;
+    if(std::abs(v-half)<1e-5f)v=half;
     return std::round(v);
 }
 
@@ -198,9 +210,13 @@ inline float quantizeTones(float p, const std::vector<float>& tones, float root,
 inline std::vector<float> generate(const Map& m, int n, const std::vector<float>& shift = {}) {
     std::vector<float> out((size_t)std::max(0, n));
     const auto scale = userScale(m.table);
+    float rangeLo = INFINITY, rangeHi = -INFINITY;
+    if(m.morphGeometry && std::abs(m.pow) >= 1.e-6f){
+        for(int j = 0; j < n; j++){ const float x = rawVoiceIndex(m, j, n); rangeLo = std::min(rangeLo, x); rangeHi = std::max(rangeHi, x); }
+    }
     for(int i = 0; i < n; i++){
         const float s = shift.empty() ? 0.0f : shift[std::min((size_t)i, shift.size() - 1)];
-        const float index = voiceIndex(m, i, n);
+        const float index = voiceIndex(m, i, n, rangeLo, rangeHi);
         float p;
         if(m.mode == ModeTable){
             float degree = m.interval * (index-1.0f) + m.degreeOffset;

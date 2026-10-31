@@ -144,10 +144,10 @@ private:
     
 	void processInput(const vector<float>& vf) {
 			vector<float> out;
-			vector<string> operations = {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance", "lin-log", "log-lin", "kelvin-rgb", "rgb-kelvin", "beat-sec"};
+			static const vector<string> operations = {"ms-hz", "hz-ms", "beat-ms", "ms-beat", "frame-beat", "beat-frame", "soundMeters-ms", "ms-soundMeters", "pitch-hz", "hz-pitch", "speed-semitones", "semitones-speed", "beat-hz", "hz-beat", "frame-ms", "ms-frame", "frame-pitch", "pitch-fps", "pitch-ms", "ms-pitch", "pitch-cm", "hz-cm", "cm-pitch", "cm-hz", "amp-dB", "dB-amp", "beat-pitch", "pitch-beat", "bpm-pitch", "pitch-bpm", "luminance-volume", "volume-luminance", "lin-log", "log-lin", "kelvin-rgb", "rgb-kelvin", "beat-sec"};
 			
 			int opIndex = operation.get();
-			string op = operations[opIndex];
+			const string& op = operations[opIndex];
 			
 			if(op == "kelvin-rgb") {
 				// Convert each Kelvin value to RGB triplet

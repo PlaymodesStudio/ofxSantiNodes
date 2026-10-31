@@ -100,10 +100,7 @@ private:
         float radius = (displaySize - actualBoxSize) * 0.4f;  // Radius of speaker arrangement
         
         // Get current volume array and ensure it matches speaker count
-        vector<float> currentVolume = volume.get();
-        while(currentVolume.size() < numSpeakers) {
-            currentVolume.push_back(0.0f);
-        }
+        const vector<float>& currentVolume = volume.get();
 
         // Draw speakers
         for(int i = 0; i < numSpeakers; i++) {

@@ -109,7 +109,7 @@ private:
 				}
 			}
 			
-			result = rotated;
+			result = std::move(rotated);
 			std::swap(currentW, currentH); // Dimensions swap after 90-degree rotation
 		}
 		
@@ -130,7 +130,7 @@ private:
 					reflected[newIndex] = result[oldIndex];
 				}
 			}
-			result = reflected;
+			result = std::move(reflected);
 		}
 		
 		// Apply vertical reflection (flip top-bottom)
@@ -144,7 +144,7 @@ private:
 					reflected[newIndex] = result[oldIndex];
 				}
 			}
-			result = reflected;
+			result = std::move(reflected);
 		}
 		
 		return result;

@@ -121,13 +121,14 @@ public:
 		}
 		for(auto it = gateRollResults.begin(); it != gateRollResults.end(); )
 			it = currentActive.count(it->first) ? std::next(it) : gateRollResults.erase(it);
-		prevActiveNotes = currentActive;
+		prevActiveNotes = std::move(currentActive);
 
 		vector<float> ap, av, ag;
 		for(const auto& n : notes) {
 			if(localBeat >= n.startBeat && localBeat < n.endBeat()) {
 				NoteKey key{n.startBeat, n.pitch};
-				if(gateRollResults.count(key) && gateRollResults.at(key)) {
+				auto it = gateRollResults.find(key);
+				if(it != gateRollResults.end() && it->second) {
 					ap.push_back(n.pitch);
 					av.push_back(n.velocity);
 					ag.push_back(1.0f);

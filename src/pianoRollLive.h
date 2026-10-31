@@ -256,13 +256,20 @@ private:
 
         drawList->AddRectFilled(start, ImVec2(start.x + width, start.y + height), IM_COL32(16, 16, 16, 255));
 
+        float activeVelocities[128] = {};
+        for(const auto &note : notes) {
+            if(note.active && note.pitch >= 0 && note.pitch < 128) {
+                activeVelocities[note.pitch] = std::max(activeVelocities[note.pitch], note.velocity);
+            }
+        }
+
         for(int i = 0; i < pitchCount; i++) {
             const int pitch = rangeMaxPitch - i;
             const float y = start.y + i * rowHeight;
             const bool blackKey = isBlackKey(pitch);
             const float keyRightX = keyboardLeftX + (blackKey ? keyboardWidth * 0.75f : keyboardWidth);
             const ImU32 whiteKeyBedColor = IM_COL32(230, 230, 230, 255);
-            const float activeVelocity = getActiveVelocityForPitch(pitch);
+            const float activeVelocity = (pitch >= 0 && pitch < 128) ? activeVelocities[pitch] : getActiveVelocityForPitch(pitch);
             const bool activePitch = activeVelocity > 0.0f;
             const bool scalePitch = isHighlightedScalePitch(pitch);
             if(showStrips.get()) {

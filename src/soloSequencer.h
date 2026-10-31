@@ -53,15 +53,15 @@ public:
 
     void updateSolo() {
         std::vector<float> currentValues(8, 0.0f);
-        std::array<std::vector<float>, 8> inputs = {in1.get(), in2.get(), in3.get(), in4.get(), in5.get(), in6.get(), in7.get(), in8.get()};
+        std::array<const std::vector<float>*, 8> inputs = {&in1.get(), &in2.get(), &in3.get(), &in4.get(), &in5.get(), &in6.get(), &in7.get(), &in8.get()};
         bool hasChanged = false;
         std::vector<bool> changedVectors(8, false); // Track which vectors have changed
 
         // Determine current values and whether they've changed
         for(int i = 0; i < 8; ++i) {
-            if(!inputs[i].empty()) {
-                int index = (step + shift) % inputs[i].size();
-                currentValues[i] = inputs[i][index];
+            if(!inputs[i]->empty()) {
+                int index = (step + shift) % inputs[i]->size();
+                currentValues[i] = (*inputs[i])[index];
                 if(currentValues[i] != lastValues[i]) {
                     hasChanged = true;
                     changedVectors[i] = true; // Mark this vector as changed

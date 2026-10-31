@@ -260,12 +260,14 @@ private:
 				int pixelWidth = std::abs(x2 - x1);
 				int numSamples = std::max(50, pixelWidth * 2);
 				
+				float nextVal = evaluateSegment(pt1, pt2, tension, 0 / (float)numSamples);
 				for(int j = 0; j < numSamples; j++) {
 					float t1 = j / (float)numSamples;
 					float t2 = (j + 1) / (float)numSamples;
 					
-					float val1 = evaluateSegment(pt1, pt2, tension, t1);
+					float val1 = nextVal;
 					float val2 = evaluateSegment(pt1, pt2, tension, t2);
+					nextVal = val2;
 					
 					float sx1 = posToX(pt1.position + t1 * (pt2.position - pt1.position));
 					float sy1 = valueToY(val1);
@@ -296,12 +298,14 @@ private:
 			int pixelWidth = std::abs(x2 - x1);
 			int numSamples = std::max(50, pixelWidth * 2);
 			
+			float nextVal = evaluateSegment(pt1, pt2, tension, 0 / (float)numSamples);
 			for(int j = 0; j < numSamples; j++) {
 				float t1 = j / (float)numSamples;
 				float t2 = (j + 1) / (float)numSamples;
 				
-				float val1 = evaluateSegment(pt1, pt2, tension, t1);
+				float val1 = nextVal;
 				float val2 = evaluateSegment(pt1, pt2, tension, t2);
+				nextVal = val2;
 				
 				float sx1 = posToX(pt1.position + t1 * (pt2.position - pt1.position));
 				float sy1 = valueToY(val1);
@@ -531,7 +535,7 @@ private:
 	}
 	
 	void updateCurveOutput() {
-		vector<float> phasors = phasorInput.get();
+		const vector<float>& phasors = phasorInput.get();
 		vector<float> outputs;
 		
 		int numPhasors = phasors.size();

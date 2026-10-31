@@ -3792,12 +3792,13 @@ void chordSequence::refreshAllOutputs(bool forceInstant) {
         return;
     }
 
+    static const std::vector<float> emptyPreviousValues;
     for(int i = 0; i < static_cast<int>(outputs.size()); i++) {
         if(activeIndex < 0 || activeIndex >= static_cast<int>(progression.size())) {
             beginGlideTo(i, {0.0f}, true);
         } else {
-            std::vector<float> previousValues =
-                (forceInstant || lastRefreshedActiveIndex < 0) ? std::vector<float>{} : targetOutputs[i];
+            const std::vector<float> &previousValues =
+                (forceInstant || lastRefreshedActiveIndex < 0) ? emptyPreviousValues : targetOutputs[i];
             beginGlideTo(i,
                          buildOutputValues(progression[activeIndex], outputConfigs[i], previousValues),
                          forceInstant);

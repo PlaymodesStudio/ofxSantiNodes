@@ -33,6 +33,13 @@ public:
 		// Get current time
 		float currentTime = ofGetElapsedTimef();
 		
+		const vector<float>& prevOutput = gateOutput.get();
+		bool needsUpdate = prevOutput.size() != gateCount;
+		for (size_t i = 0; !needsUpdate && i < gateCount; i++) {
+			if (prevOutput[i] > 0.5f && gateEndTimes[i] <= currentTime) needsUpdate = true;
+		}
+		if (!needsUpdate) return;
+		
 		// Update output gates based on timing
 		vector<float> currentOutput = gateOutput.get();
 		bool outputChanged = false;

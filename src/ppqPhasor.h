@@ -157,13 +157,9 @@ private:
 			jumpCounters.assign(n, 0);
 			cycleCountOut = lastCycleCount;
 			
-			auto o = out.get();
-			o.assign(n, 0.0f);
-			out = o;
+			out = std::vector<float>(n, 0.0f);
 			
-			auto t = trigger.get();
-			t.assign(n, 0);
-			trigger = t;
+			trigger = std::vector<int>(n, 0);
 		}
 	}
 	

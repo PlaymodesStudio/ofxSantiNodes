@@ -19,12 +19,7 @@ public:
 
 private:
     void processInput() {
-        vector<float> resultOutput = input.get();
-
-        // Set all values to zero initially
-        for (auto &val : resultOutput) {
-            val = 0.0f;
-        }
+        vector<float> resultOutput(input.get().size(), 0.0f);
 
         // Set the values for highlighted indices
         for (const auto &idx : highlight.get()) {

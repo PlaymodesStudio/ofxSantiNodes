@@ -47,6 +47,8 @@ public:
 		int n = outR.get().size();
 		ofMesh m;
 		m.setMode(OF_PRIMITIVE_TRIANGLE_STRIP);
+		m.getVertices().reserve(n * 2);
+		m.getColors().reserve(n * 2);
 		
 		for(int i = 0; i < n; i++){
 			float px = ofMap(i, 0, n-1, -w/2 + 10, w/2 - 10); // Centered with padding

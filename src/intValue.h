@@ -186,8 +186,8 @@ private:
 		buildPortalList(newNames, newPortals);
 
 		if (newNames != portalNames || newPortals != compatiblePortals) {
-			portalNames       = newNames;
-			compatiblePortals = newPortals;
+			portalNames       = std::move(newNames);
+			compatiblePortals = std::move(newPortals);
 
 			if (portalNames.empty()) {
 				portalNames.push_back("No Compatible Portals");
@@ -315,7 +315,7 @@ private:
 	// ── drawing ──────────────────────────────────────────────────────────
 
 	void drawValue() {
-		string name = valueName.get();
+		const string &name = valueName.get();
 		if (!name.empty()) {
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();

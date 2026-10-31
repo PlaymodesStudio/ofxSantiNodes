@@ -39,7 +39,7 @@ public:
                     }
                 }
             }
-            enqueueOutputValue(trigOutTemp);
+            enqueueOutputValue(std::move(trigOutTemp));
             lastInputPh = f;
         }));
 
@@ -55,7 +55,7 @@ public:
                     }
                 }
             }
-            enqueueOutputValue(trigOutTemp);
+            enqueueOutputValue(std::move(trigOutTemp));
             lastChange = vf;
         }));
 
@@ -79,7 +79,7 @@ public:
                     }
                 }
             }
-            enqueueOutputValue(trigOutTemp);
+            enqueueOutputValue(std::move(trigOutTemp));
             lastGate = g;
         }));
 
@@ -107,8 +107,9 @@ public:
 
     void enqueueOutputValue(vector<float> value) {
         // you enqueue every new output value twice
-        outputQueue.push(value);
-        outputQueue.push(vector<float>(value.size(), 0.0f));
+        size_t valueSize = value.size();
+        outputQueue.push(std::move(value));
+        outputQueue.push(vector<float>(valueSize, 0.0f));
     }
 
     void loadBeforeConnections(ofJson &json) override {

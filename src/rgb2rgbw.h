@@ -24,7 +24,7 @@ public:
 
 private:
 	void processRgbToRgbw() {
-		vector<float> rgb = rgbInput.get();
+		const vector<float>& rgb = rgbInput.get();
 		vector<float> rgbw(4, 0.0f); // Initialize with 4 zeros
 		
 		// Check if we have at least 3 values for RGB

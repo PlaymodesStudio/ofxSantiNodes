@@ -192,7 +192,7 @@ private:
 							displayName += " *";
 						}
 
-						newPortalNames.push_back(displayName);
+						newPortalNames.push_back(std::move(displayName));
 						newCompatiblePortals.push_back(portalPtr);
 						uniquePortalNames.insert(portalName);
 					}
@@ -200,8 +200,8 @@ private:
 			}
 		}
 
-		portalNames = newPortalNames;
-		compatiblePortals = newCompatiblePortals;
+		portalNames = std::move(newPortalNames);
+		compatiblePortals = std::move(newCompatiblePortals);
 
 		if (portalNames.empty()) {
 			portalNames.push_back("No Compatible Portals");
@@ -248,7 +248,7 @@ private:
 							displayName += " *";
 						}
 
-						newPortalNames.push_back(displayName);
+						newPortalNames.push_back(std::move(displayName));
 						newCompatiblePortals.push_back(portalPtr);
 						uniquePortalNames.insert(portalName);
 					}
@@ -259,8 +259,8 @@ private:
 		if (newPortalNames != portalNames || newCompatiblePortals != compatiblePortals) {
 			string nameToRestore = selectedPortalName.get();
 
-			portalNames = newPortalNames;
-			compatiblePortals = newCompatiblePortals;
+			portalNames = std::move(newPortalNames);
+			compatiblePortals = std::move(newCompatiblePortals);
 
 			if (portalNames.empty()) {
 				portalNames.push_back("No Compatible Portals");
@@ -366,7 +366,7 @@ private:
 	void drawButton() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Draw the button name above if not empty
-		string name = buttonName.get();
+		const string& name = buttonName.get();
 		if (!name.empty()) {
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();

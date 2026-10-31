@@ -462,10 +462,11 @@ private:
 			}
 			
 			// Right-click popup
+			const std::string popupId = "Value Popup " + ofToString(index);
 			if(ImGui::IsItemClicked(1) ||
-			   (ImGui::IsPopupOpen(("Value Popup " + ofToString(index)).c_str())
+			   (ImGui::IsPopupOpen(popupId.c_str())
 				&& ImGui::IsMouseClicked(1))) {
-				ImGui::OpenPopup(("Value Popup " + ofToString(index)).c_str());
+				ImGui::OpenPopup(popupId.c_str());
 				const float t = ImClamp((mousePos.x - inner_bb.Min.x) /
 										(inner_bb.Max.x - inner_bb.Min.x), 0.0f, 0.9999f);
 				const int v_idx = (int)(t * item_count);
@@ -525,7 +526,7 @@ private:
 			}
 			
 			// Popup edit
-			if (ImGui::BeginPopup(("Value Popup " + ofToString(index)).c_str())) {
+			if (ImGui::BeginPopup(popupId.c_str())) {
 				ImGui::Text("Edit item %d on slot %d",
 							currentToEditValues[index],
 							currentSlot.get());

@@ -30,8 +30,8 @@ public:
 	
 private:
 	void process() {
-		string prefix = prependString.get();
-		string input = inputString.get();
+		const string &prefix = prependString.get();
+		const string &input = inputString.get();
 		
 		// Handle empty strings
 		if(prefix.empty()) {

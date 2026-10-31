@@ -39,6 +39,7 @@ private:
 	
 	void processNotes() {
 		vector<float> output;
+		output.reserve(notesInput.get().size());
 		int minRange = rangeMin.get();
 		int maxRange = rangeMax.get();
 		

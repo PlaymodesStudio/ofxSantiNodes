@@ -438,7 +438,7 @@ private:
 	void drawToggle() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Draw the toggle name above the toggle if it's not empty
-		string name = toggleName.get();
+		const string& name = toggleName.get();
 		if (!name.empty()) {
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();

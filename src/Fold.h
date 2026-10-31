@@ -36,7 +36,7 @@ public:
 private:
 	void processFolding() {
 		// Get parameter values
-		auto inputValues = input.get();
+		const auto &inputValues = input.get();
 		float low = lowThreshold.get();
 		float high = highThreshold.get();
 		

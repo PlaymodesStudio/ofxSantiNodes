@@ -39,8 +39,8 @@ private:
 
     void updateOutput(const std::vector<float>& v) {
         std::vector<float> outputValues;
-        std::vector<float> minValues = minVal.get();
-        std::vector<float> maxValues = maxVal.get();
+        const std::vector<float>& minValues = minVal.get();
+        const std::vector<float>& maxValues = maxVal.get();
 
         for (size_t i = 0; i < v.size(); i++) {
             if (i < minValues.size() && i < maxValues.size()) {

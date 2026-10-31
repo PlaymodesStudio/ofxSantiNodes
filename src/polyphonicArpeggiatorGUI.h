@@ -522,6 +522,7 @@ private:
     int getBidirectionalPatternOffset(int stepIndex, bool startAscending) const;
     int getPatternOffsetForStepLive(int stepIndex);
     int getPatternOffsetForStepPreview(int stepIndex) const;
+    int getPatternOffsetForStepPreview(int stepIndex, int gateProgressionIndex) const;
     float generateDeviationForSourceIndex(int sourceIndex, std::mt19937 &generator) const;
     void rebuildDeviations();
     void rebuildPitchSequence();
@@ -548,7 +549,9 @@ private:
     bool isDurationNoteActiveLive(int stepIndex, int voiceIndex, bool stepAccentActive);
     bool isDurationNoteActivePreview(int stepIndex, int voiceIndex, bool stepAccentActive) const;
     bool isAccentPreviewLaneActive(int stepIndex) const;
+    bool isAccentPreviewLaneActive(int stepIndex, int gateProgressionIndex) const;
     bool isDurationPreviewLaneActive(int stepIndex) const;
+    bool isDurationPreviewLaneActive(int stepIndex, int gateProgressionIndex) const;
     void randomizePatternSeedsForNewCycle();
     void randomizeCycleStepShift();
     double getRunGateBeatPosition() const;
@@ -581,6 +584,7 @@ private:
     float computeLivePositionOffset(int stepIndex, int voiceIndex, int totalVoices) const;
     float computePreviewPositionOffset(int stepIndex, int voiceIndex, int totalVoices) const;
     StepPreviewInfo buildStepPreview(int stepIndex) const;
+    StepPreviewInfo buildStepPreview(int stepIndex, int gateProgressionIndex) const;
 
     void drawEditor();
     void drawTopBarSection();

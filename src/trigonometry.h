@@ -42,7 +42,7 @@ public:
 	
 private:
 	void processOperation() {
-		auto inputValues = input.get();
+		const auto& inputValues = input.get();
 		vector<float> outputValues;
 		outputValues.reserve(inputValues.size());
 		

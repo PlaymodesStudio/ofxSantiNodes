@@ -287,10 +287,20 @@ private:
                     }
                     
                     // Draw value bars
+                    const bool isProbabilistic = probabilistic;
+                    float rowMin = 0.0f;
+                    float rowRange = 0.0f;
+                    if (!isProbabilistic) {
+                        auto [min_it, max_it] = std::minmax_element(inputVec.begin(), inputVec.end());
+                        rowMin = *min_it;
+                        rowRange = *max_it - *min_it;
+                    }
                     for (int j = 0; j < vectorSize; ++j) {
                         ImU32 color = (j == index) ? IM_COL32(255, 255, 0, 255) : IM_COL32(100, 100, 100, 255);
                         
-                        float normalizedValue = normalizeValue(inputVec[j], inputVec);
+                        float normalizedValue = isProbabilistic
+                            ? ofClamp(inputVec[j], 0.0f, 1.0f)
+                            : ((rowRange != 0) ? (inputVec[j] - rowMin) / rowRange : 0.5f);
                         float barHeight = normalizedValue * (rowHeight - rowGap);
                         
                         if(barHeight > 0) {  // Only draw bar if there's a value

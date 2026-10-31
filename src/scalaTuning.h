@@ -142,7 +142,7 @@ public:
 	void updateCurrentScale() {
 		if (useCustomRatios) {
 			// Use custom ratios
-			vector<float> ratios = customRatios.get();
+			const vector<float> &ratios = customRatios.get();
 			
 			// Use the custom ratios directly
 			scaleRatios = ratios;
@@ -625,7 +625,7 @@ private:
 	
 	void updateOutput() {
 		// Get input values
-		vector<int> inputNotes = midiNotes.get();
+		const vector<int> &inputNotes = midiNotes.get();
 		
 		// Prepare output vectors
 		vector<float> outputFreqs;
@@ -661,7 +661,7 @@ private:
 		// Handle custom ratio mode or scala file mode
 		if (useCustomRatios) {
 			// Make sure we have valid custom ratios
-			vector<float> ratios = customRatios.get();
+			const vector<float> &ratios = customRatios.get();
 			if (ratios.empty()) {
 				// If no custom ratios, fall back to 12-TET
 				for (int midiNote : inputNotes) {

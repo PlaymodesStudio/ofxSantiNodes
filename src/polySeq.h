@@ -347,6 +347,7 @@ private:
 			int res_w = ImMin((int)frame_size.x, values_count);
 			int item_count = values_count;
 			
+			const string popupName = "Value Popup " + ofToString(index);
 			auto mousePos = ImGui::GetIO().MousePos;
 			auto mousePosPrev = mousePos - ImGui::GetIO().MouseDelta;
 			
@@ -385,8 +386,8 @@ private:
 			}
 			
 			// Handle right-click popup
-			if (ImGui::IsItemClicked(1) || (ImGui::IsPopupOpen(("Value Popup " + ofToString(index)).c_str()) && ImGui::IsMouseClicked(1))) {
-				ImGui::OpenPopup(("Value Popup " + ofToString(index)).c_str());
+			if (ImGui::IsItemClicked(1) || (ImGui::IsPopupOpen(popupName.c_str()) && ImGui::IsMouseClicked(1))) {
+				ImGui::OpenPopup(popupName.c_str());
 				const float t = ImClamp((mousePos.x - inner_bb.Min.x) / (inner_bb.Max.x - inner_bb.Min.x), 0.0f, 0.9999f);
 				const int v_idx = (int)(t * item_count);
 				IM_ASSERT(v_idx >= 0 && v_idx < values_count);
@@ -472,7 +473,7 @@ private:
 							  );
 			
 			// Handle popup
-			if (ImGui::BeginPopup(("Value Popup " + ofToString(index)).c_str())) {
+			if (ImGui::BeginPopup(popupName.c_str())) {
 				ImGui::Text("%s", ("Edit item " + ofToString(currentToEditValues[index]) + " of vector " + ofToString(index)).c_str());
 				if (currentToEditValues[index] > 0) {
 					ImGui::SameLine();

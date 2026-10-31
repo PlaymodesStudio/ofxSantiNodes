@@ -42,6 +42,11 @@ public:
     void update(ofEventArgs &a) override {
         int n = size.get();
         bool anyReset = false;
+        bool needsReset = false;
+        for (int i = 0; i < n && i < (int)shouldReset.size(); i++) {
+            if (shouldReset[i]) { needsReset = true; break; }
+        }
+        if (!needsReset) return;
         vector<float> v = output.get();
         v.resize(n, 0.0f);
         for (int i = 0; i < n; i++) {

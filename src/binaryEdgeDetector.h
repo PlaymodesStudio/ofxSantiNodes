@@ -59,7 +59,7 @@ private:
         allGates = all;
 
         // copy the actual values to the lastValues for next iteration
-        lastValues = inputVals;
+        lastValues = std::move(inputVals);
     }
 
     ofParameter<vector<float>> input;

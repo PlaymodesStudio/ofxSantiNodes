@@ -949,6 +949,9 @@ void globalSnapshots::updateInterpolation() {
 			
 			auto &grp = node->getParameters();
 			std::string grpName = grp.getEscapedName();
+			const size_t nameStart = grpName.size() + 1;
+			if (key.size() < nameStart || key[grpName.size()] != '/' ||
+			    key.compare(0, grpName.size(), grpName) != 0) continue;
 			
 			for (int i = 0; i < grp.size(); i++) {
 				try {
@@ -956,8 +959,7 @@ void globalSnapshots::updateInterpolation() {
 					auto *oParam = dynamic_cast<ofxOceanodeAbstractParameter*>(&p);
 					if(!oParam) continue;
 					
-					std::string thisKey = grpName + "/" + p.getName();
-					if (thisKey != key) continue;
+					if (key.compare(nameStart, std::string::npos, p.getName()) != 0) continue;
 					
 					auto startIt  = interpolationStartValues.find(key);
 					auto targetIt = targetSnapshot->second.paramValues.find(key);

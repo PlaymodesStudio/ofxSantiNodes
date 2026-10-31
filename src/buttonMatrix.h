@@ -116,14 +116,13 @@ private:
 
     void updateOutputs() {
         int totalSize = x.get() * y.get();
-        vector<float> currentValues = buttonValues.get();
-        currentValues.resize(totalSize, 0.0f);
+        const vector<float>& currentValues = buttonValues.get();
         
         vector<int> outputVec(totalSize, 0);
         
         if (activeButton >= 0 && activeButton < totalSize) {
             outputVec[activeButton] = 1;
-            output = currentValues[activeButton];
+            output = activeButton < (int)currentValues.size() ? currentValues[activeButton] : 0.0f;
         } else {
             output = defaultValue.get();
         }

@@ -30,8 +30,8 @@ public:
 	
 private:
 	void process() {
-		string input = inputString.get();
-		string suffix = appendString.get();
+		const string& input = inputString.get();
+		const string& suffix = appendString.get();
 		
 		// Handle empty strings
 		if(suffix.empty()) {

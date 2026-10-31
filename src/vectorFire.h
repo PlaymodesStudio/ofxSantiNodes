@@ -18,7 +18,7 @@ public:
 
         // vFire listener: responds to changes in vFire parameter
         listener = vFire.newListener([this](vector<float> &vf){
-            vector<float> auxInput = input.get();
+            const vector<float>& auxInput = input.get();
             vector<float> outputMod = output.get();
 
             // Ensure outputMod is the same size as the input

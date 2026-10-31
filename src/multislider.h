@@ -170,7 +170,7 @@ private:
 	
 	void syncFromStoredValues() {
 		// Update slider values from stored values
-		vector<float> values = storedValues.get();
+		const vector<float>& values = storedValues.get();
 		int numSlider = numSliders.get();
 		sliderValues.resize(numSlider, 0.0f);
 		for (int i = 0; i < numSlider && i < values.size(); i++) {
@@ -267,7 +267,7 @@ private:
 							displayName += " *";
 						}
 
-						newPortalNames.push_back(displayName);
+						newPortalNames.push_back(std::move(displayName));
 						newCompatiblePortals.push_back(portalPtr);
 						uniquePortalNames.insert(portalName);
 					}
@@ -275,8 +275,8 @@ private:
 			}
 		}
 
-		portalNames = newPortalNames;
-		compatiblePortals = newCompatiblePortals;
+		portalNames = std::move(newPortalNames);
+		compatiblePortals = std::move(newCompatiblePortals);
 
 		if (portalNames.empty()) {
 			portalNames.push_back("No Compatible Portals");
@@ -323,7 +323,7 @@ private:
 							displayName += " *";
 						}
 
-						newPortalNames.push_back(displayName);
+						newPortalNames.push_back(std::move(displayName));
 						newCompatiblePortals.push_back(portalPtr);
 						uniquePortalNames.insert(portalName);
 					}
@@ -337,8 +337,8 @@ private:
 				currentlySelectedPortalName = getActualPortalNameFromDisplayName(portalNames[selectedPortalIndex]);
 			}
 			
-			portalNames = newPortalNames;
-			compatiblePortals = newCompatiblePortals;
+			portalNames = std::move(newPortalNames);
+			compatiblePortals = std::move(newCompatiblePortals);
 
 			if (portalNames.empty()) {
 				portalNames.push_back("No Compatible Portals");
@@ -495,7 +495,7 @@ private:
 	void drawMultislider() {
 		float zoom = ofxOceanodeShared::getZoomLevel();
 		// Draw the multislider name above if not empty
-		string name = sliderName.get();
+		const string& name = sliderName.get();
 		if (!name.empty()) {
 			ImVec2 textSize = ImGui::CalcTextSize(name.c_str());
 			ImVec2 pos = ImGui::GetCursorPos();

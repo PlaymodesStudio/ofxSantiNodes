@@ -6,6 +6,7 @@
 #include <map>
 #include <algorithm>
 #include <sstream>
+#include <array>
 
 struct HarmonyPattern {
 	string name;
@@ -186,10 +187,10 @@ private:
 	}
 	
 	// Find the best root note for a given pattern against input pitch classes
-	pair<int, bool> findBestRoot(const HarmonyPattern& pattern, const set<int>& inputPitchClasses, bool exactMatch) {
+	pair<int, bool> findBestRoot(const HarmonyPattern& pattern, const array<set<int>, 12>& transposedInputs, bool exactMatch) {
 		for (int root = 0; root < 12; root++) {
 			// Transpose the input to this potential root
-			set<int> transposedInput = transposePitchClasses(inputPitchClasses, root);
+			const set<int>& transposedInput = transposedInputs[root];
 			
 			if (exactMatch) {
 				if (pattern.intervals == transposedInput) {
@@ -247,12 +248,17 @@ private:
 		vector<int> pcVector(inputPitchClasses.begin(), inputPitchClasses.end());
 		pitchClasses = pcVector;
 		
+		array<set<int>, 12> transposedInputs;
+		for (int root = 0; root < 12; root++) {
+			transposedInputs[root] = transposePitchClasses(inputPitchClasses, root);
+		}
+		
 		// Find best matching chord
 		string bestChord = "none";
 		
 		// First try exact matches
 		for (const auto& chord : chords) {
-			auto result = findBestRoot(chord, inputPitchClasses, true);
+			auto result = findBestRoot(chord, transposedInputs, true);
 			if (result.second) {
 				bestChord = noteNames[result.first] + " " + chord.name;
 				break;
@@ -265,7 +271,7 @@ private:
 			int bestRoot = -1;
 			
 			for (const auto& chord : chords) {
-				auto result = findBestRoot(chord, inputPitchClasses, false);
+				auto result = findBestRoot(chord, transposedInputs, false);
 				if (result.second) {
 					if (!bestPattern || chord.intervals.size() > bestPattern->intervals.size()) {
 						bestPattern = const_cast<HarmonyPattern*>(&chord);
@@ -286,7 +292,7 @@ private:
 		
 		// First try exact matches
 		for (const auto& scale : scales) {
-			auto result = findBestRoot(scale, inputPitchClasses, true);
+			auto result = findBestRoot(scale, transposedInputs, true);
 			if (result.second) {
 				bestScale = noteNames[result.first] + " " + scale.name;
 				break;
@@ -299,7 +305,7 @@ private:
 			int bestRoot = -1;
 			
 			for (const auto& scale : scales) {
-				auto result = findBestRoot(scale, inputPitchClasses, false);
+				auto result = findBestRoot(scale, transposedInputs, false);
 				if (result.second) {
 					if (!bestPattern || scale.intervals.size() > bestPattern->intervals.size()) {
 						bestPattern = const_cast<HarmonyPattern*>(&scale);

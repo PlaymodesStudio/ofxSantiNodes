@@ -434,9 +434,9 @@ private:
 		replaceAccidental("♭", "b");
 
 		// Handle substitutions vs extensions
-		std::regex subRegex("([A-Za-z][#b]?[^(]*)\\(([A-Za-z][#b]?.*?)\\)");
-		std::regex extRegex("([^(]*)\\(([^A-Za-z]*[#b0-9]*)\\)");
-		std::regex slashRegex("([^/\\\\]+)[/\\\\]([A-Za-z][#b]?)");
+		static const std::regex subRegex("([A-Za-z][#b]?[^(]*)\\(([A-Za-z][#b]?.*?)\\)");
+		static const std::regex extRegex("([^(]*)\\(([^A-Za-z]*[#b0-9]*)\\)");
+		static const std::regex slashRegex("([^/\\\\]+)[/\\\\]([A-Za-z][#b]?)");
 		std::smatch matches;
 		
 		string processedInput;
@@ -458,7 +458,7 @@ private:
 			processedInput[0] = toupper(processedInput[0]);
 		}
 
-		std::regex chordRegex("([A-G][#b]?)(.*)");
+		static const std::regex chordRegex("([A-G][#b]?)(.*)");
 		std::smatch chordMatches;
 		if(std::regex_match(processedInput, chordMatches, chordRegex)) {
 			string fullSuffix = chordMatches[2].str();
@@ -606,7 +606,7 @@ private:
 				// If still no match, try fallbacks based on components
 				if(!foundMatch) {
 					// Check for "add" pattern
-					std::regex addRegex("add([0-9]+)");
+					static const std::regex addRegex("add([0-9]+)");
 					if(std::regex_search(chordSuffix, matches, addRegex)) {
 						string addNum = matches[1].str();
 						int addInterval = 0;

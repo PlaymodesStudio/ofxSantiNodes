@@ -110,10 +110,8 @@ private:
         }
 
         vector<float> phaseOutput(inputPhase.size());
-        vector<int> currentPattern = pattern.get();
-        if(currentPattern.empty()) {
-            currentPattern = {1};
-        }
+        static const vector<int> defaultPattern{1};
+        const vector<int>& currentPattern = pattern.get().empty() ? defaultPattern : pattern.get();
 
         for (size_t i = 0; i < inputPhase.size(); ++i) {
             // Ensure pattern position is valid

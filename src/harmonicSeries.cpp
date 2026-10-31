@@ -102,7 +102,7 @@ void harmonicSeries::setup() {
 
 // function to calculate the detune factors for each harmonic
 void harmonicSeries::calculateDetuneFactors() {
-    vector<float> currentDetuneAmounts = detuneAmount.get();
+    const vector<float>& currentDetuneAmounts = detuneAmount.get();
     int numPartials = partialsNum.get();
     
     // Resize vectors if needed
@@ -158,8 +158,7 @@ void harmonicSeries::calculate() {
     float partialStep = partialJump.get();
     bool useSubharmonics = subharmonic.get();
     int shapeIndex = harmonicShape.get();
-    vector<float> inputAmplitudes = ampIn.get();
-    vector<float> detuneAmounts = detuneAmount.get();
+    const vector<float>& inputAmplitudes = ampIn.get();
     float partialPower = partialPow.get();
     float stretchFactor = harmonicStretch.get();
     float stretchedStart = (firstPartial == 1)
@@ -228,6 +227,7 @@ void harmonicSeries::calculate() {
 
     // Combine into a single list of tuples for sorting
     vector<std::tuple<float, float, float>> combined;
+    combined.reserve(out.size());
     for (size_t i = 0; i < out.size(); ++i) {
         combined.push_back(std::make_tuple(out[i], outPitch[i], outAmplitudes[i]));
     }

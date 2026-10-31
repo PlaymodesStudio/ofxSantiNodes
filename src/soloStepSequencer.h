@@ -156,7 +156,7 @@ public:
             performSelection(probabilities, changedTracks);
         }
 
-        lastValues = currentValues;
+        lastValues = std::move(currentValues);
     }
 
     void performSelection(const std::vector<float>& probabilities, const std::vector<bool>& changedTracks) {
@@ -204,6 +204,11 @@ public:
                 }
 
                 // Draw bars
+                int currentStep = -1;
+                if (trackSize > 0) {
+                    currentStep = (getValueForIndex(step, i) + getValueForIndex(shift, i)) % trackSize;
+                    if (currentStep < 0) currentStep += trackSize;
+                }
                 for (int j = 0; j < trackSize; ++j) {
                     float barHeight = tracks[i][j] * height;
                     ImVec2 barStart = ImVec2(rowStart.x + j * stepWidth, rowStart.y + height - barHeight);
@@ -212,8 +217,6 @@ public:
                     ImU32 barColor = IM_COL32(100, 100, 100, 255); // Default color
                     
                     // Highlight current step
-                    int currentStep = (getValueForIndex(step, i) + getValueForIndex(shift, i)) % trackSize;
-                    if (currentStep < 0) currentStep += trackSize;
                     if (j == currentStep) {
                         barColor = IM_COL32(200, 200, 100, 255); // Highlight color
                     }
@@ -233,8 +236,9 @@ public:
                 }
 
                 // Right-click for numerical input
-                if (ImGui::IsItemClicked(1) || (ImGui::IsPopupOpen(("Value Popup##" + ofToString(i)).c_str()) && ImGui::IsMouseClicked(1))) {
-                    ImGui::OpenPopup(("Value Popup##" + ofToString(i)).c_str());
+                const std::string popupId = "Value Popup##" + ofToString(i);
+                if (ImGui::IsItemClicked(1) || (ImGui::IsPopupOpen(popupId.c_str()) && ImGui::IsMouseClicked(1))) {
+                    ImGui::OpenPopup(popupId.c_str());
                     ImVec2 mousePos = ImGui::GetIO().MousePos;
                     int index = int((mousePos.x - rowStart.x) / stepWidth);
                     if (index >= 0 && index < trackSize) {
@@ -243,7 +247,7 @@ public:
                     }
                 }
 
-                if (ImGui::BeginPopup(("Value Popup##" + ofToString(i)).c_str())) {
+                if (ImGui::BeginPopup(popupId.c_str())) {
                     ImGui::Text("Edit Track %d, Step %d", currentToEditTrack + 1, currentToEditStep + 1);
                     if (currentToEditStep > 0) {
                         ImGui::SameLine();

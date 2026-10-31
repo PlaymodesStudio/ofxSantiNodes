@@ -239,6 +239,14 @@ private:
 			}
 		}
 
+		float keyGates[128] = {};
+		for(size_t j = 0; j < pitch->size() && j < gate->size(); j++) {
+			int pitchValue = static_cast<int>(pitch->at(j) + 0.5f);
+			if(pitchValue >= 0 && pitchValue < 128) {
+				keyGates[pitchValue] = std::max(keyGates[pitchValue], gate->at(j));
+			}
+		}
+
 		// Draw white keys first
 		for(int i = 0; i < geom.size(); i++) {
 			if(!geom[i].isBlack) {
@@ -262,13 +270,7 @@ private:
 					drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(0, 255, 0, 100));
 				}
 
-				float keyGate = 0.0f;
-				for(size_t j = 0; j < pitch->size() && j < gate->size(); j++) {
-					int pitchValue = static_cast<int>(pitch->at(j) + 0.5f);
-					if(pitchValue == note) {
-						keyGate = std::max(keyGate, gate->at(j));
-					}
-				}
+				float keyGate = getKeyGate(keyGates, note);
 
 				if(keyGate > 0.0f) {
 					uint8_t alpha = static_cast<uint8_t>(255 * (1.0f - keyGate));
@@ -301,13 +303,7 @@ private:
 					drawList->AddRectFilled(keyPos, keyPosEnd, IM_COL32(0, 255, 0, 100));
 				}
 
-				float keyGate = 0.0f;
-				for(size_t j = 0; j < pitch->size() && j < gate->size(); j++) {
-					int pitchValue = static_cast<int>(pitch->at(j) + 0.5f);
-					if(pitchValue == note) {
-						keyGate = std::max(keyGate, gate->at(j));
-					}
-				}
+				float keyGate = getKeyGate(keyGates, note);
 
 				if(keyGate > 0.0f) {
 					uint8_t alpha = static_cast<uint8_t>(255 * (1.0f - keyGate));
@@ -317,6 +313,18 @@ private:
 		}
 	}
 	
+	float getKeyGate(const float (&keyGates)[128], int note) {
+		if(note >= 0 && note < 128) return keyGates[note];
+		float keyGate = 0.0f;
+		for(size_t j = 0; j < pitch->size() && j < gate->size(); j++) {
+			int pitchValue = static_cast<int>(pitch->at(j) + 0.5f);
+			if(pitchValue == note) {
+				keyGate = std::max(keyGate, gate->at(j));
+			}
+		}
+		return keyGate;
+	}
+
 	int getNoteFromPosition(float mouseX, float mouseY, const vector<KeyGeometry>& geom, int startNote, float geomScale = 1.0f, float scaledWidth = 0.0f, float scaledHeight = 0.0f, bool verticalMode = false) {
 		float zoom = ofxOceanodeShared::getZoomLevel();
 		ImVec2 pos = ImGui::GetCursorScreenPos();

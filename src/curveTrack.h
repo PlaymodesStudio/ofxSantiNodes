@@ -105,6 +105,7 @@ public:
 		}
 
 		vector<float> outputs;
+		outputs.reserve(numCurves.get());
 		
 		for(int curveIdx = 0; curveIdx < numCurves.get(); curveIdx++) {
 			float value = evaluateCurveAt(currentBeat, curveIdx);
@@ -349,15 +350,14 @@ public:
 				int pixelWidth = std::abs(x2 - x1);
 				int numSamples = std::max(50, pixelWidth * 2);
 				
+				float t1 = 0 / (float)numSamples;
+				float sx1 = beatToX(pt1.beat + t1 * (pt2.beat - pt1.beat));
+				float sy1 = valueToY(evaluateSegment(pt1, pt2, tension, t1));
 				for(int j = 0; j < numSamples; j++) {
-					float t1 = j / (float)numSamples;
 					float t2 = (j + 1) / (float)numSamples;
 					
-					float val1 = evaluateSegment(pt1, pt2, tension, t1);
 					float val2 = evaluateSegment(pt1, pt2, tension, t2);
 					
-					float sx1 = beatToX(pt1.beat + t1 * (pt2.beat - pt1.beat));
-					float sy1 = valueToY(val1);
 					float sx2 = beatToX(pt1.beat + t2 * (pt2.beat - pt1.beat));
 					float sy2 = valueToY(val2);
 					
@@ -367,6 +367,8 @@ public:
 						curveColor,
 						1.0f * zoom
 					);
+					sx1 = sx2;
+					sy1 = sy2;
 				}
 			}
 		}
@@ -390,15 +392,14 @@ public:
 			int pixelWidth = std::abs(x2 - x1);
 			int numSamples = std::max(50, pixelWidth * 2);
 			
+			float t1 = 0 / (float)numSamples;
+			float sx1 = beatToX(pt1.beat + t1 * (pt2.beat - pt1.beat));
+			float sy1 = valueToY(evaluateSegment(pt1, pt2, tension, t1));
 			for(int j = 0; j < numSamples; j++) {
-				float t1 = j / (float)numSamples;
 				float t2 = (j + 1) / (float)numSamples;
 				
-				float val1 = evaluateSegment(pt1, pt2, tension, t1);
 				float val2 = evaluateSegment(pt1, pt2, tension, t2);
 				
-				float sx1 = beatToX(pt1.beat + t1 * (pt2.beat - pt1.beat));
-				float sy1 = valueToY(val1);
 				float sx2 = beatToX(pt1.beat + t2 * (pt2.beat - pt1.beat));
 				float sy2 = valueToY(val2);
 				
@@ -408,6 +409,8 @@ public:
 					activeCurveColor,
 					2.0f * zoom
 				);
+				sx1 = sx2;
+				sy1 = sy2;
 			}
 		}
 		

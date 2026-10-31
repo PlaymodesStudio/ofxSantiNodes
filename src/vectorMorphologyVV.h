@@ -289,8 +289,6 @@ private:
 		);
 		const Blob& dom = *domIt;
 
-		const int centroidIdx = blobCentroidIndex(dom, v, circ);
-
 		// Temporal motion direction
 		double cNow = blobCentroidUnwrapped(dom);
 		if(circ && state.hasPrev) {
@@ -314,7 +312,7 @@ private:
 
 		// Emit selected operation
 		switch(operation.get()) {
-			case 0: result.value = centroidIdx; break;
+			case 0: result.value = blobCentroidIndex(dom, v, circ); break;
 			case 1: result.value = motionDir; break;
 			case 2: result.value = clampIndex(bottom, n); break;
 			case 3: result.value = clampIndex(head, n); break;
@@ -385,7 +383,7 @@ private:
 		for(int i = 0; i < numVectors; ++i) {
 			SingleResult res = processSingleVector(vv[i], prevStates[i]);
 			values.push_back(res.value);
-			multiValues.push_back(res.multiValues);
+			multiValues.push_back(std::move(res.multiValues));
 		}
 
 		setVectorSafe(values);

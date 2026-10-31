@@ -29,8 +29,8 @@ public:
 
 private:
 	void processOutput(const vector<float> &v) {
-		auto minIndices = idxMin.get();
-		auto maxIndices = idxMax.get();
+		const auto& minIndices = idxMin.get();
+		const auto& maxIndices = idxMax.get();
 		
 		// Get the size to iterate (minimum of both vectors)
 		size_t numRegions = min(minIndices.size(), maxIndices.size());
@@ -44,8 +44,7 @@ private:
 			
 			// Validate indices
 			if (maxIdx > minIdx && minIdx >= 0 && maxIdx <= v.size()) {
-				vector<float> subVector(v.begin() + minIdx, v.begin() + maxIdx);
-				result.push_back(subVector);
+				result.emplace_back(v.begin() + minIdx, v.begin() + maxIdx);
 			} else {
 				// Add empty vector for invalid indices
 				result.push_back(vector<float>{});

@@ -27,6 +27,7 @@ public:
 
     void calculate() {
         vector<float> out;
+        out.reserve(input.get().size());
         for(const auto &value : input.get()){
             float closestDist = FLT_MAX;
             float closestValue = 0;

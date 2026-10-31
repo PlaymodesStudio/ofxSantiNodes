@@ -50,9 +50,10 @@ public:
     void update(ofEventArgs& args) {
         auto currentTime = ofGetElapsedTimeMillis();
         bool outputModified = false;
-        vector<float> tempOutput = output.get();
+        vector<float> tempOutput;
         for (int i = 0; i < timerEnd.size(); ++i) {
             if (timerEnd[i] != 0 && currentTime >= timerEnd[i]) {
+                if (!outputModified) tempOutput = output.get();
                 tempOutput[i] = 0;
                 timerEnd[i] = 0;
                 outputModified = true;

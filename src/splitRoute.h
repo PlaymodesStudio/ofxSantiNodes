@@ -30,7 +30,7 @@ public:
 
         thresholdListener = threshold.newListener([this](float &t) {
             // Re-calculate outputs whenever the threshold changes
-            std::vector<float> v = input;
+            const std::vector<float> &v = input.get();
             std::vector<float> greaterEqualValues;
             std::vector<float> lessThanValues;
 
