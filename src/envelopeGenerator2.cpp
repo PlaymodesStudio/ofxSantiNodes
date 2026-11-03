@@ -360,14 +360,16 @@ void envelopeGenerator2::gateInListener(vector<float> &vf) {
 
 		bool wasOff = prev <= gateThreshold;
 		bool isOn   = cur  >  gateThreshold;
+		bool changed = abs(cur - prev) > gateThreshold;
 
 		if(polyMode.get()) {
 			if(wasOff && isOn) {
 				// Zero → non-zero: normal onset
 				pendingOnsets[i].push_back(cur);
-			} else if(!wasOff && isOn) {
-				// Non-zero → non-zero (same OR different value): synthetic 0 + new onset.
-				// No abs check: if the listener fired the send was intentional, even at same value.
+			} else if(!wasOff && isOn && changed) {
+				// Non-zero → different non-zero: synthetic 0 + new onset.
+				// Same-value resends are a held gate (the whole vector is resent whenever
+				// any index changes), so they must not retrigger.
 				pendingRelease[i] = true;
 				pendingOnsets[i].push_back(cur);
 			}
@@ -375,10 +377,11 @@ void envelopeGenerator2::gateInListener(vector<float> &vf) {
 				pendingRelease[i] = true;
 			}
 		} else {
-			// Mono: set a one-shot flag so phasorListener can retrigger even on same-value gates.
-			// phasorListener reads gate continuously so it can't tell apart a held gate from a
-			// deliberate same-value re-send without this out-of-band signal.
-			if(isOn) monoNewGateEvent[i] = true;
+			// Mono: set a one-shot flag when this index changes to a non-zero value, so
+			// phasorListener still sees gates that went 1 → 0 → 1 between two phasor ticks.
+			// Only on change: the whole vector is resent whenever any index changes, so a
+			// same-value resend is a held gate, not a new note.
+			if(isOn && changed) monoNewGateEvent[i] = true;
 		}
 
 		lastGate[i] = cur;

@@ -96,9 +96,9 @@ private:
 	vector<float> oldGateIn;
 	vector<float> outputComputeVec;
 
-	// Set by gateInListener in mono mode; consumed once per phasor tick.
-	// Lets phasorListener detect retriggering even when the new gate value
-	// equals the previous one (e.g. two consecutive {1,1} notes).
+	// Set by gateInListener in mono mode when an index changes to a non-zero
+	// value; consumed once per phasor tick. Catches gates that go 1 -> 0 -> 1
+	// between two phasor ticks.
 	vector<bool> monoNewGateEvent;
 
 	int lastGateInSize;
