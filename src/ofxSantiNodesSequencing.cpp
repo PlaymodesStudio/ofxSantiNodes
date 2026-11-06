@@ -51,6 +51,7 @@
 #include "debounce.h"
 #include "edgeDetector.h"
 #include "eventCounter.h"
+#include "eventCounter2.h"
 #include "eventGate.h"
 #include "flipflop.h"
 #include "risingEdgeReindexer.h"
@@ -123,6 +124,7 @@ void registerSequencingNodes(ofxOceanode &o)
     o.registerModel<debounce>("Santi/Events");
     o.registerModel<edgeDetector>("Santi/Events");
     o.registerModel<eventCounter>("Santi/Events");
+    o.registerModel<eventCounter2>("Santi/Events");
     o.registerModel<eventGate>("Santi/Events");
     o.registerModel<gateDuration>("Santi/Events");
     o.registerModel<flipflop>("Santi/Events");
