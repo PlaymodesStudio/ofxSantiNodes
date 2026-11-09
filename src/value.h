@@ -453,10 +453,10 @@ private:
 			try {
 				json["selectedPortalName"] = selectedPortalInstance->getName();
 			} catch (...) {
-				json["selectedPortalName"] = "";
+				json["selectedPortalName"] = selectedPortalName.get();
 			}
 		} else {
-			json["selectedPortalName"] = "";
+			json["selectedPortalName"] = selectedPortalName.get();
 		}
 	}
 	void presetRecallBeforeSettingParameters(ofJson &json) override {

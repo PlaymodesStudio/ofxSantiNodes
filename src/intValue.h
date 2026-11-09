@@ -116,9 +116,9 @@ public:
 	void presetSave(ofJson &json) override {
 		if (selectedPortalInstance) {
 			try { json["selectedPortalName"] = selectedPortalInstance->getName(); }
-			catch (...) { json["selectedPortalName"] = ""; }
+			catch (...) { json["selectedPortalName"] = selectedPortalName.get(); }
 		} else {
-			json["selectedPortalName"] = "";
+			json["selectedPortalName"] = selectedPortalName.get();
 		}
 	}
 
