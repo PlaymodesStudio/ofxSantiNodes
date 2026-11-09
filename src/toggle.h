@@ -55,6 +55,12 @@ public:
 		});
 		
 		// Listen for dropdown changes
+		// A deleted portal (alone, or together with this node) must not leave a dangling
+		// pointer: undo / presetSave / draw would read freed memory. Fires before it is freed.
+		portalRemovedListener = ofxOceanodeShared::getPortalWillBeRemovedEvent().newListener([this](abstractPortal*& removed){
+			if (selectedPortalInstance != nullptr && static_cast<abstractPortal*>(selectedPortalInstance) == removed) selectedPortalInstance = nullptr;
+			for (auto& c : compatiblePortals) if (c != nullptr && static_cast<abstractPortal*>(c) == removed) c = nullptr;
+		});
 		dropdownListener = selectedPortalIndex.newListener([this](int &index){
 			if (!ofxOceanodeShared::isPresetLoading()) {
 				updateSelectedPortalInstance();
@@ -128,6 +134,7 @@ private:
 	// Portal management
 	vector<string> portalNames;
 	vector<portal<bool>*> compatiblePortals;
+	ofEventListener portalRemovedListener;   // drops the portal pointers before the portal is freed
 	portal<bool>* selectedPortalInstance; // Track the actual portal instance
 	bool needsDelayedRestore = false;
 	
