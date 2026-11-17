@@ -6,9 +6,10 @@
 class distribute : public ofxOceanodeNodeModel {
 public:
     distribute() : ofxOceanodeNodeModel("Distribute") {
-        description = "Routes each element of the incoming data to one of N outputs based on the 'Route To' setting per element. Optionally keeps the last value on the unoccupied outputs. The 'Event' toggle enables processing only on new unique inputs.";
+        description = "Routes each element of the incoming data to one of N outputs based on the 'Route To' setting per element. Optionally keeps the last value on the unoccupied outputs. The 'Event' toggle enables processing only on new unique inputs. The 'Route Triggers' inspector toggle makes a change on 'Route To' re-send the current input through the new routing.";
 
         addInspectorParameter(numOutputs.set("Num Outputs", 2, 1, 16));
+        addInspectorParameter(routeTriggers.set("Route Triggers", false));
     }
 
     void setup() override {
@@ -36,10 +37,12 @@ public:
             }
         }));
 
-        // Don't automatically update outputs when routeTo changes
-        // Only update routing configuration, outputs will update on next input
+        // By default a routeTo change only updates the routing configuration and
+        // outputs update on the next input. With 'Route Triggers' enabled, a
+        // routeTo change re-sends the current input through the new routing, so
+        // the route itself can act as the event source (constant input).
         listeners.push(routeTo.newListener([this](vector<int> &) {
-            // Just update the routing configuration, don't trigger output
+            if (routeTriggers.get()) updateOutputs();
         }));
 
         // Don't automatically update outputs when keep changes
@@ -107,6 +110,7 @@ private:
     }
 
     ofParameter<int> numOutputs;
+    ofParameter<bool> routeTriggers;
     ofParameter<vector<float>> input;
     ofParameter<vector<int>> routeTo;
     ofParameter<bool> keep;
