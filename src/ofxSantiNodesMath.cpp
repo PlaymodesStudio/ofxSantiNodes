@@ -10,6 +10,7 @@
 #include "ofxOceanode.h"
 #include "ofxOceanodeTransport.h"
 #include "circularCrossfade.h"
+#include "accumulator.h"
 #include "derivative.h"
 #include "Fold.h"
 #include "formula.h"
@@ -78,6 +79,7 @@ void registerMathNodes(ofxOceanode &o)
     // MATH & DSP
     // ─────────────────────────────────────────────
     o.registerModel<circularCrossfade>("Santi/Math");
+    o.registerModel<accumulator>("Santi/Math");
     o.registerModel<derivative>("Santi/Math");
     o.registerModel<fold>("Santi/Math");
     o.registerModel<formula>("Santi/Math");
