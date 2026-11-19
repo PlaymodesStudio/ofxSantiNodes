@@ -14,7 +14,10 @@ public:
             "gives each one the next voice, writes its X, Size and Aux on that voice and opens the voice's gate "
             "for one frame. Values stay on a voice until it is used again, so a sound can ring out with them.\n\n"
             "**[ Count]** Number of blobs, optional. Leave at -1 to use the length of X. Frames where it disagrees "
-            "with the length of X are skipped, except 0, which always means no blobs.\n\n"
+            "with the length of X are skipped, except 0, which always means no blobs. Lists with a fixed entry "
+            "per blob and zeros in the empty ones (Bounding Box Aspect Ratio with Keep Slots) are longer than "
+            "Count: the entries where X and Size are both 0 are then left out, and the frame is read if what "
+            "remains agrees with Count.\n\n"
             "**[ X]** One value per blob. Used, with Size, to tell the blobs apart.\n\n"
             "**[ Size]** One value per blob. Used, with X, to tell the blobs apart.\n\n"
             "**[ Aux]** One value per blob, carried along only.\n\n"
@@ -68,7 +71,18 @@ public:
             else if (rounded != n) readable = false;
         }
         blobBirth::Voices::Step step;
-        if (readable) {
+        if (!readable && size_t(std::lround(counted)) < n) {
+            // Slotted lists: a fixed entry per blob, empty ones at 0. Without
+            // the empty entries they may be the Count blobs after all.
+            blobs.clear();
+            for (size_t i = 0; i < n; ++i) {
+                const float blobSize = i < sizes.size() ? sizes[i] : 0.0f;
+                if (xs[i] == 0.0f && blobSize == 0.0f) continue;
+                blobs.push_back({xs[i], blobSize, i < auxes.size() ? auxes[i] : 0.0f});
+            }
+            if (blobs.size() == size_t(std::lround(counted))) step = core.step(blobs, frames, merges);
+            else step = core.idle();
+        } else if (readable) {
             blobs.resize(n);
             for (size_t i = 0; i < n; ++i) {
                 blobs[i].x = xs[i];

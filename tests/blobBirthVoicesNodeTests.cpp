@@ -186,6 +186,33 @@ int main() {
         node.update(e);
         for (float g : vec(node, "Gate").get()) assert(g == 0);
     }
+    // Slotted lists (Bounding Box Aspect Ratio with Keep Slots): eight entries, zeros in the
+    // empty ones, Count the number of blobs. Births and merges are still found.
+    {
+        blobBirthVoices node; node.setup();
+        ofEventArgs e;
+        node.parameter<int>("Frames") = 1;
+        auto slots = [&](std::initializer_list<std::pair<float, float>> filled, float count) {
+            vector<float> xs(8, 0.0f), ss(8, 0.0f);
+            size_t i = 0;
+            for (auto& f : filled) { xs[i] = f.first; ss[i] = f.second; ++i; }
+            vec(node, "X") = xs; vec(node, "Size") = ss; vec(node, "Count") = {count};
+            node.update(e);
+        };
+        slots({{.5f, .3f}}, 1);
+        for (float g : vec(node, "Gate").get()) assert(g == 0);
+        slots({{.5f, .3f}, {.2f, .01f}}, 2);                 // born in the second slot
+        assert(vec(node, "Gate").get()[0] == 1 && close(vec(node, "X Out").get()[0], .2f) && close(vec(node, "Size Out").get()[0], .01f));
+        slots({{.5f, .3f}, {.2f, .01f}}, 2);
+        slots({{.5f, .3f}, {.2f, .01f}, {.8f, .04f}}, 3);
+        assert(vec(node, "Gate").get()[1] == 1 && close(vec(node, "X Out").get()[1], .8f));
+        slots({{.5f, .3f}, {0, 0}, {.8f, .04f}}, 2);         // the middle one goes: its slot empties
+        assert(vec(node, "Gate").get()[2] == 1 && close(vec(node, "X Out").get()[2], .2f));
+        slots({{.5f, .3f}, {.6f, .02f}, {.8f, .04f}}, 3);    // and a new blob takes it
+        assert(vec(node, "Gate").get()[3] == 1 && close(vec(node, "X Out").get()[3], .6f));
+        slots({{.5f, .3f}, {.6f, .02f}, {.8f, .04f}}, 2);    // Count a frame apart: not read
+        for (float g : vec(node, "Gate").get()) assert(g == 0);
+    }
     std::cout << "Blob Birth Voices node tests passed" << std::endl;
     return 0;
 }
