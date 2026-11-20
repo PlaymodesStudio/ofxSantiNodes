@@ -42,7 +42,6 @@
 #include "schoenbergMatrix.h"
 #include "voiceExpanding.h"
 #include "voiceExpanding2.h"
-#include "blobBirthVoices.h"
 #include "voiceStealing.h"
 
 namespace ofxOceanodeSanti{
@@ -101,7 +100,6 @@ void registerPitchNodes(ofxOceanode &o)
     o.registerModel<schoenbergMatrix>("Santi/Voicing");
     o.registerModel<voiceExpanding>("Santi/Voicing");
     o.registerModel<voiceExpanding2>("Santi/Voicing");
-    o.registerModel<blobBirthVoices>("Santi/Voicing");
     o.registerModel<voiceStealing>("Santi/Voicing");
 }
 
