@@ -37,6 +37,7 @@
 #include "soloStepSequencer.h"
 #include "vectorSequencer.h"
 #include "chancePass.h"
+#include "paramRandomizer.h"
 #include "chanceWeights.h"
 #include "choose.h"
 #include "randomSeries.h"
@@ -105,6 +106,7 @@ void registerSequencingNodes(ofxOceanode &o)
     // CHANCE & RANDOMNESS
     // ─────────────────────────────────────────────
     o.registerModel<chancePass>("Santi/Chance");
+    o.registerModel<paramRandomizer>("Santi/Chance");
     o.registerModel<chanceWeights>("Santi/Chance");
     o.registerModel<choose>("Santi/Chance");
     o.registerModel<randomSeries>("Santi/Chance");
